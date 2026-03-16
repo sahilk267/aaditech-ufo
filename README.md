@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Universal Observability, Monitoring & Automation Platform
 
 ## Overview
@@ -588,3 +589,5 @@ This project is designed to become a **complete enterprise infrastructure observ
 The white-label architecture allows the platform to be deployed for multiple organizations without modifying the core system.
 
 By combining monitoring, analytics, automation, and AI intelligence into one platform, the system provides a powerful alternative to traditional monitoring tools while enabling modern infrastructure operations.
+=======
+>>>>>>> 6007699 (update reamde.md file)
