@@ -10,13 +10,13 @@
 
 | Goal | Document | Time |
 |------|----------|------|
-| **Get complete roadmap** | [MASTER_ROADMAP.md](MASTER_ROADMAP.md) | 15 min |
+| **See project vision & goals** | [README.md](README.md) (92 features) | 20 min |
 | **Know what to do this week** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
 | **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
 | **See feature details** | [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) | 20 min |
 | **Map all 157 features** | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) | 10 min |
 | **Weekly tasks** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
-| **Setup & install** | [README.md](README.md) | 10 min |
+| **Setup & install** (current state) | [ARCHIVE/README_CURRENT_STATE.md](ARCHIVE/README_CURRENT_STATE.md) | 10 min |
 | **Deep dive analysis** | [ARCHIVE/](ARCHIVE/) | 30 min |
 
 ---
@@ -25,11 +25,25 @@
 
 ### 🟢 PRIMARY DOCUMENTS
 
-#### 1. **MASTER_ROADMAP.md** (SINGLE SOURCE OF TRUTH)
+#### 1. **README.md** (THE VISION DOCUMENT - 92 FEATURES)
+- **Purpose**: The comprehensive 92-feature enterprise vision that inspired this project
+- **Contains**:
+  - Project overview and goals
+  - All major platform capabilities
+  - System architecture vision
+  - Security model
+  - All 92 planned features
+  - Deployment modes
+  - Integration points
+- **Audience**: Everyone (to understand what we're building)
+- **Update Frequency**: Reference document (rarely changes)
+- **Use**: Understand the complete vision
+
+#### 2. **MASTER_ROADMAP.md** (EXECUTION PLAN - 157 FEATURES)
 - **Purpose**: Comprehensive 25-week implementation plan
 - **Contains**: 
-  - Executive summary of vision
-  - All 157 features consolidated
+  - Executive summary of execution approach
+  - All 157 features consolidated (92 original + 65 new)
   - Phase-by-phase breakdown (0-4)
   - Detailed week-by-week timeline
   - Architecture overview
@@ -38,9 +52,7 @@
   - Team composition
 - **Audience**: Everyone (managers, developers, architects)
 - **Update Frequency**: Weekly
-- **Use**: When you need THE complete picture
-
-#### 2. **WEEK_BY_WEEK_CHECKLIST.md**
+- **Use**: When you need THE complete execution picture
 - **Purpose**: Day-to-day implementation tasks
 - **Contains**:
   - Week 1-4 detailed daily checklist
@@ -52,7 +64,7 @@
 - **Update Frequency**: Every Sunday for next week
 - **Use**: Every morning, check what's on today's list
 
-#### 3. **QUICK_START_GUIDE.md**
+#### 3. **WEEK_BY_WEEK_CHECKLIST.md**
 - **Purpose**: Quick reference for developers
 - **Contains**:
   - Setup instructions
@@ -135,48 +147,41 @@
 - **Update Frequency**: Reference only
 - **Use**: Understanding scope changes
 
-#### 9. **README_OLD.md**
-- **Purpose**: Historical backup of original documentation
-- **Contains**:
-  - Original ambitious feature list (92 features)
-  - Historical context
-- **Audience**: Reference/history
-- **Update Frequency**: Never (historical)
-- **Use**: Understanding original vision
-
 ---
 
-## 📦 ARCHIVE/ (Supporting Documents)
+## 📦 ARCHIVE/ (Supporting Documents & Historical)
 
 **Location**: `ARCHIVE/`
 
-All detailed analysis, decision matrices, and supporting documents moved here to avoid confusion.
+All detailed analysis, decision matrices, supporting documents, and implementation snapshots are archived here.
 
 ### Archive Contents:
 
 ```
 ARCHIVE/
-├─ AUDIT_REPORT.md                  (1,106 lines) - Deep security audit
-├─ AUDIT_SUMMARY.md                 (500 lines) - Audit executive summary
-├─ IMPLEMENTATION_SUMMARY.md         (Consolidated into MASTER_ROADMAP)
-├─ START_HERE.md                     (Replaced by MASTER_ROADMAP)
-├─ START_HERE_STRATEGIC_PLAN.md      (Navigation guide - now in README)
-├─ STRATEGIC_DECISION_MATRIX.md      (Decision framework - in MASTER_ROADMAP)
-├─ PHASE_WISE_IMPLEMENTATION_PLAN.md (10K words - summarized in MASTER_ROADMAP)
-├─ FEATURE_TIMELINE.md               (Gantt chart - info in MASTER_ROADMAP)
-├─ EXPANSION_SUMMARY.md              (Feature expansion - in MASTER_ROADMAP)
-└─ REMOVED_FEATURES.md               (Analysis of features removed from scope)
+├─ README_CURRENT_STATE.md           - Snapshot of 14 current features (implementation at time of move)
+├─ AUDIT_REPORT.md                   - Deep security audit
+├─ AUDIT_SUMMARY.md                  - Audit executive summary
+├─ IMPLEMENTATION_SUMMARY.md          - Consolidated into MASTER_ROADMAP
+├─ START_HERE.md                      - Replaced by DOCUMENTATION_INDEX
+├─ START_HERE_STRATEGIC_PLAN.md       - Replaced by MASTER_ROADMAP
+├─ STRATEGIC_DECISION_MATRIX.md       - Decision framework
+├─ PHASE_WISE_IMPLEMENTATION_PLAN.md  - Detailed phase planning
+├─ FEATURE_TIMELINE.md                - Visual schedule
+├─ EXPANSION_SUMMARY.md               - Feature expansion analysis
+└─ REMOVED_FEATURES.md                - Analysis of scope changes
 ```
 
 **When to use ARCHIVE**:
-- 📖 **Deep dive analysis**: Need to understand security audit details?
+- 📖 **Deep dive analysis**: Need security audit or planning details?
 - 🔍 **Historical context**: Understanding why decisions were made?
-- 📚 **Reference material**: Getting more context on a topic?
-- ✅ **Verification**: Cross-checking requirements?
+- 📚 **Reference material**: Getting detailed analysis on a topic?
+- ✅ **Verification**: Cross-checking past decisions?
+- 📷 **Snapshot**: See what was implemented at specific point in time?
 
 ---
 
-## 🎯 DOCUMENTATION STRATEGY
+## 🎯 DOCUMENTATION HIERARCHY
 
 ### Consolidation Rationale
 
