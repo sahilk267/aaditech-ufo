@@ -10,8 +10,13 @@ import subprocess
 import socket
 import getpass
 from datetime import datetime
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 SERVER_URL = "http://192.168.86.152:5000/api/submit_data"
+AGENT_API_KEY = os.getenv('AGENT_API_KEY', 'dev-agent-api-key-12345-change-in-production')
 REPORT_INTERVAL = 60
 
 def get_system_info():
@@ -124,7 +129,11 @@ def run_benchmark():
 
 def send_data(data):
     try:
-        response = requests.post(SERVER_URL, json=data, timeout=10)  # Add timeout parameter
+        headers = {
+            'X-API-Key': AGENT_API_KEY,
+            'Content-Type': 'application/json'
+        }
+        response = requests.post(SERVER_URL, json=data, headers=headers, timeout=10)  # Add timeout parameter
         response.raise_for_status()
         print("Data sent successfully.")
     except requests.exceptions.RequestException as e:

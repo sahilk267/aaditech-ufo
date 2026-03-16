@@ -313,30 +313,30 @@ Next Week: Input validation & error handling
 
 #### Feature 1️⃣: Security Hardening
 ```
-Status: ⏳ NOT STARTED
+Status: 🟡 PARTIAL (3/8 deliverables)
 Week: 1-2
 Implementation:
-  - [ ] Move secrets from code → .env (Day 1-2)
-  - [ ] Create .env template & .env.example (Day 1)
-  - [ ] Implement API key authentication (Day 3)
+  - [x] Move secrets from code → .env (Day 1-2) ✅
+  - [x] Create .env template & .env.example (Day 1) ✅
+  - [x] Implement API key authentication (Day 3) ✅
   - [ ] Add input validation via Marshmallow (Week 2)
   - [ ] Implement rate limiting (Week 2)
   - [ ] Setup structured logging (Week 2)
 
 Deliverables:
-  - [ ] .env file (populated with real secrets)
-  - [ ] .env.example file (template)
-  - [ ] server/auth.py (API key decorator)
+  - [x] .env file (populated with real secrets) ✅
+  - [x] .env.example file (template) ✅
+  - [x] server/auth.py (API key decorator) ✅
   - [ ] server/schemas.py (input validation)
-  - [ ] Updated app.py (secure config loading)
-  - [ ] .gitignore updated (with .env)
+  - [x] Updated app.py (secure config loading) ✅
+  - [x] .gitignore updated (with .env) ✅
   - [ ] README updated (setup instructions)
 
 Functions to Create:
-  ├─ require_api_key() decorator in auth.py
-  ├─ validate_system_data() in schemas.py
-  ├─ setup_logging() for structured logs
-  └─ validate_config() for environment checks
+  ├─ [x] require_api_key() decorator in auth.py ✅
+  ├─ [ ] validate_system_data() in schemas.py
+  ├─ [ ] setup_logging() for structured logs
+  └─ [ ] validate_config() for environment checks
 
 Tests:
   - [ ] Test API endpoint without key (401)
@@ -344,7 +344,7 @@ Tests:
   - [ ] Test invalid JSON input (400)
   - [ ] Test rate limiting (429 after X requests)
 
-Progress: 0/20 tasks (0%)
+Progress: 6/20 tasks (30%)
 ```
 
 #### Feature 2️⃣: Architecture Refactoring

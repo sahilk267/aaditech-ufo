@@ -12,8 +12,13 @@ import pytz
 import subprocess
 import getpass
 import os
+from dotenv import load_dotenv
 from backup import create_backup, restore_backup, list_backups
 from werkzeug.utils import secure_filename
+from auth import require_api_key
+
+# Load environment variables from .env file
+load_dotenv()
 
 def get_current_time():
     """Get current time in IST (India/Kolkata)"""
@@ -46,7 +51,7 @@ def convert_to_ist(utc_dt):
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///toolboxgalaxy.db'  # Or your chosen database
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # Suppress a warning
-app.config['SECRET_KEY'] = 'Andh3r1@m1dc#000'  # Important for security (sessions, etc.)
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-key-change-in-production')  # Load from .env
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)  # Set the logging level
 
@@ -297,6 +302,7 @@ def manual_submit():
         return str(e), 500
 
 @app.route('/api/submit_data', methods=['POST'])
+@require_api_key
 def submit_data():
     try:
         data = request.get_json()
