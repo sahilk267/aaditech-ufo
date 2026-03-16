@@ -1,593 +1,1025 @@
-<<<<<<< HEAD
-# Universal Observability, Monitoring & Automation Platform
+# AadiTech UFO - Infrastructure Monitoring & Benchmarking Platform
+
+**Project Status**: 🚀 Active Development  
+**Latest Version**: 1.0.0-pre-alpha  
+**Last Updated**: March 16, 2026
+
+---
+
+## 📋 Table of Contents
+
+1. [Overview](#overview)
+2. [Features](#features)
+3. [Architecture](#architecture)
+4. [Tech Stack](#tech-stack)
+5. [Quick Start](#quick-start)
+6. [Installation](#installation)
+7. [Configuration](#configuration)
+8. [Usage](#usage)
+9. [API Documentation](#api-documentation)
+10. [Deployment](#deployment)
+11. [Contributing](#contributing)
+12. [License](#license)
+13. [Troubleshooting](#troubleshooting)
+14. [Support](#support)
+
+---
 
 ## Overview
 
-This project is an enterprise-grade **Infrastructure Observability, Monitoring, Automation, and AI Analytics Platform** designed to monitor, analyze, and manage distributed infrastructure environments.
+**AadiTech UFO** (Codename: **ToolBoxGalaxy**) is an **Infrastructure Monitoring and Benchmarking Platform** designed for real-time system performance monitoring, data collection, and analysis.
 
-The system provides a unified platform for:
+The platform consists of:
+- **Fleet of Monitoring Agents** - Lightweight Windows/Linux agents that collect system telemetry
+- **Central Dashboard Server** - Flask-based web server for data aggregation and visualization
+- **Web Interface** - Modern Bootstrap UI for system monitoring and administration
 
-* Infrastructure monitoring
-* Application monitoring
-* Log management
-* AI analytics
-* automation and orchestration
-* intelligent alerting
-* real-time dashboards
-
-The platform is built as a **white-label enterprise system**.
-
-No organization name is embedded inside the codebase.
-
-When a company registers for the first time, the platform automatically creates a **dedicated enterprise environment** for that organization.
-
-This design allows the platform to be sold or deployed for multiple organizations without modifying the core system.
-
-The platform can be deployed as:
-
-* Multi-tenant SaaS monitoring system
-* Dedicated enterprise monitoring solution
-* Private infrastructure observability platform
-* Managed infrastructure monitoring service
+### Primary Use Cases
+- ✅ Real-time infrastructure monitoring
+- ✅ System performance benchmarking
+- ✅ Historical performance analysis
+- ✅ Centralized system management
+- ✅ Multi-system performance comparison
 
 ---
 
-# Core Platform Goals
+## Features
 
-The platform is designed to achieve the following goals:
+### ✅ Currently Implemented
 
-* complete infrastructure visibility
-* real-time monitoring
-* scalable architecture
-* automation of operational tasks
-* AI-driven anomaly detection
-* infrastructure self-healing
-* multi-tenant enterprise deployments
+#### Agent Capabilities
+- Cross-platform system information collection (Windows/Linux)
+- Real-time CPU, memory, and disk metrics
+- Network topology detection (Local IP, Public IP)
+- Periodic data submission (configurable intervals)
+- Automatic benchmark calculation
+- Per-core CPU utilization monitoring
+- Advanced RAM utilization tracking
 
-The system is capable of monitoring:
+#### Server Capabilities
+- Centralized data aggregation
+- Multi-system dashboard
+- Real-time status monitoring
+- Historical data tracking
+- Performance benchmarking
+- Database backup/restore functionality
+- Responsive web interface
 
-* servers
-* containers
-* applications
-* databases
-* network infrastructure
-* cloud environments
-* hybrid infrastructures
+#### Dashboard Features
+- **Admin Panel**: Complete system overview with filtering and sorting
+- **User Panel**: Detailed system information and historical trends
+- **History View**: Time-series performance metrics
+- **Backup Management**: Create and restore database backups
+- **Advanced Filtering**: Search, status filtering, benchmark categorization
 
----
+### 🔄 Planned Features (Future Releases)
 
-# Major Platform Capabilities
+- **Authentication System**: User login and role-based access control
+- **API Authentication**: JWT-based API security
+- **Real-time Updates**: WebSocket support for live dashboards
+- **Data Export**: CSV/PDF export functionality
+- **AI Analytics**: Machine learning-based anomaly detection
+- **Alert System**: Configurable alerts for performance thresholds
+- **API Documentation**: OpenAPI/Swagger documentation
+- **Containerization**: Docker/Kubernetes support
+- **Automated Reporting**: Scheduled email reports
+- **Advanced Analytics**: Trend analysis and forecasting
 
-The platform combines multiple enterprise systems into a single unified solution.
+### ❌ Not Implemented (Removed from Documentation)
 
-Capabilities include:
+The following features mentioned in historical documentation are **NOT currently implemented** and should not be expected:
+- ❌ Local AI Engine (Ollama Integration)
+- ❌ Intelligent Alerting System
+- ❌ Automation Engine
+- ❌ Self-Healing Infrastructure
+- ❌ Multi-Tenant SaaS Architecture
+- ❌ Role-Based Access Control
 
-Infrastructure Monitoring
-Application Performance Monitoring
-Centralized Log Management
-Metrics Analytics
-AI-Driven Insights
-Intelligent Alerting
-Automation Engine
-Self-Healing Infrastructure
-Multi-Tenant SaaS Architecture
-Real-Time Dashboards
-Remote Infrastructure Control
-
----
-
-# Platform Architecture
-
-The system uses a distributed architecture designed for scalability and resilience.
-
-High-level architecture:
-
-Monitoring agents collect telemetry data from infrastructure systems.
-
-Telemetry is transmitted securely to the platform ingestion layer.
-
-Incoming telemetry data is placed into a message queue for processing.
-
-Processing workers analyze and normalize telemetry data.
-
-Metrics and logs are stored in optimized storage engines.
-
-AI analytics services analyze data and detect anomalies.
-
-The dashboard system visualizes infrastructure health and operational insights.
-
-Automation services allow remote infrastructure control.
+**Note**: These features may be added in future enterprise versions.
 
 ---
 
-# System Components
+## Architecture
 
-The platform consists of the following major components.
+### System Architecture Diagram
 
-Agent Layer
+```
+┌────────────────────────────────────────────────────────────────┐
+│                   AADITECH UFO MONITORING SYSTEM               │
+├────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌─────────────────┐         ┌──────────────────┐              │
+│  │  AGENT SYSTEMS  │         │   FLASK SERVER   │              │
+│  ├─────────────────┤         ├──────────────────┤              │
+│  │ • Windows VM 1  │ ─JSON─→ │  /api/submit_data│              │
+│  │ • Windows VM 2  │ (60s)   │                  │              │
+│  │ • Linux Server  │         │  REST Endpoints: │              │
+│  │ • Server Rack   │─────────│  • /admin        │   ┌────────┐│
+│  │                 │         │  • /user/<id>    │   │ SQLite ││
+│  │ Every 60 secs:  │         │  • /backup       │   │ Database
+│  │ • CPU metrics   │         │  • /manual_submit│   │ (tool...││
+│  │ • RAM metrics   │         │                  │   └────────┘│
+│  │ • Disk metrics  │         └──────────────────┘              │
+│  │ • Network info  │               ↓                           │
+│  │ • System info   │         ┌──────────────────┐              │
+│  │                 │         │   WEB INTERFACE  │              │
+│  │ Benchmark calc: │         ├──────────────────┤              │
+│  │ (CPU×10 + RAM)/2│         │ • Admin Dashboard│              │
+│  │                 │         │ • User Panels    │              │
+│  │ Uses WMIC on    │         │ • History Graphs │              │
+│  │ Windows, nsutil │         │ • Backup Manager │              │
+│  │ on Linux        │         │ Bootstrap 4.5.2  │              │
+│  │                 │         └──────────────────┘              │
+│  └─────────────────┘                                          │
+│                                                                 │
+└────────────────────────────────────────────────────────────────┘
 
-Lightweight agents installed on monitored machines.
+Data Flow:
+  Agent Systems → (JSON over HTTP POST) → Flask Server
+                                              ↓
+                                          SQLAlchemy ORM
+                                              ↓
+                                          SQLite Database
+                                              ↓
+                                         Web Interface
+```
 
-API Gateway
+### Component Details
 
-Receives telemetry data and exposes platform APIs.
+#### 1. Monitoring Agents (`agent/agent.py`)
+- **Purpose**: Collect system telemetry from monitored machines
+- **Frequency**: Every 60 seconds (configurable)
+- **Data**: CPU, RAM, Disk, Network, System Info
+- **Transport**: HTTP POST to `/api/submit_data` endpoint
+- **Current Support**: Windows (uses WMI), partial Linux support
 
-Message Queue
+#### 2. Flask Server (`server/app.py`)
+- **Purpose**: Central aggregation, storage, and API endpoint
+- **Database**: SQLite for persistent storage
+- **Endpoints**: 10 REST endpoints for data access
+- **Features**: Data normalization, backup/restore, IST timezone conversion
 
-Buffers and distributes telemetry data across processing workers.
-
-Processing Workers
-
-Process metrics, logs, and infrastructure events.
-
-Metrics Storage
-
-Stores time-series monitoring data.
-
-Log Storage
-
-Stores centralized logs for search and analysis.
-
-AI Analytics Engine
-
-Analyzes telemetry data for anomalies and predictions.
-
-Automation Engine
-
-Executes remote infrastructure commands.
-
-Dashboard System
-
-Provides the web interface for monitoring and control.
-
-Local AI Engine
-
-Runs local LLM models for infrastructure intelligence.
-
----
-
-# Monitoring Agents
-
-Agents are lightweight programs installed on monitored systems.
-
-The agent collects telemetry including:
-
-CPU usage
-memory usage
-disk usage
-network metrics
-system load
-process health
-service status
-application metrics
-system logs
-
-Agents communicate securely with the platform using authenticated API requests.
-
-Agents are designed to operate with minimal CPU and memory overhead.
-
-Supported environments include:
-
-Linux servers
-Windows servers
-virtual machines
-containers
-cloud infrastructure
+#### 3. Web Interface (`server/templates/`)
+- **Framework**: Bootstrap 4.5.2 for responsive design
+- **Rendering**: Jinja2 templating
+- **Javascript**: Vanilla JS for interactivity
+- **Pages**: 5 main views (Admin, User, History, Backup, Base)
 
 ---
 
-# Metrics Monitoring
+## Tech Stack
 
-The metrics system collects and stores time-series monitoring data.
+### Backend
+```
+Python 3.x
+├── Flask 3.0.0                  # Web framework
+├── Flask-SQLAlchemy 3.1.1       # ORM integration
+├── Flask-Migrate 4.0.5          # Database migrations
+├── SQLAlchemy 2.0.25            # Object-Relational Mapping
+├── Werkzeug 3.0.1               # WSGI utilities
+├── requests 2.31.0              # HTTP client
+├── psutil 5.9.8                 # System metrics
+├── pytz 2024.1                  # Timezone handling
+└── python-dateutil 2.8.2        # Date utilities
+```
 
-Metrics include:
+### Frontend
+```
+HTML5 / CSS3 / JavaScript
+├── Bootstrap 4.5.2              # CSS framework
+├── jQuery 3.5.1                 # JS utilities
+├── Jinja2 3.1.3                 # Template engine
+└── Vanilla JS                   # Custom interactions
+```
 
-CPU utilization
-memory usage
-disk capacity
-disk I/O
-network throughput
-system load
-process statistics
+### Database
+```
+SQLite 3.x                        # Embedded relational database
+├── Single file: toolboxgalaxy.db
+├── 24 columns for system metrics
+└── ~220 KB per 1000 records
+```
 
-Historical metrics allow:
-
-trend analysis
-capacity forecasting
-performance diagnostics
-
----
-
-# Log Management
-
-The log management system centralizes logs from infrastructure and applications.
-
-Supported logs include:
-
-system logs
-application logs
-security logs
-database logs
-container logs
-
-Logs are indexed for fast searching and analysis.
-
-Capabilities include:
-
-real-time log ingestion
-structured log parsing
-full text search
-anomaly detection
-
----
-
-# Intelligent Alerting
-
-The alerting engine detects abnormal behavior in infrastructure.
-
-Alerts may be triggered based on:
-
-threshold rules
-pattern detection
-AI anomaly detection
-composite conditions
-
-Examples include:
-
-CPU usage above threshold
-memory exhaustion
-disk capacity critical
-service failure
-network anomalies
-
-Alerts support:
-
-alert correlation
-alert deduplication
-alert suppression
-alert escalation policies
-
-Notifications may be delivered through:
-
-email
-webhooks
-messaging integrations
+### Infrastructure (Not Yet Implemented)
+```
+Planned for future releases:
+├── Docker & docker-compose
+├── Gunicorn WSGI server
+├── Nginx reverse proxy
+├── Kubernetes orchestration
+└── PostgreSQL/MySQL support
+```
 
 ---
 
-# Automation Engine
+## Quick Start
 
-The automation engine allows administrators to execute actions across infrastructure.
+### For Users (Running the Server)
 
-Supported operations include:
+```bash
+# 1. Clone repository
+git clone https://github.com/sahilk267/aaditech-ufo.git
+cd aaditech-ufo
 
-service restart
-remote script execution
-software installation
-configuration management
-infrastructure patching
-automated maintenance tasks
+# 2. Install dependencies
+pip install -r requirements.txt
 
-Automation workflows may be triggered by:
+# 3. Run the server
+python server/app.py
 
-alerts
-scheduled tasks
-manual execution
-API requests
+# 4. Access dashboard
+# Open browser: http://localhost:5000/admin
+```
 
-Automation enables **self-healing infrastructure behavior**.
+### For Agents (Sending Data)
 
----
+```bash
+# 1. On a Windows machine:
+# Edit agent/agent.py and update SERVER_URL to your server IP:
+SERVER_URL = "http://YOUR_SERVER_IP:5000/api/submit_data"
 
-# AI Analytics Engine
+# 2. Run the agent
+python agent/agent.py
 
-The platform integrates an AI analytics engine that analyzes telemetry data.
-
-AI capabilities include:
-
-anomaly detection
-root cause analysis
-capacity prediction
-alert prioritization
-incident explanation
-
-The AI engine analyzes metrics, logs, and alerts to generate operational insights.
+# 3. Data will be submitted every 60 seconds
+# Check server dashboard to see incoming data
+```
 
 ---
 
-# Local AI Engine (Ollama Integration)
+## Installation
 
-The platform integrates a **local large language model runtime** using Ollama.
+### Prerequisites
+- **Python 3.8+** (tested on 3.11)
+- **pip** (Python package manager)
+- **SQLite3** (usually pre-installed)
+- **Network access** between agents and server (port 5000)
 
-The AI engine operates locally, ensuring that infrastructure data never leaves the environment.
+### Step 1: Clone Repository
 
-Supported AI capabilities include:
+```bash
+git clone https://github.com/sahilk267/aaditech-ufo.git
+cd aaditech-ufo
+```
 
-AI-driven root cause analysis
-intelligent alert explanations
-log analysis
-infrastructure troubleshooting assistance
-operational recommendations
+### Step 2: Create Virtual Environment (Recommended)
 
-The local AI assistant can answer questions such as:
+```bash
+# Windows
+python -m venv venv
+venv\Scripts\activate
 
-Why is a server slow
-What caused a service failure
-Which process caused high CPU usage
+# Linux/macOS
+python3 -m venv venv
+source venv/bin/activate
+```
 
-The AI assistant analyzes telemetry data and provides contextual explanations.
+### Step 3: Install Dependencies
 
----
+```bash
+pip install -r requirements.txt
+```
 
-# Real-Time Dashboards
+### Step 4: Initialize Database
 
-The platform provides interactive dashboards for infrastructure monitoring.
+The database is automatically created on first run. The SQLite file will be created at:
+```
+server/toolboxgalaxy.db
+```
 
-Dashboard features include:
+### Step 5: Run Server
 
-global infrastructure overview
-resource utilization graphs
-system health indicators
-service status monitoring
-historical performance analysis
-network topology views
+```bash
+cd server
+python app.py
+```
 
-Dashboards are customizable for each organization.
+**Output:**
+```
+ * Serving Flask app 'app'
+ * Debug mode: on
+ * Running on http://0.0.0.0:5000
+```
 
----
-
-# Remote Infrastructure Control
-
-The platform allows administrators to execute commands across infrastructure nodes.
-
-Examples include:
-
-restart services
-execute scripts
-deploy software
-update configurations
-restart servers
-
-Remote operations can be executed from the central dashboard.
-
----
-
-# Multi-Tenant White-Label Architecture
-
-The platform supports multiple organizations within one deployment.
-
-Each organization receives:
-
-isolated infrastructure monitoring
-isolated data storage
-isolated dashboards
-isolated user management
-isolated automation policies
-
-When an organization registers for the first time:
-
-1. The platform creates a tenant identifier.
-2. A dedicated database namespace is generated.
-3. An organization administrator account is created.
-4. Default monitoring policies are provisioned.
-5. Monitoring agents become available for deployment.
-
-This architecture enables the platform to operate as a **commercial monitoring SaaS product**.
+Access the web interface at: **http://localhost:5000**
 
 ---
 
-# Security Model
+## Configuration
 
-Security is a core design principle.
+### Server Configuration
 
-Security features include:
+**File**: `server/app.py` (Lines 47-51)
 
-encrypted communication between agents and server
-agent authentication tokens
-role-based access control
-organization data isolation
-audit logging
-API authentication
-secure command execution
+```python
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///toolboxgalaxy.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['SECRET_KEY'] = 'Andh3r1@m1dc#000'  # ⚠️ Change for production!
+```
 
----
+**⚠️ IMPORTANT SECURITY NOTES:**
+- `SECRET_KEY` is exposed. For production, use environment variable:
+  ```python
+  app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'your-secret-key')
+  ```
+- Database path can be changed by modifying the URI
+- For production, use PostgreSQL or MySQL instead of SQLite
 
-# User Roles
+### Agent Configuration
 
-Typical user roles include:
+**File**: `agent/agent.py` (Lines 14-15)
 
-Platform Administrator
-Organization Administrator
-Operations Engineer
-Viewer
+```python
+SERVER_URL = "http://192.168.86.152:5000/api/submit_data"  # ⚠️ Update this!
+REPORT_INTERVAL = 60  # Seconds between submissions
+```
 
-Each role has defined permissions controlling access to platform functionality.
+**Configuration Options:**
+```python
+# Change server IP/hostname
+SERVER_URL = "http://192.168.1.100:5000/api/submit_data"
+SERVER_URL = "http://monitoring.example.com:5000/api/submit_data"
 
----
+# Change reporting frequency (seconds)
+REPORT_INTERVAL = 30   # Every 30 seconds (increases network traffic)
+REPORT_INTERVAL = 300  # Every 5 minutes (reduces network traffic)
+```
 
-# Plugin System
+### Timezone Configuration
 
-The platform supports a modular plugin architecture.
+**Default**: Asia/Kolkata (IST)  
+**File**: `server/app.py` (Line 22)
 
-Plugins can extend monitoring capabilities for:
+```python
+def get_current_time():
+    ist = pytz.timezone('Asia/Kolkata')
+    return datetime.now(ist)
+```
 
-databases
-web servers
-container platforms
-cloud providers
-network devices
+**To change timezone:**
+```python
+# Examples:
+ist = pytz.timezone('US/Eastern')      # Eastern Time
+ist = pytz.timezone('Europe/London')   # GMT
+ist = pytz.timezone('Asia/Tokyo')      # Japan Standard Time
+ist = pytz.timezone('UTC')             # UTC
 
-The plugin system allows organizations to integrate monitoring for custom systems.
-
----
-
-# Containerized Deployment (Docker)
-
-The platform supports containerized deployment using Docker.
-
-Containerization ensures:
-
-consistent deployments
-service isolation
-simplified upgrades
-horizontal scalability
-
-Core services run as containers.
-
-Example platform services:
-
-API Gateway
-Telemetry Processor
-Metrics Database
-Log Storage
-Automation Engine
-AI Analytics Service
-Ollama AI Engine
-Dashboard Service
+# Full list: pytz.all_timezones
+```
 
 ---
 
-# Example Container Architecture
+## Usage
 
-Agents send telemetry data to the platform.
+### Admin Dashboard
 
-The platform consists of multiple containerized services:
+**URL**: `http://localhost:5000/admin`
 
-API Gateway
-Message Queue
-Processing Workers
-Metrics Database
-Log Storage
-AI Analytics Service
-Ollama AI Runtime
-Dashboard UI
+**Features**:
+- View all registered systems
+- Filter by status (Active/Inactive)
+- Filter by benchmark level (High/Medium/Low)
+- Search by hostname, serial number, IP
+- Click to expand system details
+- Sort by any column
+- View last update timestamp
 
-Each component can scale independently.
+**System Status:**
+- 🟢 **Active**: Last update < 5 minutes ago
+- 🔴 **Inactive**: Last update > 5 minutes ago
 
----
+### User Panel
 
-# Scalability
+**URL**: `http://localhost:5000/user/<serial_number>`
 
-The platform is designed for horizontal scaling.
+**Displays**:
+- System information (Serial, Model, User, Hostname)
+- CPU metrics (Usage %, Cores, Threads, Frequency, Per-core utilization)
+- Memory information (Total, Used, Available RAM)
+- Storage devices (Capacity, Usage, Free space)
+- Network info (Local IP, Public IP)
+- Benchmark scores (Software, Hardware, Overall)
+- System status and last update time
 
-Scalability mechanisms include:
+**Color Coding**:
+- 🟢 Green: Low usage (< 50%)
+- 🟠 Orange: Medium usage (50-75%)
+- 🔴 Red: High usage (> 75%)
+- Benchmark colors: Green (High) / Orange (Medium) / Red (Low)
 
-distributed worker nodes
-scalable message queues
-high-performance metrics databases
-load-balanced APIs
+### System History
 
-The system can monitor thousands of infrastructure nodes.
+**URL**: `http://localhost:5000/user/<serial_number>/history`
 
----
+**Features**:
+- Time-series performance data
+- Filter by time period (1h, 24h, 7 days, All time)
+- Filter by status (Active/Inactive/All)
+- Search across historical data
+- View all historical metrics in table format
 
-# Deployment Modes
+**Columns**:
+- Timestamp, Local IP, Public IP
+- CPU Usage, RAM Usage, Storage Usage
+- RAM details (Total/Used/Free)
+- Benchmark scores (Software/Hardware/Overall)
+- Status
 
-Supported deployment modes include:
+### Backup & Restore
 
-SaaS deployment
+**URL**: `http://localhost:5000/backup`
 
-One centralized platform serving multiple organizations.
+**Features**:
+- Create database backup (ZIP format)
+- View all available backups (with timestamp and size)
+- Restore from any backup
 
-On-Premise deployment
+**Backup Details**:
+- Includes: Database + configuration files
+- Format: ZIP archive with timestamp
+- Stored in: `server/backups/` directory
+- Size: ~200 KB per month of data (varies)
 
-A dedicated monitoring system deployed for a single organization.
+**Example Backup Filename**: `backup_20260316_122345.zip`
 
-Hybrid deployment
+### Manual Data Submission
 
-Agents monitoring both cloud and on-premise systems.
+**URL**: `http://localhost:5000/manual_submit`
+**Method**: POST (via user.html button)
 
----
-
-# Installation Overview
-
-Typical deployment flow:
-
-Install platform services.
-
-Configure platform database.
-
-Start message queue infrastructure.
-
-Deploy telemetry processing workers.
-
-Start AI analytics services.
-
-Launch dashboard system.
-
-Register the first organization.
-
-Deploy monitoring agents.
-
----
-
-# Organization Onboarding
-
-When a company registers:
-
-tenant environment is created
-database namespace is provisioned
-administrator account is generated
-default dashboards are created
-monitoring agents become available
-
-This enables immediate infrastructure monitoring.
+**Purpose**: Manually trigger a metrics update on the local system
+**Useful for**: Testing, immediate data refresh
 
 ---
 
-# API Integration
+## API Documentation
 
-The platform provides APIs for:
+### Base URL
+```
+http://server-ip:5000
+```
 
-telemetry ingestion
-alert management
-automation control
-dashboard queries
-configuration management
+### Endpoints
 
-These APIs enable integration with external systems and automation tools.
-
----
-
-# Future Expansion
-
-The architecture supports future expansion including:
-
-distributed tracing
-AI incident response
-topology discovery
-automated remediation
-compliance monitoring
-security analytics
+#### 1. Get Admin Dashboard
+```http
+GET /admin
+```
+**Response**: HTML page with system list  
+**Auth**: None (should be protected in production)
 
 ---
 
-# Contributing
+#### 2. Get User Panel (Latest System Data)
+```http
+GET /user/<serial_number>
+```
+**Parameters**:
+- `serial_number`: System serial number (string)
 
-Contributions are welcome.
-
-Developers may extend the platform by:
-
-creating monitoring plugins
-improving agents
-enhancing automation features
-optimizing AI analytics
-improving dashboard capabilities
-
----
-
-# Licensing
-
-The platform may be distributed under open source or commercial licensing models depending on deployment requirements.
+**Response**: HTML page with system details  
+**Example**:
+```
+GET /user/ABC123XYZ
+```
 
 ---
 
-# Summary
+#### 3. Get System History
+```http
+GET /user/<serial_number>/history
+```
+**Parameters**:
+- `serial_number`: System serial number (string)
 
-This project is designed to become a **complete enterprise infrastructure observability and automation platform**.
+**Response**: HTML page with historical metrics  
+**Default Limit**: All records (⚠️ Performance issue for large datasets)
 
-The white-label architecture allows the platform to be deployed for multiple organizations without modifying the core system.
+---
 
-By combining monitoring, analytics, automation, and AI intelligence into one platform, the system provides a powerful alternative to traditional monitoring tools while enabling modern infrastructure operations.
-=======
->>>>>>> 6007699 (update reamde.md file)
+#### 4. Submit System Data (Agent Endpoint)
+```http
+POST /api/submit_data
+Content-Type: application/json
+```
+
+**Request Body**:
+```json
+{
+  "serial_number": "DELL-12345XYZ",
+  "hostname": "WORKSTATION-01",
+  "model_number": "OptiPlex 7090",
+  "local_ip": "192.168.1.100",
+  "public_ip": "203.0.113.45",
+  "cpu_info": "Intel Core i7-10700K",
+  "cpu_cores": 8,
+  "cpu_threads": 16,
+  "cpu_usage": 45.2,
+  "cpu_per_core": [10.1, 20.3, 15.5, ...],
+  "cpu_frequency": {
+    "current": 3600,
+    "min": 800,
+    "max": 5300
+  },
+  "ram_usage": 65.5,
+  "ram_info": {
+    "total": 32.0,
+    "used": 21.0,
+    "available": 11.0,
+    "percent": 65.5
+  },
+  "disk_info": [
+    {
+      "device": "C:",
+      "mountpoint": "/",
+      "total": 500.0,
+      "used": 250.0,
+      "free": 250.0,
+      "percent": 50.0
+    }
+  ],
+  "storage_usage": 50.0,
+  "software_benchmark": 80,
+  "hardware_benchmark": 32000,
+  "overall_benchmark": 16040,
+  "current_user": "administrator",
+  "status": "active",
+  "last_update": "2026-03-16T17:22:40"
+}
+```
+
+**Response**:
+```
+Status: 200 OK
+Body: "System data received successfully."
+```
+
+**Error Response**:
+```json
+Status: 500 Internal Server Error
+Body: "Error processing data: [error details]"
+```
+
+---
+
+#### 5. Manual Data Submission
+```http
+POST /manual_submit
+Content-Type: application/json
+```
+
+**Purpose**: Manually submit or update local system data  
+**Response**:
+```
+Status: 200 OK
+Body: "Local system data submitted successfully."
+     or "Local system data updated successfully."
+```
+
+---
+
+#### 6. Create Backup
+```http
+POST /backup/create
+```
+
+**Response**:
+```json
+{
+  "status": "success",
+  "message": "Backup created: backup_20260316_172240.zip"
+}
+```
+
+---
+
+#### 7. Restore Backup
+```http
+POST /backup/restore/<filename>
+```
+
+**Parameters**:
+- `filename`: Backup filename (e.g., `backup_20260316_172240.zip`)
+
+**Response** (Success):
+```json
+{
+  "status": "success",
+  "message": "Backup restored successfully"
+}
+```
+
+**Response** (Error):
+```json
+{
+  "status": "error",
+  "message": "Error restoring backup"
+}
+```
+
+---
+
+### Database Schema
+
+#### SystemData Table
+
+```sql
+CREATE TABLE system_data (
+  id                    INTEGER PRIMARY KEY,
+  serial_number         VARCHAR(255) NOT NULL,
+  hostname              VARCHAR(255) NOT NULL,
+  model_number          VARCHAR(255),
+  ip_address            VARCHAR(20),
+  local_ip              VARCHAR(20),
+  public_ip             VARCHAR(20),
+  disk_info             JSON,
+  cpu_usage             FLOAT,
+  ram_usage             FLOAT,
+  storage_usage         FLOAT,
+  software_benchmark    FLOAT,
+  hardware_benchmark    FLOAT,
+  overall_benchmark     FLOAT,
+  last_update           DATETIME DEFAULT CURRENT_TIMESTAMP,
+  status                VARCHAR(20) DEFAULT 'active',
+  deleted               BOOLEAN DEFAULT FALSE,
+  cpu_info              VARCHAR(255),
+  cpu_cores             INTEGER,
+  cpu_threads           INTEGER,
+  ram_info              JSON,
+  current_user          VARCHAR(255),
+  cpu_per_core          JSON,
+  cpu_frequency         JSON
+);
+```
+
+**⚠️ Schema Issues**:
+- No unique constraint on serial_number (allows duplicates)
+- No foreign key relationships
+- Timezone confusion (UTC stored, IST displayed)
+- See AUDIT_REPORT.md for detailed analysis
+
+---
+
+## Deployment
+
+### Development Mode (Current)
+
+**Setup**:
+```bash
+python server/app.py
+```
+
+**Characteristics**:
+- ✅ Debug mode enabled (shows stack traces)
+- ❌ Not suitable for production
+- ❌ Single process, slow
+- ❌ Exposes sensitive information
+
+**Access**: http://localhost:5000
+
+---
+
+### Production Mode (Plan)
+
+**Recommended Setup** (Not yet implemented):
+```
+Nginx (Reverse Proxy)
+    ↓
+Gunicorn (WSGI Server)
+    ↓
+Flask App (Multiple workers)
+    ↓
+PostgreSQL Database
+    ↓
+Redis Cache
+```
+
+**Deployment Steps** (To Be Implemented):
+1. Create Dockerfile
+2. Setup docker-compose.yml
+3. Configure Gunicorn
+4. Setup Nginx
+5. Configure SSL/HTTPS
+6. Setup monitoring and logging
+7. Implement database migrations
+8. Setup backup automation
+
+**See**: Deployment section in AUDIT_REPORT.md
+
+---
+
+### Docker Deployment (Future)
+
+```dockerfile
+# Dockerfile (To be created)
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY server/ .
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "app:app"]
+```
+
+```yaml
+# docker-compose.yml (To be created)
+version: '3'
+services:
+  server:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=${SECRET_KEY}
+```
+
+---
+
+## Contributing
+
+### Code Standards
+- Python style guide: PEP 8
+- Naming: snake_case for functions/variables
+- Comments: Document complex logic
+- Tests: Write tests for new features
+
+### Workflow
+1. Fork repository
+2. Create feature branch (`feature/your-feature`)
+3. Commit changes with clear messages
+4. Push to your fork
+5. Create Pull Request with description
+
+### Areas Needing Contributors
+- ✅ Frontend improvements (UI/UX)
+- ✅ Performance optimization
+- ✅ Documentation
+- ✅ Test coverage
+- ✅ Docker deployment
+- ✅ API authentication
+- ✅ Database schema improvements
+
+---
+
+## License
+
+This project is proprietary software by AadiTech.
+
+**Usage Rights**:
+- ✅ Internal use
+- ✅ Development and testing
+- ❌ Commercial distribution without license
+- ❌ Sublicensing
+
+For licensing inquiries, contact: `development@aaditech.com`
+
+---
+
+## Troubleshooting
+
+### Server Issues
+
+#### Problem: "Address already in use"
+```
+Error: Address already in use on port 5000
+```
+**Solution**:
+```bash
+# Find process using port 5000
+lsof -i :5000
+
+# Kill the process
+kill -9 <PID>
+
+# Or use a different port (edit app.py)
+app.run(port=8000)
+```
+
+#### Problem: "No module named 'flask'"
+```
+ModuleNotFoundError: No module named 'flask'
+```
+**Solution**:
+```bash
+pip install -r requirements.txt
+```
+
+#### Problem: Database locked
+```
+sqlite3.OperationalError: database is locked
+```
+**Solution**:
+```
+1. Ensure only one app instance is running
+2. Check for abandoned processes
+3. Delete server/toolboxgalaxy.db-wal files
+```
+
+#### Problem: "Permission denied" on database
+```
+PermissionError: [Errno 13] Permission denied: 'toolboxgalaxy.db'
+```
+**Solution**:
+```bash
+# Fix permissions
+chmod 666 server/toolboxgalaxy.db
+chmod 755 server/
+```
+
+### Agent Issues
+
+#### Problem: "Connection refused" when submitting data
+```
+ConnectionRefusedError: [Errno 111] Connection refused
+```
+**Solution**:
+1. Verify server is running
+2. Check SERVER_URL in agent.py
+3. Verify network connectivity:
+   ```bash
+   ping <server-ip>
+   curl http://<server-ip>:5000/admin
+   ```
+4. Check firewall rules
+
+#### Problem: Agent collects data but server doesn't show it
+**Solution**:
+1. Check agent console for errors
+2. Verify SERVER_URL includes full path: `/api/submit_data`
+3. Check server logs
+4. Ensure agent IP can reach server
+
+#### Problem: "WMIC" errors on Windows agent
+```
+ERROR: [Errno 5] Access is denied
+```
+**Solution**:
+- Run PowerShell as Administrator
+- Try Linux compatibility mode if not Windows
+- Update Windows Management Instrumentation
+
+### Frontend Issues
+
+#### Problem: Dashboard loads but shows no systems
+**Solution**:
+1. Ensure agents are running and submitting data
+2. Check if data is in database:
+   ```bash
+   sqlite3 server/toolboxgalaxy.db
+   sqlite> SELECT COUNT(*) FROM system_data;
+   ```
+3. Check server logs for data submission errors
+4. Refresh browser page (F5)
+
+#### Problem: Time displays incorrectly
+**Solution**:
+- Check timezone configuration in server/app.py
+- Verify agent and server have correct system time
+- Check database for UTC vs IST timestamps
+
+### Database Issues
+
+#### Backup creation fails
+**Solution**:
+1. Check write permissions on `server/backups/` directory
+2. Ensure disk space available (need ~1-5 MB)
+3. Check for corrupted database:
+   ```bash
+   sqlite3 server/toolboxgalaxy.db ".check"
+   ```
+
+#### Restore fails
+**Solution**:
+1. Verify backup file exists and is valid ZIP
+2. Stop the server before restore
+3. Check file permissions
+4. Verify disk space
+
+---
+
+## Support
+
+### Getting Help
+
+**For Bugs**:
+1. Check GitHub Issues: https://github.com/sahilk267/aaditech-ufo/issues
+2. Create detailed bug report with steps to reproduce
+3. Include error logs and system information
+
+**For Questions**:
+1. Check Troubleshooting section above
+2. Review AUDIT_REPORT.md for architecture details
+3. Contact team lead for enterprise support
+
+**Documentation**:
+- README.md (This file)
+- AUDIT_REPORT.md (Detailed technical analysis)
+- API Documentation (above)
+- Code comments (in source files)
+
+### Contact
+
+- **Development Team**: development@aaditech.com
+- **Project Lead**: [Lead info]
+- **Issues/Bugs**: GitHub Issues
+
+### Reporting Security Issues
+
+⚠️ **DO NOT** create public issues for security vulnerabilities.
+
+**Send to**: security@aaditech.com
+
+Include:
+- Description of vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (optional)
+
+---
+
+## Acknowledgments
+
+- Flask framework and extensions
+- Bootstrap CSS framework
+- psutil library for system metrics
+- SQLAlchemy ORM
+- The open-source community
+
+---
+
+## Changelog
+
+### Version 1.0.0-pre-alpha (March 16, 2026)
+- Initial development release
+- Core monitoring functionality
+- Web dashboard
+- Backup/restore features
+- Windows agent support
+- See AUDIT_REPORT.md for known issues
+
+---
+
+## Appendix: Performance Benchmarks
+
+### Benchmark Calculation
+
+The platform calculates three benchmark scores:
+
+```
+Software Benchmark = Number of CPU Cores × 10
+Hardware Benchmark = Total RAM in MB
+Overall Benchmark = (Software Benchmark + Hardware Benchmark) / 2
+
+Example:
+- System: 8 cores, 32 GB RAM
+- Software: 8 × 10 = 80
+- Hardware: 32 × 1024 = 32,768
+- Overall: (80 + 32,768) / 2 = 16,424
+```
+
+### Benchmark Interpretation
+
+| Overall Score | Performance | Use Case |
+|---------------|-------------|----------|
+| < 4,000 | Low | Basic Office Work |
+| 4,000-8,000 | Medium | Development |
+| 8,000-16,000 | High | Workstation |
+| > 16,000 | Very High | Server/Specialized |
+
+---
+
+## FAQ
+
+**Q: How often does the agent collect data?**  
+A: Every 60 seconds by default. Change `REPORT_INTERVAL` in agent.py
+
+**Q: Can I use this with non-Windows systems?**  
+A: Partial support for Linux. WMI queries are Windows-only; fallback uses psutil.
+
+**Q: What if the server goes down?**  
+A: Agent will log errors but keep retrying. Data can be resubmitted manual when server is back.
+
+**Q: How long is data retained?**  
+A: Indefinitely (until manually deleted). Plan archival strategy for production.
+
+**Q: Can multiple servers monitor the same system?**  
+A: No. Each system submits to one server. Multiple servers require separate configurations.
+
+**Q: Is this suitable for production?**  
+A: NOT in current state. See AUDIT_REPORT.md for production readiness assessment.
+
+---
+
+## Related Documentation
+
+- **AUDIT_REPORT.md** - Comprehensive technical audit and implementation roadmap
+- **GitHub Repository** - https://github.com/sahilk267/aaditech-ufo
+- **Issue Tracker** - https://github.com/sahilk267/aaditech-ufo/issues
+
+---
+
+**Last Updated**: March 16, 2026  
+**Documentation Version**: 1.0.0  
+**Project Status**: Active Development
