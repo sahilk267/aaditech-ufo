@@ -648,7 +648,7 @@ HYBRID (Both Together)   24 wks     LOW     BEST ✅
 For more details, see:
 
 - **Weekly Checklists**: See [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md)
-- **Quick Reference**: See [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md)
+- **Setup Guide**: See [README.md](README.md)
 - **Windows Troubleshooting Details**: See [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md)
 - **Architecture Deep-Dive**: See [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md)
 - **Feature Mapping**: See [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md)

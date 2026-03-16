@@ -15,7 +15,7 @@
 | **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
 | **See feature details** | [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) | 20 min |
 | **Map all 157 features** | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) | 10 min |
-| **Quick reference guide** | [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) | 5 min |
+| **Weekly tasks** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
 | **Setup & install** | [README.md](README.md) | 10 min |
 | **Deep dive analysis** | [ARCHIVE/](ARCHIVE/) | 30 min |
 
@@ -164,7 +164,8 @@ ARCHIVE/
 ├─ STRATEGIC_DECISION_MATRIX.md      (Decision framework - in MASTER_ROADMAP)
 ├─ PHASE_WISE_IMPLEMENTATION_PLAN.md (10K words - summarized in MASTER_ROADMAP)
 ├─ FEATURE_TIMELINE.md               (Gantt chart - info in MASTER_ROADMAP)
-└─ EXPANSION_SUMMARY.md              (Feature expansion - in MASTER_ROADMAP)
+├─ EXPANSION_SUMMARY.md              (Feature expansion - in MASTER_ROADMAP)
+└─ REMOVED_FEATURES.md               (Analysis of features removed from scope)
 ```
 
 **When to use ARCHIVE**:
@@ -185,7 +186,7 @@ ARCHIVE/
 - ❌ Maintenance nightmare - update in multiple places
 - ❌ Overhead - too much reading
 
-**After** (8 active + 9 archived):
+**After** (8 active + 10 archived):
 - ✅ Clear hierarchy: MASTER_ROADMAP is truth
 - ✅ Single source: Information in one place
 - ✅ Working docs: Only active implementation guides at root
@@ -298,7 +299,7 @@ PRIORITY 5 (Historical/Reference - rarely update):
 - **UPDATED_ARCHITECTURE.md**: ~8,000 words (technical design)
 - **ADVANCED_WINDOWS_TROUBLESHOOTING.md**: ~10,000 words (feature spec)
 - **FEATURE_COVERAGE_MAP.md**: ~5,000 words (feature tracking)
-- **QUICK_START_GUIDE.md**: ~3,000 words (quick reference)
+
 - **README.md**: ~5,000 words (user documentation)
 - **REMOVED_FEATURES.md**: ~2,000 words (scope reference)
 
@@ -375,7 +376,7 @@ PRIORITY 5 (Historical/Reference - rarely update):
 | "What should I work on today?" | → [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) |
 | "What's the overall plan?" | → [MASTER_ROADMAP.md](MASTER_ROADMAP.md) |
 | "Are we building feature X?" | → [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) |
-| "How should I set up?" | → [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) |
+| "How should I set up?" | → [README.md](README.md) |
 | "What's the architecture?" | → [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) |
 | "Why did we make decision Y?" | → [ARCHIVE/STRATEGIC_DECISION_MATRIX.md](ARCHIVE/STRATEGIC_DECISION_MATRIX.md) |
 | "What features are new?" | → [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) |
