@@ -162,6 +162,124 @@ Agent (Windows)
 
 ---
 
+## 🪟 WINDOWS AGENT ARCHITECTURE (NEW!)
+
+### Enhanced Windows Agent Components
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    WINDOWS AGENT (v2.1)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  SYSTEM MONITORING (Original)                                  │
+│  ├─ Metrics Collector                                          │
+│  │  ├─ CPU Utilization (psutil)                               │
+│  │  ├─ Memory Usage (psutil)                                  │
+│  │  ├─ Disk Usage (psutil)                                    │
+│  │  ├─ Network Stats (psutil)                                 │
+│  │  └─ System Load (psutil)                                   │
+│  │                                                             │
+│  └─ Process Monitor                                            │
+│     ├─ Process list                                            │
+│     ├─ Resource usage                                          │
+│     └─ Application metrics                                     │
+│                                                                 │
+│  WINDOWS DIAGNOSTICS (NEW!)                                    │
+│  ├─ Event Log Collector                                        │
+│  │  ├─ Win32evtlog API for event retrieval                    │
+│  │  ├─ Application logs                                       │
+│  │  ├─ System logs                                            │
+│  │  ├─ Security logs                                          │
+│  │  ├─ Setup event logs                                       │
+│  │  └─ Forwarded event aggregation                            │
+│  │                                                             │
+│  ├─ Reliability History Monitor                                │
+│  │  ├─ WMI Win32_ReliabilityRecords query                     │
+│  │  ├─ Crash detection                                        │
+│  │  ├─ Hardware failures                                      │
+│  │  ├─ Startup failures                                       │
+│  │  ├─ Driver failures                                        │
+│  │  └─ Update failures                                        │
+│  │                                                             │
+│  ├─ Crash Dump Analyzer                                        │
+│  │  ├─ Windows Error Reporting (WER) integration              │
+│  │  ├─ Minidump collector (/Windows/Minidump/)                │
+│  │  ├─ Dump format parser                                     │
+│  │  ├─ Exception extractor                                    │
+│  │  └─ Call stack analyzer                                    │
+│  │                                                             │
+│  ├─ Service Monitor                                            │
+│  │  ├─ Windows Service API                                    │
+│  │  ├─ Service status tracking                                │
+│  │  ├─ Startup type monitoring                                │
+│  │  ├─ Service failure detection                              │
+│  │  └─ Dependency mapping                                     │
+│  │                                                             │
+│  ├─ Driver Intelligence                                        │
+│  │  ├─ Win32_PnPSignedDriver WMI class                        │
+│  │  ├─ Driver error detection                                 │
+│  │  ├─ Status monitoring                                      │
+│  │  ├─ Version tracking                                       │
+│  │  └─ Corruption checks                                      │
+│  │                                                             │
+│  └─ Windows Update Monitor                                     │
+│     ├─ Windows Update API                                     │
+│     ├─ Update status tracking                                 │
+│     ├─ Failed update detection                                │
+│     ├─ Installation history                                   │
+│     └─ Pending update alerts                                  │
+│                                                                 │
+│  TRANSMISSION & SECURITY                                       │
+│  ├─ Authenticated HTTPS                                        │
+│  │  ├─ API key in X-API-Key header                            │
+│  │  ├─ TLS/SSL encryption                                     │
+│  │  └─ Certificate pinning                                    │
+│  │                                                             │
+│  ├─ Data Batching & Compression                               │
+│  │  ├─ Batch telemetry (60-second cycle)                      │
+│  │  ├─ GZIP compression for large payloads                    │
+│  │  └─ Retry logic with exponential backoff                   │
+│  │                                                             │
+│  └─ Local Caching                                              │
+│     ├─ Temp storage for failed sends                          │
+│     ├─ Circular buffer (rolling window)                       │
+│     └─ Never lose events                                      │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Windows Agent Data Collection Intervals
+
+```
+Interval Type    | Frequency  | Components                    | Priority
+─────────────────┼────────────┼──────────────────────────────┼──────────
+Real-Time        | Immediate  | Event logs, Crash dumps      | CRITICAL
+                 |            | Service failures              |
+─────────────────┼────────────┼──────────────────────────────┼──────────
+Short-Term       | 60 seconds | Metrics, Process status      | HIGH
+(Default)        |            | System health                |
+─────────────────┼────────────┼──────────────────────────────┼──────────
+Medium-Term      | 5 minutes  | Reliability records          | MEDIUM
+                 |            | Update status                |
+─────────────────┼────────────┼──────────────────────────────┼──────────
+Long-Term        | 1 hour     | Trend aggregates             | LOW
+                 |            | Capacity planning            |
+─────────────────┴────────────┴──────────────────────────────┴──────────
+```
+
+### Windows API & Technologies Used
+
+| Component | Technology | Details |
+|-----------|-----------|---------|
+| Event Logs | Win32evtlog | Python ctypes binding to Windows Event Log API |
+| Reliability | WMI | Win32_ReliabilityRecords for system failures |
+| Crashes | WER | Windows Error Reporting API + Minidump parsing |
+| Services | Windows API | SC.exe / Win32 Service Control Manager |
+| Drivers | WMI | Win32_PnPSignedDriver device enumeration |
+| Updates | WSAPI | Windows Update API for patch status |
+
+---
+
 ## 📊 DATA FLOW: THE TROUBLESHOOTING JOURNEY
 
 ### Example: Windows Crash Event
