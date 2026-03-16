@@ -21,16 +21,9 @@ logger = logging.getLogger(__name__)
 # Initialize Flask app
 app = Flask(__name__)
 
-# Configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv(
-    'DATABASE_URL',
-    'sqlite:///toolboxgalaxy.db'
-)
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SECRET_KEY'] = os.getenv(
-    'SECRET_KEY',
-    'dev-key-change-in-production'
-)
+# Load configuration based on environment
+from .config import get_config
+app.config.from_object(get_config())
 
 # Initialize extensions with app
 from .extensions import init_extensions, db, migrate, limiter
