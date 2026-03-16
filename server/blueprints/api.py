@@ -4,7 +4,8 @@ REST API endpoints for agent data submission and system management
 """
 
 import logging
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, g
+from sqlalchemy import text
 from ..extensions import limiter
 from ..auth import require_api_key
 from ..schemas import validate_and_clean_system_data
@@ -57,6 +58,7 @@ def submit_data():
             }), 400
         
         # Create and save new system data record
+        validated_data['organization_id'] = g.tenant.id
         new_system = SystemData(**validated_data)
         db.session.add(new_system)
         db.session.commit()
@@ -104,7 +106,7 @@ def health():
     """
     try:
         # Check database connection
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         return jsonify({
             'status': 'healthy',
             'database': 'connected'

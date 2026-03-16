@@ -25,6 +25,9 @@ app = Flask(__name__)
 from .config import get_config
 app.config.from_object(get_config())
 
+from .tenant_context import init_tenant_context
+init_tenant_context(app)
+
 # Initialize extensions with app
 from .extensions import init_extensions, db, migrate, limiter
 init_extensions(app)
@@ -36,7 +39,7 @@ app.register_blueprint(api_bp)
 app.register_blueprint(web_bp)
 
 # Import models (must be after app initialization)
-from .models import SystemData
+from .models import SystemData, Organization
 
 # Create database tables on startup
 with app.app_context():
@@ -110,8 +113,9 @@ def ratelimit_handler(e):
 def health_check():
     """Health check endpoint"""
     from flask import jsonify
+    from sqlalchemy import text
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         return jsonify({'status': 'healthy', 'database': 'connected'}), 200
     except Exception as e:
         logger.error(f"Health check failed: {e}")

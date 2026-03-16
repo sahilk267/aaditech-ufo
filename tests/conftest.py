@@ -16,6 +16,7 @@ def app_fixture():
     app.config.from_object(TestingConfig)
     
     with app.app_context():
+        db.drop_all()
         db.create_all()
         yield app
         db.session.remove()

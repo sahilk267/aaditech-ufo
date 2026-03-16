@@ -37,6 +37,10 @@ class Config:
     # API Security
     API_KEY_HEADER = 'X-API-Key'
     MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB max request size
+
+    # Multi-tenant routing
+    TENANT_HEADER = os.getenv('TENANT_HEADER', 'X-Tenant-Slug')
+    DEFAULT_TENANT_SLUG = os.getenv('DEFAULT_TENANT_SLUG', 'default')
     
     # Agent configuration
     AGENT_API_KEY = os.getenv('AGENT_API_KEY', 'default-key-change-this')

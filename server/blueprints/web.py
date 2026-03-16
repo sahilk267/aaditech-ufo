@@ -5,7 +5,7 @@ Web UI routes for dashboard and management
 
 import logging
 import os
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for
+from flask import Blueprint, render_template, request, jsonify, redirect, url_for, g
 from werkzeug.utils import secure_filename
 from ..models import db, SystemData
 from ..extensions import limiter
@@ -26,10 +26,16 @@ def index():
     """
     try:
         # Get recent systems
-        systems = SystemData.query.order_by(SystemData.last_update.desc()).limit(10).all()
+        systems = (
+            SystemData.query
+            .filter_by(organization_id=g.tenant.id)
+            .order_by(SystemData.last_update.desc())
+            .limit(10)
+            .all()
+        )
         
         # Calculate dashboard stats
-        total_systems = SystemData.query.count()
+        total_systems = SystemData.query.filter_by(organization_id=g.tenant.id).count()
         active_systems = sum(1 for s in systems if SystemService.is_active(s.last_update, SystemService.get_current_time()))
         
         return render_template('base.html', 
@@ -52,7 +58,7 @@ def user():
         Rendered user template
     """
     try:
-        systems = SystemData.query.all()
+        systems = SystemData.query.filter_by(organization_id=g.tenant.id).all()
         return render_template('user.html', systems=systems)
     
     except Exception as e:
@@ -70,7 +76,7 @@ def admin():
         Rendered admin template
     """
     try:
-        systems = SystemData.query.all()
+        systems = SystemData.query.filter_by(organization_id=g.tenant.id).all()
         stats = {
             'total_systems': len(systems),
             'active_systems': sum(1 for s in systems if SystemService.is_active(s.last_update, SystemService.get_current_time())),
@@ -97,7 +103,12 @@ def history():
     """
     try:
         # Get all systems with historical data
-        systems = SystemData.query.order_by(SystemData.last_update.desc()).all()
+        systems = (
+            SystemData.query
+            .filter_by(organization_id=g.tenant.id)
+            .order_by(SystemData.last_update.desc())
+            .all()
+        )
         
         return render_template('user_history.html', systems=systems)
     
@@ -133,7 +144,7 @@ def get_systems():
         JSON list of systems
     """
     try:
-        systems = SystemData.query.all()
+        systems = SystemData.query.filter_by(organization_id=g.tenant.id).all()
         systems_data = [{
             'id': s.id,
             'serial_number': s.serial_number,
@@ -169,7 +180,10 @@ def get_system(system_id):
         JSON with system details
     """
     try:
-        system = SystemData.query.get(system_id)
+        system = SystemData.query.filter_by(
+            id=system_id,
+            organization_id=g.tenant.id
+        ).first()
         
         if not system:
             return jsonify({
@@ -225,7 +239,8 @@ def manual_submit():
         
         # Check if system already exists
         existing_system = SystemData.query.filter_by(
-            serial_number=data.get('serial_number')
+            serial_number=data.get('serial_number'),
+            organization_id=g.tenant.id
         ).first()
         
         if existing_system:
@@ -242,6 +257,7 @@ def manual_submit():
             }), 200
         else:
             # Create new record
+            data['organization_id'] = g.tenant.id
             new_system = SystemData(**data)
             db.session.add(new_system)
             db.session.commit()
