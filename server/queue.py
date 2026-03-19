@@ -24,6 +24,7 @@ def init_queue(app):
             'cleanup_revoked_tokens': 'maintenance.cleanup_revoked_tokens',
             'purge_audit_events': 'maintenance.purge_audit_events',
             'dispatch_alert_notifications': 'alerts.dispatch_notifications',
+            'execute_automation_workflow': 'automation.execute_workflow',
         }
         app.extensions['queue_handlers'] = get_background_job_handlers()
         return None
@@ -75,6 +76,11 @@ def enqueue_maintenance_job(app, job_name, **kwargs):
 def enqueue_alert_notification_job(app, **kwargs):
     """Queue alert-notification dispatch workflow and return task metadata."""
     return _enqueue_named_job(app, 'dispatch_alert_notifications', **kwargs)
+
+
+def enqueue_automation_workflow_job(app, **kwargs):
+    """Queue automation workflow execution and return task metadata."""
+    return _enqueue_named_job(app, 'execute_automation_workflow', **kwargs)
 
 
 def _enqueue_named_job(app, job_name, **kwargs):

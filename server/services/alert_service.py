@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, UTC
+from statistics import mean, pstdev
 from typing import Any
 
 from ..extensions import db
@@ -126,6 +127,98 @@ class AlertService:
                     })
 
         return triggered
+
+    @classmethod
+    def evaluate_anomalies_for_tenant(
+        cls,
+        organization_id: int,
+        z_score_threshold: float = 2.5,
+        min_samples: int = 8,
+        window_size: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Detect statistical anomalies on latest system rows for supported metrics."""
+        history_rows = (
+            SystemData.query
+            .filter_by(organization_id=organization_id, deleted=False)
+            .order_by(SystemData.last_update.desc())
+            .limit(window_size)
+            .all()
+        )
+        if len(history_rows) < min_samples:
+            return []
+
+        metric_baselines: dict[str, tuple[float, float]] = {}
+        for metric in cls.ALLOWED_METRICS:
+            values = [float(getattr(row, metric)) for row in history_rows if getattr(row, metric) is not None]
+            if len(values) < min_samples:
+                continue
+            sigma = pstdev(values)
+            if sigma <= 0:
+                continue
+            metric_baselines[metric] = (mean(values), sigma)
+
+        if not metric_baselines:
+            return []
+
+        anomalies = []
+        evaluated_at = datetime.now(UTC).isoformat()
+        for row in history_rows:
+            for metric, (mu, sigma) in metric_baselines.items():
+                value = getattr(row, metric)
+                if value is None:
+                    continue
+                z_score = abs((float(value) - mu) / sigma)
+                if z_score < float(z_score_threshold):
+                    continue
+
+                anomalies.append({
+                    'alert_type': 'anomaly',
+                    'rule_id': None,
+                    'rule_name': f'Anomaly on {metric}',
+                    'severity': 'warning' if z_score < (float(z_score_threshold) + 1.0) else 'critical',
+                    'metric': metric,
+                    'operator': 'z-score>=',
+                    'threshold': float(z_score_threshold),
+                    'actual_value': float(value),
+                    'baseline_mean': mu,
+                    'baseline_stddev': sigma,
+                    'z_score': z_score,
+                    'system_id': row.id,
+                    'hostname': row.hostname,
+                    'serial_number': row.serial_number,
+                    'triggered_at': evaluated_at,
+                })
+
+        return anomalies
+
+    @staticmethod
+    def correlate_alerts(alerts: list[dict[str, Any]], min_group_size: int = 2) -> list[dict[str, Any]]:
+        """Correlate alerts by host/system into grouped incidents."""
+        groups: dict[tuple[Any, Any], list[dict[str, Any]]] = {}
+        for alert in alerts:
+            key = (alert.get('hostname'), alert.get('system_id'))
+            groups.setdefault(key, []).append(alert)
+
+        correlated = []
+        for (hostname, system_id), items in groups.items():
+            metrics = sorted({item.get('metric') for item in items if item.get('metric')})
+            if len(metrics) < min_group_size:
+                continue
+
+            severities = {item.get('severity') for item in items}
+            correlation_severity = 'critical' if 'critical' in severities else 'warning'
+
+            correlated.append({
+                'hostname': hostname,
+                'system_id': system_id,
+                'alert_count': len(items),
+                'metric_count': len(metrics),
+                'metrics': metrics,
+                'correlation_severity': correlation_severity,
+                'sample_alerts': items[:3],
+            })
+
+        return correlated
 
     @classmethod
     def _validate_payload(cls, payload: dict[str, Any], partial: bool) -> dict[str, list[str]]:

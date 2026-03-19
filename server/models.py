@@ -207,6 +207,50 @@ class AlertRule(db.Model):
         }
 
 
+class AutomationWorkflow(db.Model):
+    """Tenant-scoped automation workflow definition."""
+
+    __tablename__ = 'automation_workflows'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    trigger_type = db.Column(db.String(32), nullable=False, default='manual')
+    trigger_conditions = db.Column(db.JSON, nullable=False, default=dict)
+    action_type = db.Column(db.String(32), nullable=False)
+    action_config = db.Column(db.JSON, nullable=False, default=dict)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    last_triggered_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'name', name='uq_automation_workflows_org_name'),
+    )
+
+    def __repr__(self):
+        return (
+            f"<AutomationWorkflow(id={self.id}, organization_id={self.organization_id}, "
+            f"name='{self.name}', trigger_type='{self.trigger_type}', action_type='{self.action_type}')>"
+        )
+
+    def to_dict(self):
+        """Serialize workflow for API responses."""
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'name': self.name,
+            'trigger_type': self.trigger_type,
+            'trigger_conditions': self.trigger_conditions or {},
+            'action_type': self.action_type,
+            'action_config': self.action_config or {},
+            'is_active': self.is_active,
+            'last_triggered_at': self.last_triggered_at.isoformat() if self.last_triggered_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class SystemData(db.Model):
     """Model for storing system monitoring data"""
     

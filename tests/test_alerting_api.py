@@ -133,4 +133,113 @@ def test_evaluate_alert_rules_returns_triggered_alerts(client, app_fixture):
 
     assert payload['status'] == 'success'
     assert payload['triggered_count'] >= 1
+    assert payload['threshold_count'] >= 1
     assert any(alert['metric'] == 'cpu_usage' for alert in payload['alerts'])
+
+
+def test_evaluate_alert_rules_returns_anomaly_alerts(client, app_fixture):
+    with app_fixture.app_context():
+        tenant = Organization.query.filter_by(slug='default').first()
+        assert tenant is not None
+
+        for i in range(10):
+            db.session.add(
+                SystemData(
+                    organization_id=tenant.id,
+                    serial_number=f'ANOM-N-{i}',
+                    hostname=f'anom-normal-{i}',
+                    cpu_usage=10.0,
+                    ram_usage=20.0,
+                    last_update=datetime.now(UTC).replace(tzinfo=None),
+                    status='active',
+                    deleted=False,
+                )
+            )
+
+        db.session.add(
+            SystemData(
+                organization_id=tenant.id,
+                serial_number='ANOM-OUTLIER',
+                hostname='anom-outlier',
+                cpu_usage=99.0,
+                ram_usage=20.0,
+                last_update=datetime.now(UTC).replace(tzinfo=None),
+                status='active',
+                deleted=False,
+            )
+        )
+        db.session.commit()
+
+    evaluate = client.post(
+        '/api/alerts/evaluate',
+        headers=_headers(),
+        json={
+            'include_threshold_alerts': False,
+            'include_anomaly_alerts': True,
+            'anomaly_z_score_threshold': 2.0,
+            'anomaly_min_samples': 5,
+            'anomaly_window_size': 20,
+        },
+    )
+    assert evaluate.status_code == 200
+    payload = evaluate.get_json()
+
+    assert payload['anomaly_count'] >= 1
+    assert any(alert.get('alert_type') == 'anomaly' for alert in payload['alerts'])
+
+
+def test_evaluate_alert_rules_returns_correlated_alert_groups(client, app_fixture):
+    create_cpu = client.post(
+        '/api/alerts/rules',
+        headers=_headers(),
+        json={
+            'name': 'CORR CPU > 80',
+            'metric': 'cpu_usage',
+            'operator': '>',
+            'threshold': 80,
+            'severity': 'warning',
+        },
+    )
+    assert create_cpu.status_code == 201
+
+    create_ram = client.post(
+        '/api/alerts/rules',
+        headers=_headers(),
+        json={
+            'name': 'CORR RAM > 80',
+            'metric': 'ram_usage',
+            'operator': '>',
+            'threshold': 80,
+            'severity': 'warning',
+        },
+    )
+    assert create_ram.status_code == 201
+
+    with app_fixture.app_context():
+        tenant = Organization.query.filter_by(slug='default').first()
+        assert tenant is not None
+
+        db.session.add(
+            SystemData(
+                organization_id=tenant.id,
+                serial_number='CORR-SN-001',
+                hostname='corr-host',
+                cpu_usage=95.0,
+                ram_usage=93.0,
+                last_update=datetime.now(UTC).replace(tzinfo=None),
+                status='active',
+                deleted=False,
+            )
+        )
+        db.session.commit()
+
+    evaluate = client.post(
+        '/api/alerts/evaluate',
+        headers=_headers(),
+        json={'include_anomaly_alerts': False, 'include_correlation': True},
+    )
+    assert evaluate.status_code == 200
+    payload = evaluate.get_json()
+
+    assert payload['correlated_count'] >= 1
+    assert payload['correlated_alerts'][0]['metric_count'] >= 2

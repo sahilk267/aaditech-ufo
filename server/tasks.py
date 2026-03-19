@@ -55,6 +55,8 @@ def dispatch_alert_notifications(
     channels: list[str] | None = None,
     email_retries: int | None = None,
     webhook_retries: int | None = None,
+    deduplicate: bool | None = None,
+    escalation_threshold: int | None = None,
 ):
     """Dispatch alert notifications via email/webhook channels."""
     from .services import AlertService, NotificationService
@@ -72,6 +74,8 @@ def dispatch_alert_notifications(
         'webhook_url': current_app.config.get('ALERT_WEBHOOK_URL', ''),
         'email_retries': int(current_app.config.get('ALERT_NOTIFICATION_EMAIL_RETRIES', 2)),
         'webhook_retries': int(current_app.config.get('ALERT_NOTIFICATION_WEBHOOK_RETRIES', 2)),
+        'dedup_enabled': bool(current_app.config.get('ALERT_DEDUP_ENABLED', True)),
+        'escalation_repeat_threshold': int(current_app.config.get('ALERT_ESCALATION_REPEAT_THRESHOLD', 3)),
     }
 
     return NotificationService.dispatch_notifications(
@@ -80,7 +84,55 @@ def dispatch_alert_notifications(
         channels=channels,
         email_retries=email_retries,
         webhook_retries=webhook_retries,
+        deduplicate=deduplicate,
+        escalation_threshold=escalation_threshold,
     )
+
+
+def execute_automation_workflow(
+    organization_id: int,
+    workflow_id: int,
+    payload: dict[str, Any] | None = None,
+    dry_run: bool | None = None,
+):
+    """Execute automation workflow by id."""
+    from .services import AutomationService
+
+    if dry_run is None:
+        dry_run = bool(current_app.config.get('AUTOMATION_DEFAULT_DRY_RUN', True))
+
+    allowed_services_raw = current_app.config.get('AUTOMATION_ALLOWED_SERVICES', '')
+    allowed_services = [
+        item.strip()
+        for item in str(allowed_services_raw).split(',')
+        if item.strip()
+    ]
+
+    runtime_config = {
+        'allowed_services': allowed_services,
+        'restart_binary': current_app.config.get('AUTOMATION_SERVICE_RESTART_BINARY', 'systemctl'),
+        'command_timeout_seconds': int(current_app.config.get('AUTOMATION_COMMAND_TIMEOUT_SECONDS', 8)),
+    }
+
+    result, error = AutomationService.execute_workflow(
+        organization_id=organization_id,
+        workflow_id=workflow_id,
+        payload=payload,
+        dry_run=bool(dry_run),
+        runtime_config=runtime_config,
+    )
+
+    if error:
+        return {
+            'status': 'failed',
+            'reason': error,
+            'workflow_id': workflow_id,
+        }
+
+    return {
+        'status': 'success',
+        'result': result,
+    }
 
 
 def get_background_job_handlers():
@@ -89,6 +141,7 @@ def get_background_job_handlers():
         'cleanup_revoked_tokens': cleanup_expired_revoked_tokens,
         'purge_audit_events': purge_old_audit_events,
         'dispatch_alert_notifications': dispatch_alert_notifications,
+        'execute_automation_workflow': execute_automation_workflow,
     }
 
 
@@ -113,6 +166,8 @@ def register_background_tasks(app, celery_app):
         channels=None,
         email_retries=None,
         webhook_retries=None,
+        deduplicate=None,
+        escalation_threshold=None,
     ):
         with app.app_context():
             return handlers['dispatch_alert_notifications'](
@@ -121,10 +176,28 @@ def register_background_tasks(app, celery_app):
                 channels=channels,
                 email_retries=email_retries,
                 webhook_retries=webhook_retries,
+                deduplicate=deduplicate,
+                escalation_threshold=escalation_threshold,
+            )
+
+    @celery_app.task(name='automation.execute_workflow')
+    def execute_automation_workflow_task(
+        organization_id,
+        workflow_id,
+        payload=None,
+        dry_run=None,
+    ):
+        with app.app_context():
+            return handlers['execute_automation_workflow'](
+                organization_id=organization_id,
+                workflow_id=workflow_id,
+                payload=payload,
+                dry_run=dry_run,
             )
 
     return {
         'cleanup_revoked_tokens': 'maintenance.cleanup_revoked_tokens',
         'purge_audit_events': 'maintenance.purge_audit_events',
         'dispatch_alert_notifications': 'alerts.dispatch_notifications',
+        'execute_automation_workflow': 'automation.execute_workflow',
     }
