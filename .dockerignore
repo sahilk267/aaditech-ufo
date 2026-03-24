@@ -1,0 +1,15 @@
+.git
+.github
+.venv
+.pytest_cache
+.coverage
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+instance/
+server/__pycache__/
+tests/__pycache__/
+ARCHIVE/
+README_OLD.md

@@ -7,7 +7,7 @@ from statistics import mean, pstdev
 from typing import Any
 
 from ..extensions import db
-from ..models import AlertRule, SystemData
+from ..models import AlertRule, AlertSilence, SystemData
 
 
 class AlertService:
@@ -252,6 +252,258 @@ class AlertService:
             errors.setdefault('severity', []).append('Severity must be one of info, warning, critical.')
 
         return errors
+
+    # ------------------------------------------------------------------
+    # Alert Silence (Suppression) management
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def list_silences(organization_id: int) -> list[AlertSilence]:
+        """Return all active+pending silences for a tenant (not yet expired)."""
+        now = datetime.now(UTC)
+        return (
+            AlertSilence.query
+            .filter_by(organization_id=organization_id)
+            .filter(AlertSilence.ends_at > now.replace(tzinfo=None))
+            .order_by(AlertSilence.starts_at.asc())
+            .all()
+        )
+
+    @classmethod
+    def create_silence(
+        cls,
+        organization_id: int,
+        payload: dict[str, Any],
+    ) -> tuple[AlertSilence | None, dict[str, list[str]]]:
+        """Create an alert silence window. At least one of rule_id or metric required."""
+        errors: dict[str, list[str]] = {}
+
+        rule_id = payload.get('rule_id')
+        metric = payload.get('metric')
+        ends_at_raw = payload.get('ends_at')
+
+        if not rule_id and not metric:
+            errors['rule_id'] = ['At least one of rule_id or metric is required.']
+
+        if metric is not None and metric not in cls.ALLOWED_METRICS:
+            errors.setdefault('metric', []).append('Unsupported metric name.')
+
+        if rule_id is not None:
+            try:
+                rule_id = int(rule_id)
+                if not AlertRule.query.filter_by(id=rule_id, organization_id=organization_id).first():
+                    errors.setdefault('rule_id', []).append('Alert rule not found for this tenant.')
+            except (TypeError, ValueError):
+                errors.setdefault('rule_id', []).append('rule_id must be an integer.')
+
+        if not ends_at_raw:
+            errors['ends_at'] = ['ends_at is required (ISO 8601 datetime).']
+        else:
+            try:
+                ends_at = datetime.fromisoformat(str(ends_at_raw).replace('Z', '+00:00'))
+                if ends_at.tzinfo is not None:
+                    ends_at = ends_at.replace(tzinfo=None)
+                if ends_at <= datetime.utcnow():
+                    errors.setdefault('ends_at', []).append('ends_at must be a future datetime.')
+            except ValueError:
+                errors.setdefault('ends_at', []).append('ends_at must be a valid ISO 8601 datetime.')
+
+        if errors:
+            return None, errors
+
+        reason = str(payload.get('reason', '')).strip()[:255] or None
+        starts_at_raw = payload.get('starts_at')
+        starts_at = datetime.utcnow()
+        if starts_at_raw:
+            try:
+                parsed = datetime.fromisoformat(str(starts_at_raw).replace('Z', '+00:00'))
+                starts_at = parsed.replace(tzinfo=None)
+            except ValueError:
+                pass
+
+        silence = AlertSilence(
+            organization_id=organization_id,
+            rule_id=rule_id,
+            metric=metric,
+            reason=reason,
+            starts_at=starts_at,
+            ends_at=ends_at,
+        )
+        db.session.add(silence)
+        db.session.commit()
+        return silence, {}
+
+    @staticmethod
+    def delete_silence(organization_id: int, silence_id: int) -> bool:
+        """Delete a specific silence. Returns True if deleted, False if not found."""
+        silence = AlertSilence.query.filter_by(id=silence_id, organization_id=organization_id).first()
+        if not silence:
+            return False
+        db.session.delete(silence)
+        db.session.commit()
+        return True
+
+    @staticmethod
+    def filter_silenced_alerts(
+        organization_id: int,
+        alerts: list[dict[str, Any]],
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        """Split alerts into (active, suppressed) based on silence windows.
+
+        Returns (active_alerts, silenced_alerts).
+        """
+        now = datetime.utcnow()
+        silences = (
+            AlertSilence.query
+            .filter_by(organization_id=organization_id)
+            .filter(AlertSilence.starts_at <= now, AlertSilence.ends_at > now)
+            .all()
+        )
+        if not silences:
+            return alerts, []
+
+        silenced_rule_ids = {s.rule_id for s in silences if s.rule_id is not None}
+        silenced_metrics = {s.metric for s in silences if s.metric is not None}
+
+        active: list[dict[str, Any]] = []
+        suppressed: list[dict[str, Any]] = []
+        for alert in alerts:
+            if alert.get('rule_id') in silenced_rule_ids:
+                suppressed.append(alert)
+            elif alert.get('metric') in silenced_metrics:
+                suppressed.append(alert)
+            else:
+                active.append(alert)
+
+        return active, suppressed
+
+    # ------------------------------------------------------------------
+    # Pattern-Based Alerts
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def evaluate_patterns_for_tenant(
+        cls,
+        organization_id: int,
+        min_occurrences: int = 3,
+        window_size: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Detect repeating-threshold pattern alerts.
+
+        A pattern alert fires when a metric from an alert rule has
+        *min_occurrences* or more violations within the last *window_size*
+        data rows, indicating persistent rather than one-off spikes.
+        """
+        rules = AlertRule.query.filter_by(organization_id=organization_id, is_active=True).all()
+        if not rules:
+            return []
+
+        history_rows = (
+            SystemData.query
+            .filter_by(organization_id=organization_id, deleted=False)
+            .order_by(SystemData.last_update.desc())
+            .limit(window_size)
+            .all()
+        )
+        if not history_rows:
+            return []
+
+        detected_at = datetime.now(UTC).isoformat()
+        pattern_alerts: list[dict[str, Any]] = []
+
+        for rule in rules:
+            values = [
+                float(getattr(row, rule.metric))
+                for row in history_rows
+                if getattr(row, rule.metric, None) is not None
+            ]
+            if not values:
+                continue
+
+            violation_count = sum(
+                1 for v in values if cls._compare(v, rule.operator, float(rule.threshold))
+            )
+            if violation_count < min_occurrences:
+                continue
+
+            violation_rate = round(violation_count / len(values), 3)
+            pattern_alerts.append({
+                'alert_type': 'pattern',
+                'rule_id': rule.id,
+                'rule_name': rule.name,
+                'severity': rule.severity,
+                'metric': rule.metric,
+                'operator': rule.operator,
+                'threshold': rule.threshold,
+                'window_size': len(values),
+                'violation_count': violation_count,
+                'violation_rate': violation_rate,
+                'min_occurrences': min_occurrences,
+                'detected_at': detected_at,
+            })
+
+        return pattern_alerts
+
+    # ------------------------------------------------------------------
+    # AI Alert Prioritization (Phase 2 remaining item)
+    # ------------------------------------------------------------------
+
+    # Severity score weights
+    _SEVERITY_WEIGHTS: dict[str, float] = {'critical': 3.0, 'warning': 1.5, 'info': 0.5}
+    # Alert type score boosts
+    _ALERT_TYPE_BOOSTS: dict[str, float] = {'threshold': 0.0, 'anomaly': 0.5, 'pattern': 1.0}
+
+    @classmethod
+    def prioritize_alerts(
+        cls,
+        alerts: list[dict[str, Any]],
+        top_n: int | None = None,
+    ) -> list[dict[str, Any]]:
+        """Score and rank alerts by urgency.
+
+        Scoring formula:
+          priority_score = severity_weight + alert_type_boost + z_score_bonus
+        Returns alerts sorted highest-priority first, each enriched with
+        a ``priority_score`` and ``priority_rank`` field.
+        """
+        if not alerts:
+            return []
+
+        scored: list[dict[str, Any]] = []
+        for alert in alerts:
+            severity = str(alert.get('severity') or 'info').lower()
+            alert_type = str(alert.get('alert_type') or 'threshold').lower()
+            z_score = alert.get('z_score') or 0.0
+            violation_rate = alert.get('violation_rate') or 0.0
+
+            severity_weight = cls._SEVERITY_WEIGHTS.get(severity, 0.5)
+            type_boost = cls._ALERT_TYPE_BOOSTS.get(alert_type, 0.0)
+            # Cap z_score bonus at 2.0 to avoid single anomaly dominating
+            z_bonus = min(float(z_score) * 0.15, 2.0)
+            # Pattern violation rate adds up to 1.0
+            pattern_bonus = min(float(violation_rate), 1.0)
+
+            priority_score = round(severity_weight + type_boost + z_bonus + pattern_bonus, 3)
+
+            scored.append({
+                **alert,
+                'priority_score': priority_score,
+                'priority_rank': 0,  # assigned after sorting
+            })
+
+        scored.sort(key=lambda x: x['priority_score'], reverse=True)
+        for rank, alert in enumerate(scored, start=1):
+            alert['priority_rank'] = rank
+
+        if top_n is not None:
+            try:
+                top_n = int(top_n)
+            except (TypeError, ValueError):
+                top_n = None
+            if top_n and top_n > 0:
+                scored = scored[:top_n]
+
+        return scored
 
     @staticmethod
     def _compare(actual: float, operator: str, threshold: float) -> bool:

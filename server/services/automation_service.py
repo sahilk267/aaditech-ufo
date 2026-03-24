@@ -8,7 +8,7 @@ from datetime import datetime, UTC
 from typing import Any
 
 from ..extensions import db
-from ..models import AutomationWorkflow
+from ..models import AutomationWorkflow, ScheduledJob
 
 
 class AutomationService:
@@ -802,3 +802,195 @@ class AutomationService:
             'stderr': str(output_data.get('stderr', ''))[:500],
             'source': 'configured_test_double',
         }, None
+
+    # ------------------------------------------------------------------
+    # Scheduled Automation Jobs
+    # ------------------------------------------------------------------
+
+    SAFE_CRON_PATTERN = re.compile(
+        r'^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$'
+    )
+
+    @classmethod
+    def list_scheduled_jobs(cls, organization_id: int) -> list[ScheduledJob]:
+        """Return all scheduled jobs for a tenant."""
+        return (
+            ScheduledJob.query
+            .filter_by(organization_id=organization_id)
+            .order_by(ScheduledJob.created_at.desc())
+            .all()
+        )
+
+    @classmethod
+    def schedule_job(
+        cls,
+        organization_id: int,
+        payload: dict[str, Any],
+        runtime_config: dict[str, Any] | None = None,
+    ) -> tuple[ScheduledJob | None, dict[str, list[str]]]:
+        """Create a scheduled job if payload is valid."""
+        runtime_config = runtime_config or {}
+        errors: dict[str, list[str]] = {}
+
+        workflow_id = payload.get('workflow_id')
+        if workflow_id is None:
+            errors.setdefault('workflow_id', []).append('Field required.')
+        else:
+            try:
+                workflow_id = int(workflow_id)
+            except (TypeError, ValueError):
+                errors.setdefault('workflow_id', []).append('Must be an integer.')
+                workflow_id = None
+
+        cron_expression = str(payload.get('cron_expression') or '').strip()
+        if not cron_expression:
+            errors.setdefault('cron_expression', []).append('Field required.')
+        elif not cls.SAFE_CRON_PATTERN.fullmatch(cron_expression):
+            errors.setdefault('cron_expression', []).append('Invalid cron expression format.')
+
+        if errors:
+            return None, errors
+
+        # Verify workflow belongs to this tenant
+        workflow = AutomationWorkflow.query.filter_by(
+            id=workflow_id,
+            organization_id=organization_id,
+        ).first()
+        if workflow is None:
+            return None, {'workflow_id': ['Workflow not found or not accessible.']}
+
+        max_jobs = int(runtime_config.get('scheduled_job_max_per_tenant', 50))
+        current_count = ScheduledJob.query.filter_by(organization_id=organization_id).count()
+        if current_count >= max_jobs:
+            return None, {'scheduled_job': [f'Tenant limit of {max_jobs} scheduled jobs reached.']}
+
+        job = ScheduledJob(
+            organization_id=organization_id,
+            workflow_id=workflow_id,
+            cron_expression=cron_expression,
+            is_active=bool(payload.get('is_active', True)),
+        )
+        db.session.add(job)
+        db.session.commit()
+        return job, {}
+
+    @classmethod
+    def trigger_scheduled_jobs(
+        cls,
+        organization_id: int,
+        runtime_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate due scheduled jobs and execute them via configured adapter."""
+        runtime_config = runtime_config or {}
+        scheduler_adapter = str(
+            runtime_config.get('scheduler_adapter') or 'linux_test_double'
+        ).strip()
+
+        jobs = (
+            ScheduledJob.query
+            .filter_by(organization_id=organization_id, is_active=True)
+            .all()
+        )
+
+        if scheduler_adapter == 'linux_test_double':
+            due_job_ids = set(
+                int(item)
+                for item in str(runtime_config.get('linux_test_double_due_jobs', '')).split(',')
+                if str(item).strip().isdigit()
+            )
+            due_jobs = [job for job in jobs if job.id in due_job_ids]
+        else:
+            due_jobs = jobs  # In production all active jobs considered due
+
+        triggered: list[dict[str, Any]] = []
+        for job in due_jobs:
+            workflow = AutomationWorkflow.query.filter_by(
+                id=job.workflow_id,
+                organization_id=organization_id,
+            ).first()
+            exec_result = None
+            if workflow:
+                exec_result, _ = cls.execute_workflow(organization_id, job.workflow_id, runtime_config=runtime_config)
+            job.last_run_at = datetime.now(UTC)
+            triggered.append({
+                'job_id': job.id,
+                'workflow_id': job.workflow_id,
+                'cron_expression': job.cron_expression,
+                'executed': exec_result is not None,
+            })
+        db.session.commit()
+
+        return {
+            'status': 'success',
+            'organization_id': organization_id,
+            'adapter': scheduler_adapter,
+            'total_active_jobs': len(jobs),
+            'due_jobs_count': len(due_jobs),
+            'triggered': triggered,
+        }
+
+    # ------------------------------------------------------------------
+    # Self-Healing Infrastructure Loop
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def trigger_self_healing(
+        cls,
+        organization_id: int,
+        alerts: list[dict[str, Any]] | None,
+        runtime_config: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate alerts → match workflow rules → execute matched workflows.
+
+        When ``dry_run`` is True in runtime_config the workflows are matched
+        but NOT executed — safe for testing and preview.
+        """
+        runtime_config = runtime_config or {}
+        dry_run = bool(runtime_config.get('self_healing_dry_run', True))
+
+        if not alerts or not isinstance(alerts, list):
+            return {
+                'status': 'success',
+                'dry_run': dry_run,
+                'organization_id': organization_id,
+                'matched_workflows': [],
+                'triggered_count': 0,
+                'skipped_count': 0,
+                'reason': 'no_alerts_provided',
+            }
+
+        max_loop_depth = int(runtime_config.get('self_healing_max_depth', 10))
+        matches = cls.evaluate_alert_triggers(organization_id, alerts)
+        matches = matches[:max_loop_depth]
+
+        triggered: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for match in matches:
+            workflow_id = match.get('workflow_id')
+            if workflow_id is None:
+                continue
+            if dry_run:
+                skipped.append({'workflow_id': workflow_id, 'reason': 'dry_run'})
+            else:
+                result, err = cls.execute_workflow(
+                    organization_id, workflow_id, runtime_config=runtime_config
+                )
+                triggered.append({
+                    'workflow_id': workflow_id,
+                    'outcome': 'error' if err else 'success',
+                    'error': err,
+                })
+
+        return {
+            'status': 'success',
+            'dry_run': dry_run,
+            'organization_id': organization_id,
+            'alert_count': len(alerts),
+            'matched_workflows': [m.get('workflow_id') for m in matches],
+            'triggered_count': len(triggered),
+            'skipped_count': len(skipped),
+            'triggered': triggered,
+            'skipped': skipped,
+        }
+

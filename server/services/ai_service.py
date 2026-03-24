@@ -775,3 +775,243 @@ class AIService:
             if ord(char) < 32:
                 return True
         return False
+
+    # ------------------------------------------------------------------
+    # AI Anomaly Analysis (Phase 2 Week 16 full AI anomaly detection)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def analyze_anomalies(
+        cls,
+        anomalies: list[dict[str, Any]],
+        runtime_config: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Use Ollama to interpret and explain statistical anomalies.
+
+        Takes a list of z-score anomaly dicts (from AlertService.evaluate_anomalies_for_tenant)
+        and returns AI-powered cause interpretation, severity rationale, and recommended action.
+        """
+        runtime_config = runtime_config or {}
+
+        max_anomalies = runtime_config.get('ai_anomaly_max_items', 10)
+        try:
+            max_anomalies = int(max_anomalies)
+        except (TypeError, ValueError):
+            max_anomalies = 10
+        max_anomalies = max(1, min(max_anomalies, 30))
+
+        if not anomalies or not isinstance(anomalies, list):
+            return {'status': 'validation_failed', 'reason': 'anomalies_missing_or_invalid'}, 'anomalies_missing_or_invalid'
+
+        # Sanitize and cap input anomaly list
+        safe_anomalies: list[dict[str, Any]] = []
+        for item in anomalies[:max_anomalies]:
+            if not isinstance(item, dict):
+                continue
+            safe_anomalies.append({
+                'metric': str(item.get('metric') or '').strip()[:64],
+                'actual_value': item.get('actual_value'),
+                'baseline_mean': item.get('baseline_mean'),
+                'z_score': item.get('z_score'),
+                'severity': str(item.get('severity') or '').strip()[:20],
+                'hostname': str(item.get('hostname') or '').strip()[:128],
+            })
+
+        if not safe_anomalies:
+            return {'status': 'validation_failed', 'reason': 'no_valid_anomalies'}, 'no_valid_anomalies'
+
+        prompt_text = cls._build_anomaly_analysis_prompt(safe_anomalies)
+        inference_result, error = cls.run_ollama_inference(prompt_text, runtime_config=runtime_config)
+        if error:
+            return inference_result, error
+
+        inference = inference_result.get('inference') or {}
+        response_text = str(inference.get('response_text') or '').strip()
+        analysis = cls._parse_anomaly_analysis_response(response_text)
+
+        return {
+            'status': 'success',
+            'adapter': inference_result.get('adapter'),
+            'model': inference_result.get('model'),
+            'anomaly_count': len(safe_anomalies),
+            'analysis': analysis,
+            'inference': inference,
+        }, None
+
+    @staticmethod
+    def _build_anomaly_analysis_prompt(anomalies: list[dict[str, Any]]) -> str:
+        """Build deterministic Ollama prompt for anomaly analysis."""
+        lines = [
+            'You are a system reliability analyst.',
+            'Review the following statistical anomalies and provide a concise AI interpretation.',
+            'Return format:',
+            'InterpretedCause: <brief probable cause for the anomaly cluster>',
+            'SeverityRationale: <why the combined anomalies are urgent or not>',
+            'RecommendedAction: <the single most important immediate action>',
+            'Confidence: <high|medium|low>',
+            '',
+            'Anomalies detected:',
+        ]
+        for idx, a in enumerate(anomalies, start=1):
+            lines.append(
+                f'{idx}. metric:{a["metric"]} actual:{a["actual_value"]} '
+                f'baseline_mean:{a["baseline_mean"]} z_score:{a["z_score"]} '
+                f'severity:{a["severity"]} host:{a["hostname"]}'
+            )
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _parse_anomaly_analysis_response(response_text: str) -> dict[str, Any]:
+        """Parse Ollama anomaly analysis response into structured fields."""
+        interpreted_cause = ''
+        severity_rationale = ''
+        recommended_action = ''
+        confidence = 'low'
+
+        for line in response_text.splitlines():
+            stripped = line.strip()
+            lower = stripped.lower()
+            if lower.startswith('interpretedcause:'):
+                interpreted_cause = stripped[len('InterpretedCause:'):].strip()
+            elif lower.startswith('severityrationale:'):
+                severity_rationale = stripped[len('SeverityRationale:'):].strip()
+            elif lower.startswith('recommendedaction:'):
+                recommended_action = stripped[len('RecommendedAction:'):].strip()
+            elif lower.startswith('confidence:'):
+                raw = stripped[len('Confidence:'):].strip().lower()
+                if raw in ('high', 'medium', 'low'):
+                    confidence = raw
+
+        return {
+            'interpreted_cause': interpreted_cause,
+            'severity_rationale': severity_rationale,
+            'recommended_action': recommended_action,
+            'confidence': confidence,
+        }
+
+    # ------------------------------------------------------------------
+    # AI Incident Explanation (Phase 2 Week 16 remaining item)
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def explain_incident(
+        cls,
+        incident_title: str,
+        affected_systems: list[str] | None = None,
+        metrics_snapshot: dict[str, Any] | None = None,
+        runtime_config: dict[str, Any] | None = None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Generate a human-readable natural language explanation of an incident via Ollama.
+
+        Returns a plain-language summary of what happened, why it likely happened,
+        its business impact, and recommended next steps.
+        """
+        runtime_config = runtime_config or {}
+
+        incident_title = str(incident_title or '').strip()
+        if not incident_title:
+            return {'status': 'validation_failed', 'reason': 'incident_title_missing'}, 'incident_title_missing'
+        if cls._contains_unsafe_control_characters(incident_title):
+            return {'status': 'policy_blocked', 'reason': 'incident_title_invalid'}, 'incident_title_invalid'
+
+        max_title_chars = 512
+        if len(incident_title) > max_title_chars:
+            return {
+                'status': 'policy_blocked',
+                'reason': 'incident_title_too_long',
+                'max_title_chars': max_title_chars,
+            }, 'incident_title_too_long'
+
+        if affected_systems is None:
+            affected_systems = []
+        if not isinstance(affected_systems, list):
+            return {'status': 'validation_failed', 'reason': 'affected_systems_invalid'}, 'affected_systems_invalid'
+        safe_systems = [str(s or '').strip()[:128] for s in affected_systems[:20] if str(s or '').strip()]
+
+        if metrics_snapshot is None:
+            metrics_snapshot = {}
+        if not isinstance(metrics_snapshot, dict):
+            metrics_snapshot = {}
+        # Keep only numeric/string leaf values; drop complex nested structures
+        safe_metrics: dict[str, Any] = {
+            str(k)[:64]: v for k, v in list(metrics_snapshot.items())[:20]
+            if isinstance(v, (int, float, str, bool))
+        }
+
+        prompt_text = cls._build_incident_explanation_prompt(incident_title, safe_systems, safe_metrics)
+        inference_result, error = cls.run_ollama_inference(prompt_text, runtime_config=runtime_config)
+        if error:
+            return inference_result, error
+
+        inference = inference_result.get('inference') or {}
+        response_text = str(inference.get('response_text') or '').strip()
+        explanation = cls._parse_incident_explanation_response(response_text)
+
+        return {
+            'status': 'success',
+            'adapter': inference_result.get('adapter'),
+            'model': inference_result.get('model'),
+            'incident_title': incident_title,
+            'affected_system_count': len(safe_systems),
+            'explanation': explanation,
+            'inference': inference,
+        }, None
+
+    @staticmethod
+    def _build_incident_explanation_prompt(
+        incident_title: str,
+        affected_systems: list[str],
+        metrics_snapshot: dict[str, Any],
+    ) -> str:
+        """Build deterministic Ollama prompt for incident explanation."""
+        lines = [
+            'You are a senior site reliability engineer.',
+            'Write a clear, non-technical explanation of the following incident for stakeholders.',
+            'Return format:',
+            'Summary: <one sentence plain-language description>',
+            'LikelyCause: <probable technical cause in plain English>',
+            'BusinessImpact: <what users or services are affected>',
+            'NextSteps: <top two recommended actions>',
+            'Confidence: <high|medium|low>',
+            '',
+            f'Incident: {incident_title}',
+        ]
+        if affected_systems:
+            lines.append(f'Affected systems: {", ".join(affected_systems)}')
+        if metrics_snapshot:
+            for key, value in metrics_snapshot.items():
+                lines.append(f'  {key}: {value}')
+        return '\n'.join(lines)
+
+    @staticmethod
+    def _parse_incident_explanation_response(response_text: str) -> dict[str, Any]:
+        """Parse Ollama incident explanation into structured fields."""
+        summary = ''
+        likely_cause = ''
+        business_impact = ''
+        next_steps = ''
+        confidence = 'low'
+
+        for line in response_text.splitlines():
+            stripped = line.strip()
+            lower = stripped.lower()
+            if lower.startswith('summary:'):
+                summary = stripped[len('Summary:'):].strip()
+            elif lower.startswith('likelycause:'):
+                likely_cause = stripped[len('LikelyCause:'):].strip()
+            elif lower.startswith('businessimpact:'):
+                business_impact = stripped[len('BusinessImpact:'):].strip()
+            elif lower.startswith('nextsteps:'):
+                next_steps = stripped[len('NextSteps:'):].strip()
+            elif lower.startswith('confidence:'):
+                raw = stripped[len('Confidence:'):].strip().lower()
+                if raw in ('high', 'medium', 'low'):
+                    confidence = raw
+
+        return {
+            'summary': summary,
+            'likely_cause': likely_cause,
+            'business_impact': business_impact,
+            'next_steps': next_steps,
+            'confidence': confidence,
+        }

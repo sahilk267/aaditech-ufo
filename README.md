@@ -462,10 +462,52 @@ Current local gateway scaffold:
 Quick start:
 
 ```bash
-docker compose -f docker-compose.gateway.yml up
+docker compose -f docker-compose.gateway.yml build
+docker compose -f docker-compose.gateway.yml up -d
 ```
 
 Then access the platform through `http://localhost:8080`.
+
+Week 17-18 execution checklist:
+
+```bash
+# 1) Build image and start stack
+docker compose -f docker-compose.gateway.yml build
+docker compose -f docker-compose.gateway.yml up -d
+
+# 2) Verify container health
+docker compose -f docker-compose.gateway.yml ps
+
+# 3) Run smoke tests
+./scripts/docker_smoke_test.sh
+
+# 4) Stop stack when done
+docker compose -f docker-compose.gateway.yml down
+```
+
+Image versioning and registry publish:
+
+```bash
+# 1) Copy and edit image naming defaults
+cp .env.docker.example .env.docker
+
+# 2) Resolve deterministic image tag (env tag > git tag > branch-sha)
+./scripts/docker_image_version.sh
+
+# 3) Build image locally with computed tag
+./scripts/docker_build_publish.sh
+
+# 4) Publish image to registry (requires registry credentials)
+PUSH_IMAGE=true \
+DOCKER_USERNAME=<registry-user> \
+DOCKER_PASSWORD=<registry-token> \
+./scripts/docker_build_publish.sh
+```
+
+CI publish automation:
+
+- `.github/workflows/docker-publish.yml` publishes images to GHCR on `main`, `v*` tags, or manual workflow dispatch.
+- Tags pushed by workflow include computed version tag and commit SHA, plus `latest` for release tags/manual push.
 
 Example platform services:
 
@@ -552,6 +594,34 @@ Register the first organization.
 
 Deploy monitoring agents.
 
+## Quick Setup (Local Development)
+
+1. Clone the repository.
+2. Create a virtual environment and install dependencies.
+3. Copy `.env.example` to `.env` and set required secrets.
+4. Run database migrations.
+5. Start the Flask application.
+6. Run tests before shipping changes.
+
+Example:
+
+```bash
+git clone <repo-url>
+cd aaditech-ufo
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+flask db upgrade
+python server/app.py
+```
+
+Run tests:
+
+```bash
+python -m pytest -q
+```
+
 ---
 
 # Organization Onboarding
@@ -579,6 +649,66 @@ dashboard queries
 configuration management
 
 These APIs enable integration with external systems and automation tools.
+
+## API Authentication and Authorization
+
+The platform supports both API key and JWT-based access patterns.
+
+- Agent ingestion endpoints use `X-API-Key` validation.
+- User-facing secured endpoints can require JWTs and permission checks.
+- Sensitive routes are protected using RBAC decorators and produce audit events.
+
+Common headers:
+
+```http
+X-API-Key: <agent_or_service_key>
+Authorization: Bearer <jwt_access_token>
+X-Tenant-Slug: <tenant_slug>
+```
+
+Security flow summary:
+
+1. Register or login user to obtain JWT tokens.
+2. Include `Authorization: Bearer ...` for protected endpoints.
+3. Include tenant context when endpoint is tenant-scoped.
+4. Ensure calling identity has required permission code.
+
+Primary auth/RBAC modules:
+
+- `server/auth.py`
+- `server/models.py` (User, Role, Permission)
+- `server/blueprints/api.py` (route protection)
+
+## Database Schema Overview
+
+Core schema groups:
+
+- Multi-tenant: `Organization`, tenant isolation context.
+- Identity and access: `User`, `Role`, `Permission`, `RevokedToken`.
+- Observability: `SystemData`, alerting entities, audit events.
+- Automation: `AutomationWorkflow`, `ScheduledJob`.
+
+Migrations are managed in `migrations/versions/`.
+
+Recommended migration workflow:
+
+```bash
+flask db migrate -m "describe change"
+flask db upgrade
+```
+
+## Environment Configuration
+
+Environment variables are documented in `.env.example`.
+
+High-priority variables to set before non-local deployment:
+
+- `SECRET_KEY`
+- `AGENT_API_KEY`
+- `DATABASE_URL`
+- `JWT_SECRET_KEY`
+- `FLASK_ENV`
+- `FLASK_DEBUG=False`
 
 ---
 
@@ -735,15 +865,7 @@ custom integration frameworks
 
 # Contributing
 
-Contributions are welcome.
-
-Developers may extend the platform by:
-
-creating monitoring plugins
-improving agents
-enhancing automation features
-optimizing AI analytics
-improving dashboard capabilities
+See `CONTRIBUTING.md` for development workflow, coding standards, and test requirements.
 
 ---
 

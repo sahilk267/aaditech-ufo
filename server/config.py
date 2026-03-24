@@ -152,6 +152,19 @@ class Config:
     AI_TROUBLESHOOT_MAX_STEPS = int(os.getenv('AI_TROUBLESHOOT_MAX_STEPS', '5'))
     AI_TROUBLESHOOT_MAX_QUESTION_CHARS = int(os.getenv('AI_TROUBLESHOOT_MAX_QUESTION_CHARS', '1200'))
     AI_LEARNING_MAX_TAGS = int(os.getenv('AI_LEARNING_MAX_TAGS', '8'))
+    AI_ANOMALY_ANALYSIS_MAX_ITEMS = int(os.getenv('AI_ANOMALY_ANALYSIS_MAX_ITEMS', '10'))
+    ALERT_SILENCE_MAX_DURATION_HOURS = int(os.getenv('ALERT_SILENCE_MAX_DURATION_HOURS', '72'))
+    ALERT_PATTERN_MIN_OCCURRENCES = int(os.getenv('ALERT_PATTERN_MIN_OCCURRENCES', '3'))
+    ALERT_PATTERN_WINDOW_SIZE = int(os.getenv('ALERT_PATTERN_WINDOW_SIZE', '10'))
+    # Phase 2 Week 15-16 — remaining features
+    SCHEDULED_JOB_MAX_PER_TENANT = int(os.getenv('SCHEDULED_JOB_MAX_PER_TENANT', '50'))
+    SELF_HEALING_DRY_RUN = os.getenv('SELF_HEALING_DRY_RUN', 'true').lower() != 'false'
+    SELF_HEALING_MAX_DEPTH = int(os.getenv('SELF_HEALING_MAX_DEPTH', '10'))
+    AUTOMATION_EXECUTOR_ADAPTER = os.getenv('AUTOMATION_EXECUTOR_ADAPTER', 'linux_test_double')
+    REMOTE_EXEC_ADAPTER = os.getenv('REMOTE_EXEC_ADAPTER', 'linux_test_double')
+    REMOTE_EXEC_ALLOWED_HOSTS = os.getenv('REMOTE_EXEC_ALLOWED_HOSTS', '')
+    REMOTE_EXEC_ALLOWED_COMMANDS = os.getenv('REMOTE_EXEC_ALLOWED_COMMANDS', '')
+    REMOTE_EXEC_TIMEOUT_SECONDS = int(os.getenv('REMOTE_EXEC_TIMEOUT_SECONDS', '10'))
     CONFIDENCE_ADAPTER = os.getenv('CONFIDENCE_ADAPTER', 'linux_test_double')
     CONFIDENCE_ALLOWED_HOSTS = os.getenv('CONFIDENCE_ALLOWED_HOSTS', '')
     CONFIDENCE_ALLOWED_MODELS = os.getenv('CONFIDENCE_ALLOWED_MODELS', 'llama3.2')
@@ -195,6 +208,8 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = False
     
     # Use simpler rate limiting for tests
+    # Disable rate limiting entirely during tests to prevent limit exhaustion
+    RATELIMIT_ENABLED = False
     RATELIMIT_STORAGE_URL = 'memory://'
     
     # Use simple password hashing for tests

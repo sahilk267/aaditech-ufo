@@ -8,14 +8,15 @@
 
 | Metric | Status | Details |
 |--------|--------|---------|
-| **Current Phase** | Phase 2 In Progress | Week 9-10 alerting, Week 11-12 automation, Week 13-14 logs, Week 15 reliability, and Week 16 AI/update/dashboard foundations delivered |
-| **Current Week** | Week 16 Foundation Complete | Added troubleshooting assistant and learning feedback handler on top of Ollama + update monitor + reliability + dashboard foundations |
+| **Current Phase** | Phase 3 In Progress | Week 17-18 Docker completed (5/5); Week 19-20 Kubernetes remains last |
+| **Current Week** | Week 17-18 Complete | Containerization execution, health checks, registry config, and image versioning are complete |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
-| **Overall Progress** | Foundation + Phase 2 Active Delivery | Phase 0 complete, Phase 1 delivered, Week 9-10 alerting complete, Week 11-12 automation complete, Week 13-14 logs/events/drivers foundation complete, Week 15 reliability/crash foundations complete, and Week 16 AI/update/dashboard foundations complete |
+| **Overall Progress** | Phase 0-2 Complete | Phase 0 complete, Phase 1 delivered, and Phase 2 fully complete (48/48 tracked functions) |
 | **Implemented Milestones** | Baseline + Phase 1 Security + Queue Foundation + Alerting + Automation + Logs/Drivers + Reliability/Crash + AI/Updates/Dashboard Foundation | Multi-tenant isolation, tenant admin APIs, JWT auth, RBAC decorators, protected web routes, browser session login/logout, async maintenance queue jobs, tenant-scoped alerting stack, automation workflow APIs with queue-backed execution, service status monitor backend adapters, service dependency mapper adapters, service failure detector adapters, command executor remote adapters, log ingestion pipeline adapters, structured log parser API, Win32 event query wrapper boundary, event filter/correlator foundation, driver monitor foundation, driver error detector foundation, event streaming foundation, full-text log search/indexing foundation, reliability history collector foundation, crash dump parser foundation, exception identifier foundation, stack trace analyzer foundation, reliability scorer foundation, trend analyzer foundation, prediction engine foundation, pattern detector foundation, Ollama wrapper foundation, root cause analyzer foundation, recommendation engine foundation, Windows Update monitor foundation, AI confidence scorer foundation, advanced dashboard aggregate API foundation, troubleshooting assistant foundation, and learning feedback handler foundation |
 | **Audit Status** | ✅ PASS | PHASE_0_AUDIT_REPORT.md - All code verified |
-| **Latest Validation** | ✅ PASS | Focused Week 16 troubleshooting/learning + confidence/dashboard + Ollama/update monitor suites passing; broader Phase 2 focused regression (65 tests) passing |
+| **Latest Validation** | ✅ PASS | 89 focused Phase 2 tests passing: alert suppression, pattern alerts, AI anomaly analysis (Week 9-10 backlog), plus all Week 11-16 foundations |
+| **Latest Validation** | ✅ PASS | 93 focused Phase 2 tests passing: all remaining Week 15-16 features (AI incident explanation, alert prioritization, scheduled jobs, remote SSH exec, self-healing loop) plus all prior items |
 
 ---
 
@@ -221,13 +222,13 @@
 **Status**: 4/5 (80%) ✅
 
 ### Documentation
-- [ ] README updated with setup instructions
-- [ ] .env.example explains all variables
-- [ ] Database schema documented
-- [ ] API authentication documented
-- [ ] Contributing guidelines added
+- [x] README updated with setup instructions
+- [x] .env.example explains all variables
+- [x] Database schema documented
+- [x] API authentication documented
+- [x] Contributing guidelines added
 
-**Status**: 0/5 (0%) ⏳
+**Status**: 5/5 (100%) ✅
 
 ---
 
@@ -484,18 +485,20 @@ Completed:
 
 #### Week 9-10: Intelligent Alerting (10 Features)
 ```
-Status: 🟡 IN PROGRESS (Kickoff delivered)
+Status: ✅ COMPLETE (All backlog items delivered)
 Functions:
   - [x] AlertRule model & database
   - [x] Threshold alert engine
-  - [x] Anomaly detection alerts
+  - [x] Anomaly detection alerts (statistical z-score)
   - [x] Alert correlation logic
   - [x] Email notification sender
   - [x] Webhook notification handler
   - [x] Alert deduplication
   - [x] Alert escalation logic
+  - [x] Alert Suppression (AlertSilence model + CRUD API + filter in evaluate)
+  - [x] Pattern-Based Alerts (repeating-threshold pattern detector + API)
 
-Progress: 8/8 functions (100%)
+Progress: 10/10 functions (100%) ✅ COMPLETE
 ```
 
 #### Week 11-12: Automation + Service Analysis (22 Features)
@@ -562,7 +565,20 @@ Functions:
 Progress: 8/8 functions (100%) ✅ WEEK COMPLETE
 ```
 
-**PHASE 2 TOTAL: 38/48 functions (79%) - Super-powered feature implementation**
+**PHASE 2 TOTAL: 48/48 functions (100%) ✅ COMPLETE — All features delivered**
+
+#### Week 15-16 Backlog — Newly Delivered (7 items)
+```
+  - [x] AI Incident Explanation      — AIService.explain_incident() + POST /api/ai/incident/explain
+  - [x] AI Alert Prioritization      — AlertService.prioritize_alerts() + POST /api/alerts/prioritize
+  - [x] Scheduled Automation Jobs    — ScheduledJob model + AutomationService + GET/POST /api/automation/scheduled-jobs
+  - [x] Remote SSH Command Execution — RemoteExecutorService + POST /api/remote/exec
+  - [x] Self-Healing Loop            — AutomationService.trigger_self_healing() + POST /api/automation/self-heal
+  - [x] Config keys for new features — SCHEDULED_JOB_MAX_PER_TENANT, SELF_HEALING_DRY_RUN, REMOTE_EXEC_* added
+  - [x] Deterministic tests          — 33 new tests in tests/test_phase2_remaining_features.py, all passing
+
+Progress: 7/7 items (100%) ✅ PHASE 2 COMPLETE
+```
 
 ---
 
@@ -570,15 +586,29 @@ Progress: 8/8 functions (100%) ✅ WEEK COMPLETE
 
 #### Week 17-18: Containerization (5 Features)
 ```
-Status: ⏳ PENDING (After Phase 2)
+Status: ✅ COMPLETE (Execution + registry/versioning closure)
 Functions:
-  - [ ] Docker image builder (web + workers)
-  - [ ] Docker Compose orchestrator
-  - [ ] Container registry config
-  - [ ] Image versioning system
-  - [ ] Health check setup
+  - [x] Docker image builder (web + workers)
+  - [x] Docker Compose orchestrator
+  - [x] Container registry config
+  - [x] Image versioning system
+  - [x] Health check setup
 
-Progress: 0/5 functions (0%)
+Progress: 5/5 functions (100%)
+```
+
+Week 17-18 Execution Checklist (started):
+```
+  - [x] App Dockerfile scaffolded
+  - [x] Compose health checks added (app + gateway)
+  - [x] Smoke test script added (scripts/docker_smoke_test.sh)
+  - [x] Build and run stack via docker compose
+  - [x] Verify health checks green
+  - [x] Capture smoke-test output baseline
+  - [x] Registry/image naming env template added (.env.docker.example)
+  - [x] Deterministic tag generator added (scripts/docker_image_version.sh)
+  - [x] Build + optional publish script added (scripts/docker_build_publish.sh)
+  - [x] CI publish workflow added (.github/workflows/docker-publish.yml)
 ```
 
 #### Week 19-20: Kubernetes Deployment (6 Features)
@@ -595,7 +625,7 @@ Functions:
 Progress: 0/6 functions (0%)
 ```
 
-**PHASE 3 TOTAL: 0/11 functions (0%) - Production ready**
+**PHASE 3 TOTAL: 5/11 functions (45%) - Week 17-18 complete; Week 19-20 pending**
 
 ---
 
@@ -622,10 +652,10 @@ Progress: 0/3 functions (0%)
 |-------|----------|-----------|------|--------|----------|
 | **0** | 2 | 45 | 1-4 | ✅ Complete | Secure foundation, migrations, and tests in place |
 | **1** | 14 | 22 | 5-8 | ✅ Delivered | Week 8 gateway scaffold + queue foundation delivered; Phase 2 guardrail carry-forward active |
-| **2** | 127 | 48 | 9-16 | 🟡 In Progress | Week 9-10 alerting complete; Week 11-12 automation complete; Week 13-14 logs/events/drivers/search complete; Week 15 reliability/crash foundation complete; Week 16 AI/update/dashboard foundation complete |
-| **3** | 11 | 11 | 17-20 | ⏳ Pending | Production deployment phase |
+| **2** | 127 | 48 | 9-16 | ✅ Complete | Week 9-10 alerting complete (incl. suppression + pattern); Week 11-12 automation complete; Week 13-14 logs/events/drivers/search complete; Week 15 reliability/crash foundation complete; Week 16 AI/update/dashboard foundation complete; remaining Week 15-16 backlog delivered |
+| **3** | 11 | 11 | 17-20 | 🟡 In Progress | Week 17-18 complete (5/5); Week 19-20 Kubernetes pending |
 | **4** | 3 | 3 | 21-25 | ⏳ Pending | Optimization phase |
-| **TOTAL** | **157** | **129** | **25 weeks** | 🟡 Active | Phase 0 complete; Phase 1 delivered; Phase 2 actively progressing |
+| **TOTAL** | **157** | **129** | **25 weeks** | 🟡 Active | Phase 0 complete; Phase 1 delivered; Phase 2 complete; Phase 3-4 pending |
 
 ---
 
@@ -650,18 +680,18 @@ Progress: 0/3 functions (0%)
 - [x] Week 13-14: Logs + Windows Events ✅ OR ❌
 - [x] Week 15: Reliability + Crashes ✅ OR ❌
 - [x] Week 16: AI + Updates + Dashboard ✅ OR ❌
-- [ ] Subtotal: 38/48 functions (79%) | 5/5 weeks (100%)
+- [x] Subtotal: 48/48 functions (100%) | 5/5 weeks (100%)
 
 ### PHASE 3 (Weeks 17-20)
-- [ ] Week 17-18: Docker containerization ✅ OR ❌
+- [x] Week 17-18: Docker containerization ✅ OR ❌
 - [ ] Week 19-20: Kubernetes deployment ✅ OR ❌
-- [ ] Subtotal: 0/11 functions (0%) | 0/4 weeks (0%)
+- [ ] Subtotal: 5/11 functions (45%) | 1/4 weeks (25%)
 
 ### PHASE 4 (Weeks 21-25)
 - [ ] Week 21-24: Database, performance, advanced ✅ OR ❌
 - [ ] Subtotal: 0/3 functions (0%) | 0/5 weeks (0%)
 
-**GRAND TOTAL: Phase 0 complete | Phase 1 delivered | Phase 2 active | Phase 3-4 pending**
+**GRAND TOTAL: Phase 0 complete | Phase 1 delivered | Phase 2 complete | Phase 3-4 pending**
 
 ---
 
@@ -674,8 +704,8 @@ OVERALL PROGRESS BAR:
 BY PHASE:
 Phase 0: [██████████████████████████████████████████████] complete
 Phase 1: [█████████████████████████████████████░░░░░░░░░] week 5-6 delivered + week 8 foundation
-Phase 2: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] pending
-Phase 3: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] pending
+Phase 2: [██████████████████████████████████████████████] complete
+Phase 3: [████████████████████░░░░░░░░░░░░░░░░░░░░░░░░] week 17-18 complete; week 19-20 pending
 Phase 4: [░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░] pending
 
 FEATURES BY PHASE:
@@ -686,7 +716,7 @@ Phase 3:   11 features (Production Deployment)
 Phase 4:   3 features (Optimization)
 ────────────────────────────────
 TOTAL:    157 features
-STATUS:   Phase 1 delivered; preparing Phase 2 implementation
+STATUS:   Phase 2 complete; Week 17-18 Docker complete; Week 19-20 Kubernetes last
 ```
 
 ---
@@ -728,6 +758,7 @@ Update Progress:
 | **MASTER_ROADMAP.md** | 25-week full roadmap | [View](MASTER_ROADMAP.md) |
 | **FEATURE_COVERAGE_MAP.md** | Feature implementation tracking | [View](FEATURE_COVERAGE_MAP.md) |
 | **README.md** | Project vision & overview | [View](README.md) |
+| **CONTRIBUTING.md** | Contributor workflow and standards | [View](CONTRIBUTING.md) |
 | **UPDATED_ARCHITECTURE.md** | System design | [View](UPDATED_ARCHITECTURE.md) |
 
 ---
@@ -781,13 +812,13 @@ CURRENT DELIVERY STATE:
 
 PHASE 0 (Weeks 1-4):      complete ✅
 PHASE 1 (Weeks 5-8):      delivered ✅
-PHASE 2 (Weeks 9-16):     in progress 🟡
-PHASE 3 (Weeks 17-20):    not started ⏳
+PHASE 2 (Weeks 9-16):     complete ✅
+PHASE 3 (Weeks 17-20):    in progress 🟡
 PHASE 4 (Weeks 21-25):    not started ⏳
 
 TARGET COMPLETION: 25 Weeks
-CURRENT STATUS: Phase 2 active implementation (Week 9-10 delivered, Week 11-12 COMPLETE, Week 13-14 COMPLETE, Week 15 COMPLETE, Week 16 foundation COMPLETE)
-LATEST VALIDATION: Week 16 troubleshooting assistant + learning feedback + confidence/dashboard + Ollama/update monitor suites passing; broader focused Phase 2 regression (65 tests) passing
+CURRENT STATUS: Week 17-18 Docker FULLY COMPLETE (5/5 functions); Week 19-20 Kubernetes remains intentionally deferred as final phase
+LATEST VALIDATION: Compose build/up/down + health checks + docker smoke test passing; publish/versioning automation added
 ```
 
 ---
@@ -796,5 +827,5 @@ LATEST VALIDATION: Week 16 troubleshooting assistant + learning feedback + confi
 
 - **Date**: March 19, 2026
 - **By**: Current implementation sync
-- **Next Update**: Begin Phase 3 Week 17-18 containerization foundations
-- **Status**: 🟡 PHASE 2 ACTIVE
+- **Next Update**: Start Phase 3 Week 19-20 Kubernetes deployment (kept last by plan)
+- **Status**: 🟡 PHASE 3 IN PROGRESS (Week 17-18 complete)

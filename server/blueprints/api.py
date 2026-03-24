@@ -29,7 +29,7 @@ from ..queue import (
     enqueue_alert_notification_job,
     enqueue_automation_workflow_job,
 )
-from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService
+from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService
 from marshmallow import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -496,12 +496,14 @@ def update_alert_rule(rule_id):
 @limiter.limit("120 per hour")
 @require_api_key_or_permission('dashboard.view')
 def evaluate_alert_rules():
-    """Evaluate threshold, anomaly, and correlated alerts for current tenant."""
+    """Evaluate threshold, anomaly, pattern, and correlated alerts for current tenant."""
     payload = request.get_json(silent=True) or {}
 
     include_threshold_alerts = bool(payload.get('include_threshold_alerts', True))
     include_anomaly_alerts = bool(payload.get('include_anomaly_alerts', True))
+    include_pattern_alerts = bool(payload.get('include_pattern_alerts', True))
     include_correlation = bool(payload.get('include_correlation', True))
+    apply_silences = bool(payload.get('apply_silences', True))
 
     threshold_alerts = AlertService.evaluate_rules_for_tenant(g.tenant.id) if include_threshold_alerts else []
     anomaly_alerts = (
@@ -514,11 +516,24 @@ def evaluate_alert_rules():
         if include_anomaly_alerts
         else []
     )
+    pattern_alerts = (
+        AlertService.evaluate_patterns_for_tenant(
+            g.tenant.id,
+            min_occurrences=int(payload.get('pattern_min_occurrences', 3)),
+            window_size=int(payload.get('pattern_window_size', 10)),
+        )
+        if include_pattern_alerts
+        else []
+    )
 
-    alerts = threshold_alerts + anomaly_alerts
+    all_alerts = threshold_alerts + anomaly_alerts + pattern_alerts
+    silenced_alerts: list = []
+    if apply_silences and all_alerts:
+        all_alerts, silenced_alerts = AlertService.filter_silenced_alerts(g.tenant.id, all_alerts)
+
     correlated_alerts = (
         AlertService.correlate_alerts(
-            alerts,
+            all_alerts,
             min_group_size=int(payload.get('correlation_min_group_size', 2)),
         )
         if include_correlation
@@ -530,18 +545,62 @@ def evaluate_alert_rules():
         outcome='success',
         threshold_count=len(threshold_alerts),
         anomaly_count=len(anomaly_alerts),
+        pattern_count=len(pattern_alerts),
+        silenced_count=len(silenced_alerts),
         correlated_count=len(correlated_alerts),
     )
 
     return jsonify({
         'status': 'success',
-        'triggered_count': len(alerts),
+        'triggered_count': len(all_alerts),
         'threshold_count': len(threshold_alerts),
         'anomaly_count': len(anomaly_alerts),
+        'pattern_count': len(pattern_alerts),
+        'silenced_count': len(silenced_alerts),
         'correlated_count': len(correlated_alerts),
-        'alerts': alerts,
+        'alerts': all_alerts,
+        'silenced_alerts': silenced_alerts,
         'correlated_alerts': correlated_alerts,
     }), 200
+
+
+@api_bp.route('/alerts/silences', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def list_alert_silences():
+    """List active alert silence windows for current tenant."""
+    silences = AlertService.list_silences(g.tenant.id)
+    return jsonify({
+        'status': 'success',
+        'count': len(silences),
+        'silences': [s.to_dict() for s in silences],
+    }), 200
+
+
+@api_bp.route('/alerts/silences', methods=['POST'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('tenant.manage')
+def create_alert_silence():
+    """Create an alert silence window to suppress alerts during maintenance."""
+    payload = request.get_json(silent=True) or {}
+    silence, errors = AlertService.create_silence(g.tenant.id, payload)
+    if errors:
+        log_audit_event('alerts.silence.create', outcome='failure', reason='validation_failed', details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+    log_audit_event('alerts.silence.create', outcome='success', silence_id=silence.id, metric=silence.metric, rule_id=silence.rule_id)
+    return jsonify({'status': 'success', 'silence': silence.to_dict()}), 201
+
+
+@api_bp.route('/alerts/silences/<int:silence_id>', methods=['DELETE'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('tenant.manage')
+def delete_alert_silence(silence_id):
+    """Delete an alert silence window for current tenant."""
+    deleted = AlertService.delete_silence(g.tenant.id, silence_id)
+    if not deleted:
+        log_audit_event('alerts.silence.delete', outcome='failure', reason='not_found', silence_id=silence_id)
+        return jsonify({'error': 'Alert silence not found'}), 404
+    log_audit_event('alerts.silence.delete', outcome='success', silence_id=silence_id)
+    return jsonify({'status': 'success', 'deleted_id': silence_id}), 200
 
 
 @api_bp.route('/alerts/dispatch', methods=['POST'])
@@ -2522,3 +2581,303 @@ def get_dashboard_aggregate_status():
         aggregate_health=result.get('aggregate_health', {}).get('overall_status'),
     )
     return jsonify({'status': 'success', 'dashboard': result}), 200
+
+
+@api_bp.route('/ai/anomaly/analyze', methods=['POST'])
+@limiter.limit("120 per hour")
+@require_api_key_or_permission('automation.manage')
+def analyze_ai_anomalies():
+    """Use AI (Ollama) to interpret and explain statistical anomalies."""
+    payload = request.get_json(silent=True) or {}
+    anomalies = payload.get('anomalies')
+
+    if not anomalies or not isinstance(anomalies, list):
+        log_audit_event('ai.anomaly.analyze', outcome='failure', reason='anomalies_missing_or_invalid')
+        return jsonify({'error': 'Validation failed', 'details': {'anomalies': ['Must be a non-empty list.']}}), 400
+
+    model_override = str(payload.get('model') or '').strip()
+
+    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
+    allowed_models = [
+        item.strip()
+        for item in str(allowed_models_raw).split(',')
+        if item.strip()
+    ]
+
+    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
+    linux_test_double_responses: dict[str, str] = {}
+    for pair in str(responses_raw).split(';'):
+        pair = pair.strip()
+        if '=' not in pair:
+            continue
+        key, value = pair.split('=', 1)
+        key = key.strip()
+        if not key:
+            continue
+        linux_test_double_responses[key] = value
+
+    runtime_config = {
+        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
+        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
+        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
+        'allowed_models': allowed_models,
+        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
+        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
+        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
+        'linux_test_double_responses': linux_test_double_responses,
+        'ai_anomaly_max_items': 10,
+    }
+
+    result, error = AIService.analyze_anomalies(anomalies, runtime_config=runtime_config)
+    if error:
+        log_audit_event('ai.anomaly.analyze', outcome='failure', reason=error)
+        if error in ('anomalies_missing_or_invalid', 'no_valid_anomalies'):
+            return jsonify({'error': 'Validation failed', 'details': result}), 400
+        return jsonify({'error': 'Anomaly analysis request failed', 'details': result}), 503
+
+    log_audit_event(
+        'ai.anomaly.analyze',
+        outcome='success',
+        adapter=result.get('adapter'),
+        model=result.get('model'),
+        anomaly_count=result.get('anomaly_count', 0),
+        confidence=result.get('analysis', {}).get('confidence'),
+    )
+    return jsonify({'status': 'success', 'anomaly_analysis': result}), 200
+
+
+# ---------------------------------------------------------------------------
+# AI — Incident Explanation  (Phase 2 Week 15-16)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/ai/incident/explain', methods=['POST'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('automation.manage')
+def explain_ai_incident():
+    """Use AI (Ollama) to generate a structured explanation for an incident."""
+    payload = request.get_json(silent=True) or {}
+
+    incident_title = str(payload.get('incident_title') or '').strip()
+    if not incident_title:
+        log_audit_event('ai.incident.explain', outcome='failure', reason='incident_title_missing')
+        return jsonify({'error': 'Validation failed', 'details': {'incident_title': ['Field required.']}}), 400
+
+    affected_systems = payload.get('affected_systems') or []
+    metrics_snapshot = payload.get('metrics_snapshot') or {}
+    model_override = str(payload.get('model') or '').strip()
+
+    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
+    allowed_models = [item.strip() for item in str(allowed_models_raw).split(',') if item.strip()]
+
+    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
+    linux_test_double_responses: dict[str, str] = {}
+    for pair in str(responses_raw).split(';'):
+        pair = pair.strip()
+        if '=' not in pair:
+            continue
+        key, value = pair.split('=', 1)
+        key = key.strip()
+        if not key:
+            continue
+        linux_test_double_responses[key] = value
+
+    runtime_config = {
+        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
+        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
+        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
+        'allowed_models': allowed_models,
+        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
+        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
+        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
+        'linux_test_double_responses': linux_test_double_responses,
+    }
+
+    result, error = AIService.explain_incident(
+        incident_title=incident_title,
+        affected_systems=affected_systems,
+        metrics_snapshot=metrics_snapshot,
+        runtime_config=runtime_config,
+    )
+    if error:
+        log_audit_event('ai.incident.explain', outcome='failure', reason=error)
+        if error in ('incident_title_missing', 'incident_title_too_long'):
+            return jsonify({'error': 'Validation failed', 'details': result}), 400
+        return jsonify({'error': 'Incident explanation request failed', 'details': result}), 503
+
+    log_audit_event(
+        'ai.incident.explain',
+        outcome='success',
+        adapter=result.get('adapter'),
+        model=result.get('model'),
+        incident_title=incident_title[:120],
+        confidence=result.get('explanation', {}).get('confidence'),
+    )
+    return jsonify({'status': 'success', 'incident_explanation': result}), 200
+
+
+# ---------------------------------------------------------------------------
+# Alerts — Prioritization  (Phase 2 Week 15-16)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/alerts/prioritize', methods=['POST'])
+@limiter.limit("120 per hour")
+@require_api_key_or_permission('automation.manage')
+def prioritize_alerts():
+    """Score and rank a list of incoming alerts by severity, type, and anomaly signal."""
+    payload = request.get_json(silent=True) or {}
+    alerts = payload.get('alerts')
+
+    if not alerts or not isinstance(alerts, list):
+        log_audit_event('alerts.prioritize', outcome='failure', reason='alerts_missing_or_invalid')
+        return jsonify({'error': 'Validation failed', 'details': {'alerts': ['Must be a non-empty list.']}}), 400
+
+    top_n = payload.get('top_n')
+    if top_n is not None:
+        try:
+            top_n = int(top_n)
+            if top_n < 1:
+                raise ValueError
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Validation failed', 'details': {'top_n': ['Must be a positive integer.']}}), 400
+
+    prioritized = AlertService.prioritize_alerts(alerts, top_n=top_n)
+    log_audit_event(
+        'alerts.prioritize',
+        outcome='success',
+        alert_count=len(alerts),
+        returned_count=len(prioritized),
+    )
+    return jsonify({'status': 'success', 'prioritized_alerts': prioritized, 'total': len(prioritized)}), 200
+
+
+# ---------------------------------------------------------------------------
+# Automation — Scheduled Jobs  (Phase 2 Week 15-16)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/automation/scheduled-jobs', methods=['GET'])
+@limiter.limit("120 per hour")
+@require_api_key_or_permission('automation.manage')
+def list_scheduled_jobs():
+    """List all scheduled automation jobs for the current tenant."""
+    organization_id = g.get('organization_id') or 1
+    jobs = AutomationService.list_scheduled_jobs(organization_id)
+    log_audit_event('automation.scheduled_jobs.list', outcome='success', count=len(jobs))
+    return jsonify({'status': 'success', 'scheduled_jobs': [j.to_dict() for j in jobs], 'total': len(jobs)}), 200
+
+
+@api_bp.route('/automation/scheduled-jobs', methods=['POST'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('automation.manage')
+def create_scheduled_job():
+    """Create a new scheduled automation job for the current tenant."""
+    organization_id = g.get('organization_id') or 1
+    payload = request.get_json(silent=True) or {}
+
+    runtime_config = {
+        'scheduled_job_max_per_tenant': int(current_app.config.get('SCHEDULED_JOB_MAX_PER_TENANT', 50)),
+    }
+
+    job, errors = AutomationService.schedule_job(
+        organization_id=organization_id,
+        payload=payload,
+        runtime_config=runtime_config,
+    )
+    if errors:
+        log_audit_event('automation.scheduled_jobs.create', outcome='failure', reason='validation_failed')
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+    log_audit_event('automation.scheduled_jobs.create', outcome='success', job_id=job.id, workflow_id=job.workflow_id)
+    return jsonify({'status': 'success', 'scheduled_job': job.to_dict()}), 201
+
+
+# ---------------------------------------------------------------------------
+# Remote — SSH Command Execution  (Phase 2 Week 15-16)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/remote/exec', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('automation.manage')
+def execute_remote_command():
+    """Execute a command on a remote host via SSH with allowlist enforcement."""
+    payload = request.get_json(silent=True) or {}
+
+    host = str(payload.get('host') or '').strip()
+    command = str(payload.get('command') or '').strip()
+
+    if not host or not command:
+        missing = [f for f, v in [('host', host), ('command', command)] if not v]
+        log_audit_event('remote.exec', outcome='failure', reason='fields_missing')
+        return jsonify({'error': 'Validation failed', 'details': {f: ['Field required.'] for f in missing}}), 400
+
+    allowed_hosts_raw = current_app.config.get('REMOTE_EXEC_ALLOWED_HOSTS', '')
+    allowed_commands_raw = current_app.config.get('REMOTE_EXEC_ALLOWED_COMMANDS', '')
+
+    runtime_config = {
+        'ssh_adapter': current_app.config.get('REMOTE_EXEC_ADAPTER', 'linux_test_double'),
+        'allowed_hosts': [h.strip() for h in str(allowed_hosts_raw).split(',') if h.strip()],
+        'allowed_commands': [c.strip() for c in str(allowed_commands_raw).split(',') if c.strip()],
+        'ssh_timeout_seconds': int(current_app.config.get('REMOTE_EXEC_TIMEOUT_SECONDS', 10)),
+        'linux_test_double_remote_commands': {},
+    }
+
+    result, error = RemoteExecutorService.execute_remote_command(host, command, runtime_config=runtime_config)
+    if error:
+        log_audit_event('remote.exec', outcome='failure', reason=error, host=host)
+        if error in ('host_missing', 'command_missing', 'host_invalid', 'command_unsafe_chars', 'command_too_long'):
+            return jsonify({'error': 'Validation failed', 'details': result}), 400
+        if error in ('host_not_allowlisted', 'command_not_allowlisted', 'adapter_not_allowed'):
+            return jsonify({'error': 'Policy blocked', 'details': result}), 403
+        return jsonify({'error': 'Remote execution failed', 'details': result}), 503
+
+    log_audit_event(
+        'remote.exec',
+        outcome='success',
+        adapter=result.get('adapter'),
+        host=host,
+        returncode=result.get('returncode'),
+    )
+    return jsonify({'status': 'success', 'execution': result}), 200
+
+
+# ---------------------------------------------------------------------------
+# Automation — Self-Healing Loop  (Phase 2 Week 15-16)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/automation/self-heal', methods=['POST'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('automation.manage')
+def trigger_self_healing():
+    """Evaluate alerts, match workflows, and optionally execute them (self-healing loop)."""
+    organization_id = g.get('organization_id') or 1
+    payload = request.get_json(silent=True) or {}
+    alerts = payload.get('alerts') or []
+
+    dry_run_param = payload.get('dry_run')
+    if dry_run_param is None:
+        dry_run = bool(current_app.config.get('SELF_HEALING_DRY_RUN', True))
+    else:
+        dry_run = bool(dry_run_param)
+
+    runtime_config = {
+        'self_healing_dry_run': dry_run,
+        'self_healing_max_depth': int(current_app.config.get('SELF_HEALING_MAX_DEPTH', 10)),
+        'command_executor_adapter': current_app.config.get('AUTOMATION_EXECUTOR_ADAPTER', 'linux_test_double'),
+        'linux_test_double_commands': {},
+    }
+
+    result = AutomationService.trigger_self_healing(
+        organization_id=organization_id,
+        alerts=alerts,
+        runtime_config=runtime_config,
+    )
+
+    log_audit_event(
+        'automation.self_heal',
+        outcome='success',
+        dry_run=dry_run,
+        alert_count=result.get('alert_count', 0),
+        triggered_count=result.get('triggered_count', 0),
+        skipped_count=result.get('skipped_count', 0),
+    )
+    return jsonify({'status': 'success', 'self_healing': result}), 200
+

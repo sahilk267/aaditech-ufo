@@ -207,6 +207,40 @@ class AlertRule(db.Model):
         }
 
 
+class AlertSilence(db.Model):
+    """Tenant-scoped alert silence window — suppress alerts during maintenance periods."""
+
+    __tablename__ = 'alert_silences'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    rule_id = db.Column(db.Integer, db.ForeignKey('alert_rules.id'), nullable=True, index=True)
+    metric = db.Column(db.String(64), nullable=True, index=True)
+    reason = db.Column(db.String(255), nullable=True)
+    starts_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    ends_at = db.Column(db.DateTime, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<AlertSilence(id={self.id}, organization_id={self.organization_id}, "
+            f"rule_id={self.rule_id}, metric='{self.metric}', ends_at={self.ends_at})>"
+        )
+
+    def to_dict(self):
+        """Serialize alert silence for API responses."""
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'rule_id': self.rule_id,
+            'metric': self.metric,
+            'reason': self.reason,
+            'starts_at': self.starts_at.isoformat() if self.starts_at else None,
+            'ends_at': self.ends_at.isoformat() if self.ends_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
 class AutomationWorkflow(db.Model):
     """Tenant-scoped automation workflow definition."""
 
@@ -248,6 +282,42 @@ class AutomationWorkflow(db.Model):
             'last_triggered_at': self.last_triggered_at.isoformat() if self.last_triggered_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class ScheduledJob(db.Model):
+    """Tenant-scoped scheduled automation job (cron-style trigger)."""
+
+    __tablename__ = 'scheduled_jobs'
+
+    CRON_EXPRESSION_PATTERN = r'^(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)\s+(\*|[0-9,\-*/]+)$'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    workflow_id = db.Column(db.Integer, db.ForeignKey('automation_workflows.id'), nullable=False, index=True)
+    cron_expression = db.Column(db.String(64), nullable=False)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    last_run_at = db.Column(db.DateTime, nullable=True)
+    next_run_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return (
+            f"<ScheduledJob(id={self.id}, organization_id={self.organization_id}, "
+            f"workflow_id={self.workflow_id}, cron='{self.cron_expression}')>"
+        )
+
+    def to_dict(self):
+        """Serialize scheduled job for API responses."""
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'workflow_id': self.workflow_id,
+            'cron_expression': self.cron_expression,
+            'is_active': self.is_active,
+            'last_run_at': self.last_run_at.isoformat() if self.last_run_at else None,
+            'next_run_at': self.next_run_at.isoformat() if self.next_run_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
