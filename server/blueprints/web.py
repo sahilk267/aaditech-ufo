@@ -7,7 +7,7 @@ import logging
 import os
 from urllib.parse import urljoin, urlparse
 
-from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, flash
+from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, flash, current_app, send_file, abort
 from werkzeug.utils import secure_filename
 from ..auth import (
     clear_web_session,
@@ -18,7 +18,7 @@ from ..auth import (
 )
 from ..models import db, SystemData, Organization, User
 from ..extensions import limiter
-from ..services import SystemService, BackupService
+from ..services import SystemService, BackupService, PerformanceService, AgentReleaseService
 from ..audit import log_audit_event
 
 logger = logging.getLogger(__name__)
@@ -113,18 +113,22 @@ def index():
         Rendered dashboard template
     """
     try:
-        # Get recent systems
-        systems = (
-            SystemData.query
-            .filter_by(organization_id=g.tenant.id)
-            .order_by(SystemData.last_update.desc())
-            .limit(10)
-            .all()
-        )
-        
-        # Calculate dashboard stats
-        total_systems = SystemData.query.filter_by(organization_id=g.tenant.id).count()
-        active_systems = sum(1 for s in systems if SystemService.is_active(s.last_update, SystemService.get_current_time()))
+        recent_limit = int(current_app.config.get('QUERY_RECENT_SYSTEMS_LIMIT', 10))
+        if current_app.config.get('QUERY_OPTIMIZER_ENABLED', True):
+            systems = PerformanceService.get_recent_system_rows(g.tenant.id, limit=recent_limit)
+            counts = PerformanceService.get_dashboard_counts(g.tenant.id)
+            total_systems = counts['total_systems']
+            active_systems = counts['active_systems']
+        else:
+            systems = (
+                SystemData.query
+                .filter_by(organization_id=g.tenant.id)
+                .order_by(SystemData.last_update.desc())
+                .limit(recent_limit)
+                .all()
+            )
+            total_systems = SystemData.query.filter_by(organization_id=g.tenant.id).count()
+            active_systems = sum(1 for s in systems if SystemService.is_active(s.last_update, SystemService.get_current_time()))
         
         return render_template('base.html', 
                              systems=systems,
@@ -235,6 +239,78 @@ def backup():
     except Exception as e:
         logger.error(f"Error loading backup page: {e}")
         return render_template('backup.html', error="Failed to load backup page"), 500
+
+
+@web_bp.route('/agent/releases', methods=['GET'])
+@limiter.limit("60 per minute")
+@require_web_permission('dashboard.view')
+def agent_releases_page():
+    """Render agent release portal page with version-wise exe downloads."""
+    try:
+        releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path)
+        return render_template('agent_releases.html', releases=releases)
+    except Exception as exc:
+        logger.error("Error loading agent release portal: %s", exc, exc_info=True)
+        return render_template('agent_releases.html', releases=[], error='Failed to load agent releases'), 500
+
+
+@web_bp.route('/agent/releases/upload', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_web_permission('tenant.manage')
+def upload_agent_release():
+    """Upload a new versioned agent exe to server-side release storage."""
+    release_file = request.files.get('release_file')
+    version = str(request.form.get('version') or '').strip()
+
+    if release_file is None:
+        flash('Release file is required.', 'danger')
+        return redirect(url_for('web.agent_releases_page'))
+
+    max_mb = int(current_app.config.get('AGENT_RELEASE_MAX_MB', 256))
+    max_bytes = max_mb * 1024 * 1024
+    if request.content_length and request.content_length > max_bytes:
+        flash(f'File is too large. Max allowed size is {max_mb} MB.', 'danger')
+        return redirect(url_for('web.agent_releases_page'))
+
+    try:
+        release = AgentReleaseService.save_uploaded_release(
+            release_file,
+            version,
+            current_app.config,
+            current_app.instance_path,
+        )
+    except ValueError as exc:
+        flash(f'Upload failed: {str(exc)}', 'danger')
+        log_audit_event('agent.release.upload', outcome='failure', reason=str(exc), version=version)
+        return redirect(url_for('web.agent_releases_page'))
+    except Exception as exc:
+        flash('Upload failed due to server error.', 'danger')
+        log_audit_event('agent.release.upload', outcome='failure', reason='server_error', error=str(exc), version=version)
+        return redirect(url_for('web.agent_releases_page'))
+
+    log_audit_event(
+        'agent.release.upload',
+        outcome='success',
+        version=release.version,
+        filename=release.filename,
+        size_bytes=release.size_bytes,
+    )
+    flash(f'Agent release uploaded: {release.filename}', 'success')
+    return redirect(url_for('web.agent_releases_page'))
+
+
+@web_bp.route('/agent/releases/download/<path:filename>', methods=['GET'])
+@limiter.limit("240 per hour")
+@require_web_permission('dashboard.view')
+def download_agent_release(filename):
+    """Download versioned agent exe from release portal."""
+    file_path = AgentReleaseService.resolve_download_path(filename, current_app.config, current_app.instance_path)
+    if file_path is None:
+        log_audit_event('agent.release.download', outcome='failure', reason='not_found', filename=filename)
+        abort(404)
+
+    log_audit_event('agent.release.download', outcome='success', filename=file_path.name)
+    return send_file(file_path, as_attachment=True, download_name=file_path.name)
 
 
 @web_bp.route('/api/systems', methods=['GET'])

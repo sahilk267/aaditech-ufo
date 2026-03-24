@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Agent Releases{% endblock %}
+
+{% block content %}
+<h2>Agent Releases</h2>
+
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+
+<div class="benchmark-info">
+    <h4>Download Windows Agent (.exe)</h4>
+    <p>Users can directly download versioned client agent executable from this portal.</p>
+</div>
+
+{% if is_authenticated and current_user %}
+<div class="card mb-3">
+    <div class="card-body">
+        <h5 class="card-title">Upload New Release</h5>
+        <form method="post" action="{{ url_for('web.upload_agent_release') }}" enctype="multipart/form-data">
+            <div class="form-row">
+                <div class="form-group col-md-4">
+                    <label>Version</label>
+                    <input class="form-control" type="text" name="version" placeholder="e.g. 1.0.3" required>
+                </div>
+                <div class="form-group col-md-6">
+                    <label>Release File (.exe)</label>
+                    <input class="form-control" type="file" name="release_file" accept=".exe" required>
+                </div>
+                <div class="form-group col-md-2 d-flex align-items-end">
+                    <button class="btn btn-primary w-100" type="submit">Upload</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>Version</th>
+            <th>Filename</th>
+            <th>Size (MB)</th>
+            <th>Published At</th>
+            <th>Download</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for release in releases %}
+        <tr>
+            <td>{{ release.version }}</td>
+            <td>{{ release.filename }}</td>
+            <td>{{ "%.2f"|format(release.size_bytes / (1024 * 1024)) }}</td>
+            <td>{{ release.modified_at|ist_format }}</td>
+            <td>
+                <a class="btn btn-sm btn-success" href="{{ url_for('web.download_agent_release', filename=release.filename) }}">
+                    Download .exe
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if not releases %}
+<div class="alert alert-info">No agent release uploaded yet.</div>
+{% endif %}
+{% endblock %}

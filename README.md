@@ -185,6 +185,42 @@ Agents communicate securely with the platform using authenticated API requests.
 
 Agents are designed to operate with minimal CPU and memory overhead.
 
+## Agent Release Portal (Versioned .exe Downloads)
+
+The server supports a built-in release portal where users can directly download
+versioned Windows agent binaries.
+
+Portal URLs:
+
+- `GET /agent/releases` — web portal page for listing versioned agent builds
+- `GET /agent/releases/download/<filename>` — direct artifact download
+
+Upload workflow (admin):
+
+- Tenant admin can upload a new `.exe` release from the portal.
+- Release files are stored server-side and listed by version.
+
+Filename convention:
+
+- `aaditech-agent-<version>.exe`
+
+Windows build-server helper:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build_agent_windows.ps1 -Version 1.0.0
+```
+
+Server-side publish helper:
+
+```bash
+./scripts/publish_agent_release.sh --file /path/to/aaditech-agent.exe --version 1.0.0
+```
+
+Configuration:
+
+- `AGENT_RELEASES_DIR` (default: `instance/agent_releases`)
+- `AGENT_RELEASE_MAX_MB` (default: `256`)
+
 Supported environments include:
 
 Linux servers
@@ -553,6 +589,46 @@ high-performance metrics databases
 load-balanced APIs
 
 The system can monitor thousands of infrastructure nodes.
+
+---
+
+# Phase 4 Performance Optimization
+
+Phase 4 (non-Kubernetes scope) now includes foundational optimization features:
+
+- Database query optimizer helpers for dashboard data access.
+- Cache layer with Redis-first and memory fallback behavior.
+- CDN-aware static asset URL generation for `/static/*` assets.
+
+New optimization APIs:
+
+- `GET /api/performance/cache/status` — cache backend status and TTL configuration.
+- `POST /api/database/optimize` — runs safe backend optimization commands (`PRAGMA optimize`/`ANALYZE`).
+
+Dashboard aggregate caching:
+
+- `GET /api/dashboard/status` now includes `cache_hit` in response.
+- Cache TTL controlled by `CACHE_DASHBOARD_TTL_SECONDS`.
+
+Phase 4 environment variables:
+
+```bash
+# Query optimizer
+QUERY_OPTIMIZER_ENABLED=True
+QUERY_RECENT_SYSTEMS_LIMIT=10
+
+# Cache layer
+CACHE_ENABLED=True
+CACHE_BACKEND=memory   # memory or redis
+CACHE_DEFAULT_TTL_SECONDS=60
+CACHE_DASHBOARD_TTL_SECONDS=45
+CACHE_KEY_PREFIX=aaditech:ufo
+
+# CDN integration
+CDN_ENABLED=False
+CDN_STATIC_BASE_URL=
+CDN_STATIC_VERSION=
+```
 
 ---
 

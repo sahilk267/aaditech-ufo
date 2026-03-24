@@ -70,11 +70,16 @@ def apply_gateway_response_headers(response):
         response.headers['X-Response-Time-Ms'] = str(elapsed_ms)
 
     response.headers['X-API-Gateway-Ready'] = 'true'
+    if app.config.get('CDN_ENABLED', False):
+        response.headers['X-Static-Asset-Base'] = app.config.get('CDN_STATIC_BASE_URL', '')
     return response
 
 # Initialize extensions with app
 from .extensions import init_extensions, db, migrate, limiter
 init_extensions(app)
+
+from .services import PerformanceService
+PerformanceService.init_cache(app)
 
 
 # Import and register blueprints
@@ -126,6 +131,9 @@ def inject_template_globals():
     - get_current_time(): Get current time in IST
     """
     from .services import SystemService
+
+    def asset_url(asset_path: str) -> str:
+        return PerformanceService.build_static_asset_url(asset_path, app.config)
     
     return {
         'is_active': SystemService.is_active,
@@ -133,6 +141,7 @@ def inject_template_globals():
         'current_user': getattr(g, 'current_user', None),
         'current_tenant': getattr(g, 'tenant', None),
         'is_authenticated': getattr(g, 'current_user', None) is not None,
+        'asset_url': asset_url,
     }
 
 # Error handlers

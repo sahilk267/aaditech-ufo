@@ -16,6 +16,8 @@ from .update_service import UpdateService
 from .confidence_service import ConfidenceService
 from .dashboard_service import DashboardService
 from .remote_executor_service import RemoteExecutorService
+from .performance_service import PerformanceService
+from .agent_release_service import AgentReleaseService
 
 __all__ = [
 	'SystemService',
@@ -30,4 +32,6 @@ __all__ = [
 	'ConfidenceService',
 	'DashboardService',
 	'RemoteExecutorService',
+	'PerformanceService',
+	'AgentReleaseService',
 ]

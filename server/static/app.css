@@ -1,0 +1,13 @@
+/* Local static bundle for Phase 4 CDN integration testing */
+
+:root {
+    --app-border-color: #d9dee3;
+}
+
+body {
+    text-rendering: optimizeLegibility;
+}
+
+.dashboard-card {
+    border: 1px solid var(--app-border-color);
+}

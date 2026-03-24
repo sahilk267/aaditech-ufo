@@ -29,7 +29,7 @@ from ..queue import (
     enqueue_alert_notification_job,
     enqueue_automation_workflow_job,
 )
-from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService
+from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService, PerformanceService
 from marshmallow import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -159,11 +159,44 @@ def status():
         'message': 'API is running',
         'version': '1.0.0',
         'queue': get_queue_status(current_app),
+        'cache': PerformanceService.cache_status(),
         'gateway': {
             'request_id': getattr(g, 'request_id', None),
             'proxy_fix_enabled': bool(current_app.config.get('ENABLE_PROXY_FIX', True)),
         },
     }), 200
+
+
+@api_bp.route('/performance/cache/status', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_cache_status():
+    """Get active cache layer status (Redis/memory) for Phase 4 monitoring."""
+    status = PerformanceService.cache_status()
+    log_audit_event('performance.cache.status', outcome='success', backend=status.get('backend'))
+    return jsonify({'status': 'success', 'cache': status}), 200
+
+
+@api_bp.route('/database/optimize', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def optimize_database_queries():
+    """Run lightweight database optimization commands for the configured backend."""
+    database_uri = current_app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    try:
+        result = PerformanceService.optimize_database(database_uri)
+    except Exception as exc:
+        db.session.rollback()
+        log_audit_event('database.optimize', outcome='failure', reason='optimizer_error', details=str(exc))
+        return jsonify({'error': 'Database optimization failed', 'details': str(exc)}), 500
+
+    log_audit_event(
+        'database.optimize',
+        outcome='success' if result.get('status') == 'success' else 'skipped',
+        backend=result.get('backend'),
+        action_count=len(result.get('actions', [])),
+    )
+    status_code = 200 if result.get('status') == 'success' else 202
+    return jsonify({'status': 'success', 'optimization': result}), status_code
 
 
 @api_bp.route('/jobs/maintenance', methods=['POST'])
@@ -2567,7 +2600,26 @@ def get_dashboard_aggregate_status():
         'confidence_config': confidence_config,
     }
 
-    result, error = DashboardService.get_aggregate_dashboard_status(host_name, runtime_config=runtime_config)
+    cache_ttl = int(current_app.config.get('CACHE_DASHBOARD_TTL_SECONDS', 45))
+    cache_key = f'dashboard:aggregate:{host_name}'
+
+    def _load_dashboard_status():
+        dashboard_result, dashboard_error = DashboardService.get_aggregate_dashboard_status(
+            host_name,
+            runtime_config=runtime_config,
+        )
+        return {
+            'dashboard_result': dashboard_result,
+            'dashboard_error': dashboard_error,
+        }
+
+    cached_payload, cache_hit = PerformanceService.get_or_compute(
+        cache_key,
+        loader=_load_dashboard_status,
+        ttl_seconds=cache_ttl,
+    )
+    result = cached_payload.get('dashboard_result') or {}
+    error = cached_payload.get('dashboard_error')
     if error:
         log_audit_event('dashboard.status', outcome='failure', reason=error, host_name=host_name)
         if error == 'command_failed':
@@ -2579,8 +2631,9 @@ def get_dashboard_aggregate_status():
         outcome='success',
         host_name=host_name,
         aggregate_health=result.get('aggregate_health', {}).get('overall_status'),
+        cache_hit=cache_hit,
     )
-    return jsonify({'status': 'success', 'dashboard': result}), 200
+    return jsonify({'status': 'success', 'dashboard': result, 'cache_hit': cache_hit}), 200
 
 
 @api_bp.route('/ai/anomaly/analyze', methods=['POST'])

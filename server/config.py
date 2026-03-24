@@ -170,6 +170,22 @@ class Config:
     CONFIDENCE_ALLOWED_MODELS = os.getenv('CONFIDENCE_ALLOWED_MODELS', 'llama3.2')
     CONFIDENCE_LINUX_TEST_DOUBLE_SCORES = os.getenv('CONFIDENCE_LINUX_TEST_DOUBLE_SCORES', '')
     DASHBOARD_ALLOWED_HOSTS = os.getenv('DASHBOARD_ALLOWED_HOSTS', '')
+
+    # Phase 4 Week 21-24 optimization settings
+    QUERY_OPTIMIZER_ENABLED = os.getenv('QUERY_OPTIMIZER_ENABLED', 'True').lower() == 'true'
+    QUERY_RECENT_SYSTEMS_LIMIT = int(os.getenv('QUERY_RECENT_SYSTEMS_LIMIT', '10'))
+    CACHE_ENABLED = os.getenv('CACHE_ENABLED', 'True').lower() == 'true'
+    CACHE_BACKEND = os.getenv('CACHE_BACKEND', 'memory')
+    CACHE_DEFAULT_TTL_SECONDS = int(os.getenv('CACHE_DEFAULT_TTL_SECONDS', '60'))
+    CACHE_DASHBOARD_TTL_SECONDS = int(os.getenv('CACHE_DASHBOARD_TTL_SECONDS', '45'))
+    CACHE_KEY_PREFIX = os.getenv('CACHE_KEY_PREFIX', 'aaditech:ufo')
+    CDN_ENABLED = os.getenv('CDN_ENABLED', 'False').lower() == 'true'
+    CDN_STATIC_BASE_URL = os.getenv('CDN_STATIC_BASE_URL', '')
+    CDN_STATIC_VERSION = os.getenv('CDN_STATIC_VERSION', '')
+
+    # Agent release portal (versioned exe downloads)
+    AGENT_RELEASES_DIR = os.getenv('AGENT_RELEASES_DIR', 'agent_releases')
+    AGENT_RELEASE_MAX_MB = int(os.getenv('AGENT_RELEASE_MAX_MB', '256'))
     
     # Backup configuration
     BACKUP_DIR = os.getenv('BACKUP_DIR', 'backups/')

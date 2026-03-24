@@ -1,6 +1,7 @@
 """Tests for browser-compatible session auth on HTML pages."""
 
 from datetime import datetime, UTC
+from io import BytesIO
 import uuid
 from unittest.mock import patch
 
@@ -210,3 +211,62 @@ def test_browser_session_allows_register_without_headers(client, app_fixture):
 
     assert response.status_code == 201
     assert response.get_json()['user']['email'] == 'browser-created@example.com'
+
+
+def test_agent_release_page_lists_versioned_exe(client, app_fixture, tmp_path):
+    email = _register_admin_user(client)
+    _force_browser_session(client, app_fixture, email)
+
+    release_dir = tmp_path / 'agent_releases'
+    release_dir.mkdir(parents=True)
+    release_file = release_dir / 'aaditech-agent-1.0.0.exe'
+    release_file.write_bytes(b'v1-binary')
+
+    app_fixture.config['AGENT_RELEASES_DIR'] = str(release_dir)
+
+    response = client.get('/agent/releases')
+
+    assert response.status_code == 200
+    assert b'Agent Releases' in response.data
+    assert b'aaditech-agent-1.0.0.exe' in response.data
+
+
+def test_agent_release_upload_succeeds_for_admin(client, app_fixture, tmp_path):
+    email = _register_admin_user(client)
+    _force_browser_session(client, app_fixture, email)
+
+    release_dir = tmp_path / 'agent_releases'
+    release_dir.mkdir(parents=True)
+    app_fixture.config['AGENT_RELEASES_DIR'] = str(release_dir)
+
+    response = client.post(
+        '/agent/releases/upload',
+        data={
+            'version': '2.1.0',
+            'release_file': (BytesIO(b'new-binary-data'), 'agent.exe'),
+        },
+        content_type='multipart/form-data',
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert response.headers['Location'].endswith('/agent/releases')
+    assert (release_dir / 'aaditech-agent-2.1.0.exe').exists()
+
+
+def test_agent_release_download_returns_file(client, app_fixture, tmp_path):
+    email = _register_admin_user(client)
+    _force_browser_session(client, app_fixture, email)
+
+    release_dir = tmp_path / 'agent_releases'
+    release_dir.mkdir(parents=True)
+    target = release_dir / 'aaditech-agent-3.0.0.exe'
+    target.write_bytes(b'download-binary')
+
+    app_fixture.config['AGENT_RELEASES_DIR'] = str(release_dir)
+
+    response = client.get('/agent/releases/download/aaditech-agent-3.0.0.exe')
+
+    assert response.status_code == 200
+    assert response.data == b'download-binary'
+    assert 'attachment' in (response.headers.get('Content-Disposition') or '').lower()
