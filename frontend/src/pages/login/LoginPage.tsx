@@ -26,7 +26,7 @@ export function LoginPage() {
       const me = await fetchMe();
       setAuth(auth.tokens, me.user);
       navigate(ROUTES.DASHBOARD, { replace: true });
-    } catch (err) {
+    } catch {
       setError("Login failed. Verify tenant/email/password.");
     } finally {
       setLoading(false);

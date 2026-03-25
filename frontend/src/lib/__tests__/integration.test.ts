@@ -221,6 +221,7 @@ describe("Integration: Critical User Flows", () => {
   describe("API Error Handling", () => {
     it("should handle 401 unauthorized errors", async () => {
       const error = new Error("Unauthorized");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (error as any).response = {
         status: 401,
         data: { error: "Token expired" },
@@ -241,6 +242,7 @@ describe("Integration: Critical User Flows", () => {
 
     it("should handle 403 permission denied errors", async () => {
       const error = new Error("Permission denied");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (error as any).response = {
         status: 403,
         data: { error: "Insufficient permissions" },

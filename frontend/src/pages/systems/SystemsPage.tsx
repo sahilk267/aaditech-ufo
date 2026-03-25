@@ -33,9 +33,11 @@ export function SystemsPage() {
       : undefined;
     const nextSystem = matchedSystem || systemsQuery.data.systems[0];
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedId(nextSystem.id);
 
     if (serialNumber && !matchedSystem) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMessage(`System with serial ${serialNumber} was not found. Showing latest available system.`);
     }
   }, [selectedId, searchParams, systemsQuery.data]);

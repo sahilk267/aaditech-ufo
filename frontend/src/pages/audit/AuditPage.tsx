@@ -18,6 +18,7 @@ export function AuditPage() {
   const [actionError, setActionError] = useState<unknown>(null);
 
   const form = useForm<AuditFilterInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(auditFilterSchema) as any,
     defaultValues: {
       eventType: "",
@@ -58,7 +59,7 @@ export function AuditPage() {
       title="Audit & Compliance"
       description="Filter and query audit activity using /api/audit-events with client-side validated filters."
     >
-      <form onSubmit={form.handleSubmit(onSubmit as any)} className="module-card">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3 className="action-panel-title">Audit Filters</h3>
         <div className="module-grid">
           <FormInput

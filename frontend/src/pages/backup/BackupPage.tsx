@@ -30,6 +30,7 @@ export function BackupPage() {
   const [selectedFilename, setSelectedFilename] = useState('');
 
   const form = useForm<RestoreBackupInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(restoreBackupSchema) as any,
     defaultValues: {
       filename: '',
@@ -113,6 +114,7 @@ export function BackupPage() {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {backupRows.map((backup: any) => (
                     <tr key={backup.filename}>
                       <td>{backup.filename || '-'}</td>
@@ -125,6 +127,7 @@ export function BackupPage() {
               <div className="row-between" style={{ marginTop: 12, justifyContent: 'flex-start' }}>
                 <select value={selectedFilename} onChange={(e) => setSelectedFilename(e.target.value)}>
                   <option value="">Select backup filename</option>
+                  {/* eslint-disable-next-line @typescript-eslint/no-explicit-any */}
                   {backupRows.map((backup: any) => (
                     <option key={backup.filename} value={backup.filename}>{backup.filename}</option>
                   ))}
@@ -136,7 +139,7 @@ export function BackupPage() {
         </ActionPanel>
 
         {/* Restore from backup form */}
-        <form onSubmit={form.handleSubmit(onSubmit as any)} className="module-card">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
           <h3>Restore from Backup</h3>
 
           <MutationFeedback error={actionError || restoreBackupMutation.error} />
@@ -177,7 +180,7 @@ export function BackupPage() {
         {/* Restore result */}
         {Boolean(latestResult) && (
           <ActionPanel title="Restore Result">
-            <JsonViewer data={latestResult as any} />
+            <JsonViewer data={latestResult} />
           </ActionPanel>
         )}
 

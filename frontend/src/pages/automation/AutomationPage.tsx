@@ -29,6 +29,7 @@ export function AutomationPage() {
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<number | null>(null);
 
   const form = useForm<CreateAutomationWorkflowInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createAutomationWorkflowSchema) as any,
     defaultValues: {
       name: "",
@@ -57,6 +58,7 @@ export function AutomationPage() {
     if (!selectedWorkflowId && workflows.length) {
       const id = Number((workflows[0] as { id?: number }).id);
       if (Number.isFinite(id)) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedWorkflowId(id);
       }
     }
@@ -111,7 +113,7 @@ export function AutomationPage() {
         <StatCard label="Scheduled Jobs" value={scheduledJobs.length} detail="Recurring workflow executions" />
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit as any)} className="module-card">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3>Create Workflow</h3>
         <div className="module-grid">
           <FormInput

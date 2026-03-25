@@ -19,6 +19,7 @@ export function UsersPage() {
   const [latestResult, setLatestResult] = useState<unknown>(null);
 
   const form = useForm<CreateUserInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createUserSchema) as any,
     defaultValues: {
       email: "",
@@ -59,7 +60,7 @@ export function UsersPage() {
         <JsonViewer data={meQuery.data} />
       </ActionPanel>
 
-      <form onSubmit={form.handleSubmit(onSubmit as any)} className="module-card" style={{ marginTop: 12 }}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card" style={{ marginTop: 12 }}>
         <h3 className="action-panel-title">Create User</h3>
         
         {form.formState.errors.root && (

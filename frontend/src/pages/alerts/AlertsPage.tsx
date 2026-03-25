@@ -30,6 +30,7 @@ export function AlertsPage() {
   const [actionError, setActionError] = useState<unknown>(null);
 
   const form = useForm<CreateAlertRuleInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createAlertRuleSchema) as any,
     defaultValues: {
       name: "",
@@ -114,7 +115,7 @@ export function AlertsPage() {
         <StatCard label="Silences" value={silences.length} detail="Active suppression windows" />
       </div>
 
-      <form onSubmit={form.handleSubmit(onSubmit as any)} className="module-card">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3>Create Alert Rule</h3>
         
         <div className="module-grid">

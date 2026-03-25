@@ -36,6 +36,7 @@ export function PlatformPage() {
   });
 
   const dbForm = useForm<DatabaseOptimizeInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(databaseOptimizeSchema) as any,
     defaultValues: {
       dryRun: true,
@@ -46,6 +47,7 @@ export function PlatformPage() {
   });
 
   const cacheForm = useForm<CacheManagementInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(cacheManagementSchema) as any,
     defaultValues: {
       action: "stats",
@@ -113,7 +115,7 @@ export function PlatformPage() {
       </ActionPanel>
 
       <form
-        onSubmit={cacheForm.handleSubmit(onSubmitSystemSettings as any)}
+        onSubmit={cacheForm.handleSubmit(onSubmitSystemSettings)}
         className="module-card"
         style={{ marginTop: 12 }}
       >
@@ -148,7 +150,7 @@ export function PlatformPage() {
       </form>
 
       <form
-        onSubmit={dbForm.handleSubmit(onSubmitDbOptimize as any)}
+        onSubmit={dbForm.handleSubmit(onSubmitDbOptimize)}
         className="module-card"
         style={{ marginTop: 12 }}
       >

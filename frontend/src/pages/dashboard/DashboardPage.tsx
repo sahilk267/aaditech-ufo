@@ -11,7 +11,7 @@ const SystemHealthChart = lazy(() =>
 );
 
 export function DashboardPage() {
-  const [hostName, setHostName] = useState("");
+  const [manualHostName, setHostName] = useState<string | null>(null);
   const [showChart, setShowChart] = useState(false);
 
   const apiStatusQuery = useQuery({
@@ -26,11 +26,7 @@ export function DashboardPage() {
     staleTime: 30_000,
   });
 
-  useEffect(() => {
-    if (!hostName && systemsQuery.data?.systems?.length) {
-      setHostName(systemsQuery.data.systems[0].hostname);
-    }
-  }, [hostName, systemsQuery.data]);
+  const hostName = manualHostName ?? systemsQuery.data?.systems?.[0]?.hostname ?? "";
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {

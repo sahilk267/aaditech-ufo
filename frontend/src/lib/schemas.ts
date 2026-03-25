@@ -131,6 +131,7 @@ export const createAutomationWorkflowSchema = z.object({
       action: z.string().min(1, "Action is required"),
       service: z.string().max(255).optional(),
       params: z.record(z.string(), z.any()).optional(),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any
   ).min(1, "At least one step is required"),
   isActive: z.boolean().default(true),

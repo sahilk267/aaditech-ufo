@@ -18,6 +18,7 @@ export function TenantsPage() {
   const [feedback, setFeedback] = useState("");
 
   const form = useForm<CreateTenantInput>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createTenantSchema) as any,
     defaultValues: {
       name: "",
@@ -75,7 +76,7 @@ export function TenantsPage() {
       description="List, create, and status management mapped to tenant APIs."
     >
       <div className="module-grid">
-        <form className="module-card" onSubmit={form.handleSubmit(onSubmit as any)}>
+        <form className="module-card" onSubmit={form.handleSubmit(onSubmit)}>
           <h3>Create Tenant</h3>
 
           {feedback && (

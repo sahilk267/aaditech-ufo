@@ -27,6 +27,7 @@ describe('RBAC Utilities', () => {
     });
 
     it('should return false when user permissions is null', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const userPermissions = null as any;
       expect(hasPermission(userPermissions, 'dashboard.view')).toBe(false);
     });
@@ -73,6 +74,7 @@ describe('RBAC Utilities', () => {
     });
 
     it('should handle null user permissions', () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const userPermissions = null as any;
       const required = ['dashboard.view', 'tenant.manage'];
       expect(missingPermissions(userPermissions, required)).toEqual(required);
