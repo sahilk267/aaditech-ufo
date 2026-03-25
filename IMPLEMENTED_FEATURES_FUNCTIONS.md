@@ -45,9 +45,21 @@ Implemented:
   - POST /agent/releases/upload
 - Release download endpoint:
   - GET /agent/releases/download/<filename>
+- API release list endpoint:
+  - GET /api/agent/releases
+- API release upload endpoint (CI/CD friendly):
+  - POST /api/agent/releases/upload
+- API release download endpoint (agent/self-update):
+  - GET /api/agent/releases/download/<filename>
+- Release policy endpoints:
+  - GET /api/agent/releases/policy
+  - PUT /api/agent/releases/policy
+- Guided update/downgrade endpoint:
+  - GET /api/agent/releases/guide?current_version=<x.y.z>
 - Versioned artifact naming convention:
   - aaditech-agent-<version>.exe
 - Server-side release listing and metadata extraction in server/services/agent_release_service.py
+- Server-side release policy persistence and recommendation logic in server/services/agent_release_service.py
 
 Key implemented functions:
 - list_releases
@@ -62,11 +74,16 @@ Implemented:
   - scripts/build_agent_windows.ps1
 - Server publish helper script:
   - scripts/publish_agent_release.sh
+- GitHub Actions workflow for auto-build/auto-publish:
+  - .github/workflows/agent-release-publish.yml
 
 Current behavior:
 - Agent can be built version-wise on build machine
 - Built .exe can be uploaded/published and downloaded from portal
 - Older versions remain downloadable, enabling manual downgrade by installing an older version
+- CI can auto-build versioned `.exe` on tag (`agent-v*`) and publish artifact/release
+- CI can auto-publish built `.exe` to server API when deployment secrets are configured
+- Server-side guided downgrade/upgrade recommendation is now available via release policy API
 
 ## 5. Alerting, Automation, and Operations Foundations
 
@@ -109,5 +126,6 @@ Test suite pending (as of latest run):
 
 Important note on agent lifecycle automation:
 - Versioned upload/download is implemented.
-- Fully automatic CI-triggered agent auto-build and auto-publish pipeline (version bump -> build -> publish) is not yet wired as an end-to-end automated workflow.
-- One-click server-side downgrade orchestration is not present; downgrade is currently manual by downloading an older version and installing it.
+- CI-triggered agent auto-build and auto-publish workflow is implemented.
+- Server-side guided downgrade policy is implemented.
+- Full forced remote in-place downgrade execution on client hosts is still out-of-scope for current release (client-side updater/orchestrator not yet implemented).

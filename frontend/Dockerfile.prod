@@ -1,0 +1,42 @@
+# Frontend Production Dockerfile - multi-stage build for optimized image
+
+# Stage 1: Build the application
+FROM node:20-alpine as builder
+
+WORKDIR /app
+
+ARG NODE_ENV=production
+ARG VITE_API_BASE_URL=/api
+
+ENV NODE_ENV=$NODE_ENV
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+
+# Copy package files
+COPY package.json package-lock.json /app/
+
+# Install dependencies
+RUN npm ci --omit=dev
+
+# Copy all frontend source files
+COPY . /app/
+
+# Build the application
+RUN npm run build
+
+# Stage 2: Serve with minimal image
+FROM node:20-alpine
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+
+# Install global http-server for serving static files
+RUN npm install -g http-server
+
+# Copy built files from builder
+COPY --from=builder /app/dist /app/dist
+
+EXPOSE 3000
+
+# Serve the dist folder on port 3000
+CMD ["http-server", "dist", "-p", "3000", "--cors"]

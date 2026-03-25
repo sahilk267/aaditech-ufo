@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import os
 import re
+import json
 import shutil
+import subprocess
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -37,6 +39,67 @@ class AgentReleaseService:
     """Manage release artifact directory and metadata extraction."""
 
     RELEASE_PATTERN = re.compile(r'^aaditech-agent-([A-Za-z0-9._-]+)\.exe$')
+    POLICY_FILENAME = 'release_policy.json'
+
+    @classmethod
+    def resolve_built_binary_path(cls, root_path: str) -> Path:
+        return Path(root_path).resolve().parent / 'agent' / 'dist' / 'aaditech-agent'
+
+    @classmethod
+    def resolve_build_spec_path(cls, root_path: str) -> Path:
+        return Path(root_path).resolve().parent / 'agent' / 'build.spec'
+
+    @classmethod
+    def build_agent_binary(cls, root_path: str, timeout_seconds: int = 180) -> dict[str, Any]:
+        spec_path = cls.resolve_build_spec_path(root_path)
+        dist_path = spec_path.parent / 'dist'
+        work_path = spec_path.parent / 'build'
+
+        if not spec_path.exists() or not spec_path.is_file():
+            return {
+                'success': False,
+                'reason': 'spec_not_found',
+                'details': str(spec_path),
+            }
+
+        try:
+            completed = subprocess.run(
+                [
+                    'pyinstaller',
+                    '--distpath',
+                    str(dist_path),
+                    '--workpath',
+                    str(work_path),
+                    '--noconfirm',
+                    str(spec_path),
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except FileNotFoundError:
+            return {
+                'success': False,
+                'reason': 'pyinstaller_missing',
+                'details': 'pyinstaller executable not found',
+            }
+        except subprocess.TimeoutExpired:
+            return {
+                'success': False,
+                'reason': 'build_timeout',
+                'details': f'timeout after {timeout_seconds} seconds',
+            }
+
+        binary_path = cls.resolve_built_binary_path(root_path)
+        return {
+            'success': completed.returncode == 0 and binary_path.exists(),
+            'returncode': int(completed.returncode),
+            'binary_available': bool(binary_path.exists()),
+            'binary_path': str(binary_path),
+            'stdout_tail': (completed.stdout or '')[-800:],
+            'stderr_tail': (completed.stderr or '')[-800:],
+        }
 
     @classmethod
     def _resolve_release_dir(cls, config: dict[str, Any], instance_path: str) -> Path:
@@ -165,3 +228,125 @@ class AgentReleaseService:
         if not file_path.exists() or not file_path.is_file():
             return None
         return file_path
+
+    @classmethod
+    def _policy_path(cls, config: dict[str, Any], instance_path: str) -> Path:
+        release_dir = cls.ensure_release_dir(config, instance_path)
+        return release_dir / cls.POLICY_FILENAME
+
+    @classmethod
+    def get_policy(cls, config: dict[str, Any], instance_path: str) -> dict[str, Any]:
+        path = cls._policy_path(config, instance_path)
+        if not path.exists() or not path.is_file():
+            return {
+                'target_version': '',
+                'notes': '',
+                'updated_at': None,
+            }
+
+        try:
+            payload = json.loads(path.read_text(encoding='utf-8'))
+        except Exception:
+            return {
+                'target_version': '',
+                'notes': '',
+                'updated_at': None,
+            }
+
+        return {
+            'target_version': str(payload.get('target_version') or '').strip(),
+            'notes': str(payload.get('notes') or '').strip(),
+            'updated_at': payload.get('updated_at'),
+        }
+
+    @classmethod
+    def set_policy(
+        cls,
+        target_version: str,
+        notes: str,
+        config: dict[str, Any],
+        instance_path: str,
+    ) -> dict[str, Any]:
+        releases = cls.list_releases(config, instance_path)
+        known_versions = {release.version for release in releases}
+
+        cleaned_target = str(target_version or '').strip()
+        if cleaned_target and cleaned_target not in known_versions:
+            raise ValueError('target_version_not_found')
+
+        policy = {
+            'target_version': cleaned_target,
+            'notes': str(notes or '').strip(),
+            'updated_at': datetime.utcnow().isoformat(),
+        }
+
+        path = cls._policy_path(config, instance_path)
+        path.write_text(json.dumps(policy, indent=2), encoding='utf-8')
+        return policy
+
+    @classmethod
+    def _version_key(cls, value: str) -> tuple:
+        # Build a sortable key for versions like 1.2.3, 1.2.3-beta, etc.
+        chunks = re.split(r'([0-9]+)', str(value or '').strip())
+        key: list[Any] = []
+        for chunk in chunks:
+            if chunk == '':
+                continue
+            if chunk.isdigit():
+                key.append((0, int(chunk)))
+            else:
+                key.append((1, chunk.lower()))
+        return tuple(key)
+
+    @classmethod
+    def build_update_guide(
+        cls,
+        current_version: str,
+        config: dict[str, Any],
+        instance_path: str,
+    ) -> dict[str, Any]:
+        releases = cls.list_releases(config, instance_path)
+        if not releases:
+            return {
+                'status': 'no_releases',
+                'current_version': str(current_version or '').strip(),
+                'recommended_version': None,
+                'action': 'none',
+                'latest_version': None,
+                'downgrade_candidates': [],
+                'releases': [],
+                'policy': cls.get_policy(config, instance_path),
+            }
+
+        sorted_by_version = sorted(releases, key=lambda rel: cls._version_key(rel.version), reverse=True)
+        known_versions = {release.version for release in releases}
+
+        latest_version = sorted_by_version[0].version
+        policy = cls.get_policy(config, instance_path)
+        configured_target = str(policy.get('target_version') or '').strip()
+        recommended_version = configured_target if configured_target in known_versions else latest_version
+
+        current_clean = str(current_version or '').strip()
+        action = 'none'
+        if current_clean:
+            if cls._version_key(current_clean) < cls._version_key(recommended_version):
+                action = 'upgrade'
+            elif cls._version_key(current_clean) > cls._version_key(recommended_version):
+                action = 'downgrade'
+
+        downgrade_candidates = [
+            release.to_dict()
+            for release in sorted_by_version
+            if cls._version_key(release.version) < cls._version_key(recommended_version)
+        ]
+
+        return {
+            'status': 'ok',
+            'current_version': current_clean,
+            'recommended_version': recommended_version,
+            'action': action,
+            'latest_version': latest_version,
+            'downgrade_candidates': downgrade_candidates,
+            'releases': [release.to_dict() for release in sorted_by_version],
+            'policy': policy,
+        }

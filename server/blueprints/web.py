@@ -5,18 +5,20 @@ Web UI routes for dashboard and management
 
 import logging
 import os
+from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, flash, current_app, send_file, abort
+from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, flash, current_app, send_file, abort, send_from_directory, make_response
 from werkzeug.utils import secure_filename
 from ..auth import (
     clear_web_session,
+    hash_password,
     require_api_key_or_permission,
     require_web_permission,
     start_web_session,
     verify_password,
 )
-from ..models import db, SystemData, Organization, User
+from ..models import db, SystemData, Organization, User, Role
 from ..extensions import limiter
 from ..services import SystemService, BackupService, PerformanceService, AgentReleaseService
 from ..audit import log_audit_event
@@ -24,6 +26,11 @@ from ..audit import log_audit_event
 logger = logging.getLogger(__name__)
 
 web_bp = Blueprint('web', __name__)
+
+
+def _get_spa_dist_path() -> Path:
+    """Resolve the frontend SPA dist directory path."""
+    return Path(__file__).parent.parent.parent / 'frontend' / 'dist'
 
 
 def _is_safe_redirect_target(target: str) -> bool:
@@ -44,6 +51,48 @@ def _coerce_backup_rows():
             'size': backup['size_mb'],
         })
     return backups
+
+
+@web_bp.route('/app')
+@web_bp.route('/app/<path:path>')
+def spa_shell(path=None):
+    """
+    Serve the SPA shell and hard-refresh support for /app routing.
+    All /app/* routes are handled by the React router on the client side.
+    
+    This handler:
+    - Serves index.html for / and /app routes (SPA shell entry points)
+    - Serves static assets (JS, CSS, images) from dist/assets
+    - Returns 404 for non-existent static files
+    """
+    dist_path = _get_spa_dist_path()
+    
+    if not dist_path.exists():
+        logger.warning(f"SPA dist path not found: {dist_path}")
+        return jsonify({'error': 'SPA not deployed'}), 503
+    
+    # Request for specific static asset
+    if path and '.' in path.split('/')[-1]:
+        try:
+            response = make_response(send_from_directory(dist_path, path))
+            # Set cache headers for hashed assets (1 year)
+            response.cache_control.max_age = 31536000
+            response.cache_control.public = True
+            return response
+        except Exception as e:
+            logger.debug(f"Static asset not found: {path}")
+            return jsonify({'error': 'Asset not found'}), 404
+    
+    # Hard-refresh support: serve index.html for any route to let React Router take over
+    index_path = dist_path / 'index.html'
+    if index_path.exists():
+        response = make_response(send_from_directory(dist_path, 'index.html'))
+        # No-cache for index.html to ensure latest shell is served
+        response.cache_control.no_cache = True
+        response.cache_control.no_store = True
+        return response
+    
+    return jsonify({'error': 'SPA shell not found'}), 503
 
 
 @web_bp.route('/login', methods=['GET', 'POST'])
@@ -109,9 +158,15 @@ def index():
     """
     Home page with dashboard.
     
+    Conducts Wave 1 redirect if SPA_WAVE_1_ENABLED is true.
+    
     Returns:
-        Rendered dashboard template
+        Rendered dashboard template or redirect to SPA when wave-1 is active
     """
+    # Wave 1 redirect: redirect to SPA if enabled
+    if current_app.config.get('SPA_WAVE_1_ENABLED', False):
+        return redirect('/app/dashboard', code=302)
+    
     try:
         recent_limit = int(current_app.config.get('QUERY_RECENT_SYSTEMS_LIMIT', 10))
         if current_app.config.get('QUERY_OPTIMIZER_ENABLED', True):
@@ -140,6 +195,211 @@ def index():
         return render_template('base.html', error="Failed to load dashboard"), 500
 
 
+@web_bp.route('/features')
+@require_web_permission('dashboard.view')
+def features_hub():
+    """Feature hub page listing web and API capabilities."""
+    web_features = [
+        {
+            'name': 'Dashboard',
+            'path': url_for('web.index'),
+            'description': 'Live overview of active systems and recent updates.',
+            'permission': 'dashboard.view',
+        },
+        {
+            'name': 'System Detail',
+            'path': url_for('web.user'),
+            'description': 'Deep dive into CPU, RAM, storage and network metrics.',
+            'permission': 'dashboard.view',
+        },
+        {
+            'name': 'History',
+            'path': url_for('web.history'),
+            'description': 'Historical performance snapshots and trend view.',
+            'permission': 'dashboard.view',
+        },
+        {
+            'name': 'Admin',
+            'path': url_for('web.admin'),
+            'description': 'Tenant administration and system-level management actions.',
+            'permission': 'tenant.manage',
+        },
+        {
+            'name': 'Backup',
+            'path': url_for('web.backup'),
+            'description': 'Create and restore backups for your tenant data.',
+            'permission': 'backup.manage',
+        },
+        {
+            'name': 'Agent Releases',
+            'path': url_for('web.agent_releases_page'),
+            'description': 'Upload and download Windows agent release binaries.',
+            'permission': 'dashboard.view',
+        },
+    ]
+
+    api_feature_groups = [
+        {
+            'title': 'Auth + Session APIs',
+            'items': [
+                {'method': 'POST', 'endpoint': '/api/auth/login', 'purpose': 'JWT login for API clients.'},
+                {'method': 'POST', 'endpoint': '/api/auth/refresh', 'purpose': 'Refresh JWT access token.'},
+                {'method': 'POST', 'endpoint': '/api/auth/logout', 'purpose': 'Revoke JWT tokens.'},
+            ],
+        },
+        {
+            'title': 'System Data + Dashboard APIs',
+            'items': [
+                {'method': 'POST', 'endpoint': '/api/submit_data', 'purpose': 'Agent uploads benchmark payload.'},
+                {'method': 'GET', 'endpoint': '/api/get_data', 'purpose': 'List tenant systems.'},
+                {'method': 'POST', 'endpoint': '/manual_submit', 'purpose': 'Manual local benchmark submit.'},
+            ],
+        },
+        {
+            'title': 'Operations APIs',
+            'items': [
+                {'method': 'POST', 'endpoint': '/api/automation/run', 'purpose': 'Run automation workflow.'},
+                {'method': 'POST', 'endpoint': '/api/alerts/evaluate', 'purpose': 'Evaluate alert rules.'},
+                {'method': 'POST', 'endpoint': '/api/backup/create', 'purpose': 'Trigger backup creation.'},
+            ],
+        },
+        {
+            'title': 'Agent Release Lifecycle APIs',
+            'items': [
+                {'method': 'GET', 'endpoint': '/api/agent/releases', 'purpose': 'List release binaries.'},
+                {'method': 'POST', 'endpoint': '/api/agent/releases/upload', 'purpose': 'Upload release artifact.'},
+                {'method': 'GET', 'endpoint': '/api/agent/releases/guide?current_version=x.y.z', 'purpose': 'Get upgrade/downgrade recommendation.'},
+            ],
+        },
+    ]
+
+    users = User.query.filter_by(organization_id=g.tenant.id).all()
+    roles = Role.query.filter_by(organization_id=g.tenant.id).all()
+    try:
+        releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path)
+    except Exception:
+        releases = []
+
+    dist_binary = os.path.join(
+        current_app.root_path, '..', 'agent', 'dist', 'aaditech-agent'
+    )
+    agent_built = os.path.exists(os.path.realpath(dist_binary))
+
+    return render_template(
+        'features.html',
+        web_features=web_features,
+        api_feature_groups=api_feature_groups,
+        users=users,
+        roles=roles,
+        releases=releases,
+        agent_built=agent_built,
+    )
+
+
+@web_bp.route('/features/create-user', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_web_permission('tenant.manage')
+def features_create_user():
+    """Create a new user for the current tenant from the control panel."""
+    full_name = (request.form.get('full_name') or '').strip()
+    email = (request.form.get('email') or '').strip().lower()
+    password = (request.form.get('password') or '').strip()
+    role_id = (request.form.get('role_id') or '').strip()
+
+    if not full_name or not email or not password:
+        flash('Full name, email, and password are all required.', 'danger')
+        return redirect(url_for('web.features_hub') + '#tab-users')
+
+    if len(password) < 8:
+        flash('Password must be at least 8 characters.', 'danger')
+        return redirect(url_for('web.features_hub') + '#tab-users')
+
+    existing = User.query.filter_by(organization_id=g.tenant.id, email=email).first()
+    if existing:
+        flash(f'A user with email {email} already exists.', 'danger')
+        return redirect(url_for('web.features_hub') + '#tab-users')
+
+    new_user = User(
+        organization_id=g.tenant.id,
+        email=email,
+        full_name=full_name,
+        password_hash=hash_password(password),
+        is_active=True,
+    )
+    if role_id:
+        role = Role.query.filter_by(id=int(role_id), organization_id=g.tenant.id).first()
+        if role:
+            new_user.roles.append(role)
+
+    db.session.add(new_user)
+    db.session.commit()
+    log_audit_event('user.create', outcome='success', email=email, created_by=g.current_user.id)
+    flash(f'User {email} created successfully!', 'success')
+    return redirect(url_for('web.features_hub') + '#tab-users')
+
+
+@web_bp.route('/features/build-agent', methods=['POST'])
+@limiter.limit("5 per hour")
+@require_web_permission('tenant.manage')
+def features_build_agent():
+    """Trigger a PyInstaller build of the agent binary inside the container."""
+    import subprocess
+
+    spec_path = os.path.realpath(
+        os.path.join(current_app.root_path, '..', 'agent', 'build.spec')
+    )
+    dist_path = os.path.realpath(
+        os.path.join(current_app.root_path, '..', 'agent', 'dist')
+    )
+    work_path = os.path.realpath(
+        os.path.join(current_app.root_path, '..', 'agent', 'build')
+    )
+
+    if not os.path.exists(spec_path):
+        flash('Build spec (agent/build.spec) not found on server.', 'danger')
+        return redirect(url_for('web.features_hub') + '#tab-agent')
+
+    try:
+        result = subprocess.run(
+            ['pyinstaller', '--distpath', dist_path, '--workpath', work_path,
+             '--noconfirm', spec_path],
+            capture_output=True, text=True, timeout=180,
+        )
+        if result.returncode == 0:
+            log_audit_event('agent.build', outcome='success', built_by=g.current_user.id)
+            flash('Agent built successfully! Use the Download button below.', 'success')
+        else:
+            err_tail = (result.stderr or result.stdout or '')[-800:]
+            log_audit_event('agent.build', outcome='failure', error=err_tail[:200])
+            flash(f'Build failed. PyInstaller output: {err_tail}', 'danger')
+    except FileNotFoundError:
+        flash('PyInstaller not installed in this environment. '
+              'Add pyinstaller to requirements.txt and rebuild the container.', 'warning')
+    except subprocess.TimeoutExpired:
+        flash('Build timed out after 180 seconds.', 'danger')
+    except Exception as exc:
+        logger.error('Agent build error: %s', exc, exc_info=True)
+        flash('Build failed due to an unexpected server error.', 'danger')
+
+    return redirect(url_for('web.features_hub') + '#tab-agent')
+
+
+@web_bp.route('/features/download-built-agent')
+@limiter.limit("30 per hour")
+@require_web_permission('dashboard.view')
+def features_download_built_agent():
+    """Download the most recently compiled agent binary."""
+    dist_binary = os.path.realpath(
+        os.path.join(current_app.root_path, '..', 'agent', 'dist', 'aaditech-agent')
+    )
+    if not os.path.exists(dist_binary):
+        flash('No built binary found. Build the agent first.', 'warning')
+        return redirect(url_for('web.features_hub') + '#tab-agent')
+
+    log_audit_event('agent.build.download', outcome='success', downloaded_by=g.current_user.id)
+    return send_file(dist_binary, as_attachment=True, download_name='aaditech-agent')
+
+
 @web_bp.route('/user')
 @web_bp.route('/user/<serial_number>')
 @limiter.limit("30 per minute")
@@ -148,9 +408,17 @@ def user(serial_number=None):
     """
     User page - view user-specific system data.
     
+    Conducts Wave 1 redirect if SPA_WAVE_1_ENABLED is true.
+    
     Returns:
-        Rendered user template
+        Rendered user template or redirect to SPA when wave-1 is active
     """
+    # Wave 1 redirect: redirect to SPA if enabled
+    if current_app.config.get('SPA_WAVE_1_ENABLED', False):
+        if serial_number:
+            return redirect(f'/app/systems?serial={serial_number}', code=302)
+        return redirect('/app/systems', code=302)
+    
     try:
         query = SystemData.query.filter_by(organization_id=g.tenant.id)
         if serial_number:
@@ -198,6 +466,15 @@ def admin():
 @require_web_permission('dashboard.view')
 def history():
     """
+    History page - reliability history and trends.
+    
+    Conducts Wave 1 redirect if SPA_WAVE_1_ENABLED is true.
+    """
+    # Wave 1 redirect: redirect to SPA if enabled
+    if current_app.config.get('SPA_WAVE_1_ENABLED', False):
+        return redirect('/app/history', code=302)
+    
+    """
     System history page - view historical data and trends.
     
     Returns:
@@ -227,6 +504,15 @@ def history():
 @limiter.limit("30 per minute")
 @require_web_permission('backup.manage')
 def backup():
+    """
+    Backup page - backup management console.
+    
+    Conducts Wave 1 redirect if SPA_WAVE_1_ENABLED is true.
+    """
+    # Wave 1 redirect: redirect to SPA if enabled
+    if current_app.config.get('SPA_WAVE_1_ENABLED', False):
+        return redirect('/app/backup', code=302)
+    
     """
     Backup management page.
     

@@ -57,6 +57,68 @@ Solution: Added `apply_silences: false` in targeted evaluation tests.
 
 ---
 
+## 🚀 AGENT RELEASE LIFECYCLE UPDATE (2026-03-24)
+
+### Implemented now
+1. CI auto-build + auto-publish workflow for Windows agent:
+  - Added `.github/workflows/agent-release-publish.yml`
+  - Triggered by `agent-v*` tags or manual dispatch input
+  - Builds versioned `.exe`, uploads artifact, publishes GitHub release asset
+  - Optional auto-publish to server API via secrets
+
+2. API release lifecycle endpoints (for automation + self-update):
+  - `GET /api/agent/releases`
+  - `POST /api/agent/releases/upload`
+  - `GET /api/agent/releases/download/<filename>`
+  - `GET /api/agent/releases/policy`
+  - `PUT /api/agent/releases/policy`
+  - `GET /api/agent/releases/guide?current_version=<x.y.z>`
+
+3. Server-side guided downgrade:
+  - Added release policy persistence (`target_version`, `notes`, `updated_at`)
+  - Guide endpoint now returns `action: upgrade|downgrade|none` and recommended download URL
+
+4. Test coverage added:
+  - `tests/test_agent_release_api.py` for upload/list/policy/guide validation
+
+---
+
+## 🧭 CONTROL PANEL UPDATE (2026-03-24)
+
+### Implemented now
+1. Unified Control Panel at `GET /features`:
+  - Replaced simple feature list with tabbed operational UI.
+  - Tabs: Quick Nav, User Management, Agent Build & Releases, API Reference.
+
+2. Tenant user/admin creation from web UI:
+  - Added `POST /features/create-user`.
+  - Supports full name, email, password, and optional role assignment.
+  - Enforced tenant scoping and duplicate-user checks.
+
+3. Server-side agent build trigger from web UI:
+  - Added `POST /features/build-agent`.
+  - Runs PyInstaller build using `agent/build.spec`.
+  - Build output made downloadable from Control Panel.
+
+4. Built artifact download route:
+  - Added `GET /features/download-built-agent`.
+  - Returns latest built binary if available.
+
+5. UX/navigation update:
+  - Navbar label updated from "Features" to "Control Panel".
+  - Hash-based tab restore added for smoother post-action redirects.
+
+### Access control
+- Control Panel page: `dashboard.view`
+- Create user/build actions: `tenant.manage`
+- Release upload/download: existing RBAC rules preserved
+
+### Documentation sync
+- README updated with Control Panel section and endpoint inventory.
+- Documentation index updated to mention Control Panel coverage.
+
+---
+
 ## 🎯 PHASE 0: SECURE FOUNDATION (Weeks 1-4)
 
 ### Week 1: Secrets & Security Hardening

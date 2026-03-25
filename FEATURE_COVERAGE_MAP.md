@@ -186,7 +186,7 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 | 1 | Multi-Organization Support | ✅ **DONE** | Phase 1 | Organization model + tenant APIs implemented |
 | 2 | Tenant Isolation | ✅ **DONE** | Phase 1 | Query filtering by organization_id across routes |
 | 3 | Per-Tenant Dashboards | 🟡 **PARTIAL** | Phase 1 | Tenant-scoped data serving; UI polish pending |
-| 4 | Per-Tenant User Management | 🟡 **PARTIAL** | Phase 1 | User/Role/Permission schema added |
+| 4 | Per-Tenant User Management | 🟡 **PARTIAL** | Phase 1 | User/Role/Permission schema added + Control Panel user creation UI (`POST /features/create-user`) delivered |
 | 5 | Tenant Onboarding Automation | 🟡 **PARTIAL** | Phase 1 | Tenant create/list/status admin endpoints implemented |
 | 6 | White-Label Platform Support | 🔶 **PLANNED** | Phase 1 | Custom branding |
 

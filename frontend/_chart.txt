@@ -1,0 +1,9 @@
+
+const chartData = [
+  { time: "00:00", health: 95, load: 45 },
+  { time: "04:00", health: 92, load: 38 },
+  { time: "08:00", health: 88, load: 62 },
+  { time: "12:00", health: 91, load: 55 },
+  { time: "16:00", health: 94, load: 48 },
+  { time: "20:00", health: 96, load: 40 },
+];

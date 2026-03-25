@@ -190,6 +190,12 @@ class Config:
     # Backup configuration
     BACKUP_DIR = os.getenv('BACKUP_DIR', 'backups/')
     
+    # Frontend SPA migration — Wave 1 cutover flag
+    # Controls whether legacy routes are redirected to SPA or remain active as fallbacks.
+    # When False: legacy Jinja routes remain primary, /app available for validation.
+    # When True: wave-1 routes (/, /user, /history, /backup) redirect to /app equivalents.
+    SPA_WAVE_1_ENABLED = os.getenv('SPA_WAVE_1_ENABLED', 'False').lower() == 'true'
+    
     # Logging configuration
     LOG_LEVEL = 'INFO'
     LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'

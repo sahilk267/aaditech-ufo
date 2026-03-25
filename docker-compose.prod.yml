@@ -1,0 +1,96 @@
+# Production overrides - use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
+
+version: '3.9'
+
+services:
+  postgres:
+    restart: always
+    environment:
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    restart: always
+    command:
+      - redis-server
+      - "--appendonly"
+      - "yes"
+      - "--requirepass"
+      - "${REDIS_PASSWORD:-redis123}"
+      - "--maxmemory"
+      - "512mb"
+      - "--maxmemory-policy"
+      - "allkeys-lru"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Frontend Production Server (Pre-built assets served by Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NODE_ENV: production
+        VITE_API_BASE_URL: /api
+    container_name: aaditech-frontend
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+    networks:
+      - aaditech-network
+    profiles:
+      - full
+
+  app:
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        PYTHON_VERSION: "3.12"
+    environment:
+      FLASK_DEBUG: "False"
+      FLASK_ENV: production
+      DATABASE_URL: postgresql://${DB_USER:-aaditech}:${DB_PASSWORD:?error}@postgres:5432/${DB_NAME:-aaditech_ufo}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?error}@redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:?error}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?error}
+      ENABLE_PROXY_FIX: "True"
+      PROXY_FIX_X_FOR: "1"
+      PROXY_FIX_X_PROTO: "1"
+      PROXY_FIX_X_HOST: "1"
+      PROXY_FIX_X_PORT: "1"
+      PROXY_FIX_X_PREFIX: "1"
+    expose:
+      - "5000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  gateway:
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  redis_data:
+  nginx_logs:
+
+networks:
+  aaditech-network:

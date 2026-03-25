@@ -1,6 +1,6 @@
 # 📚 AADITECH UFO - DOCUMENTATION INDEX
 
-**Guide to All Project Documentation** | Updated March 16, 2026 for Phase 1 auth and tenant milestone sync
+**Guide to All Project Documentation** | Updated March 24, 2026 for Control Panel + user management + agent build/release sync
 
 ---
 
@@ -12,6 +12,8 @@
 |------|----------|------|
 | **🎯 IMPLEMENTATION REFERENCE** | [IMPLEMENTATION_REFERENCE_GUIDE.md](IMPLEMENTATION_REFERENCE_GUIDE.md) | 10 min |
 | **See project vision & goals** | [README.md](README.md) (92 features) | 20 min |
+| **Control Panel operations guide** | [README.md](README.md) → "Unified Control Panel (/features)" | 8 min |
+| **New frontend migration blueprint** | [FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md](FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md) | 15 min |
 | **Know what to do this week** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
 | **Track implementation progress** | [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) | 5 min |
 | **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
@@ -64,6 +66,7 @@
   - All major platform capabilities
   - System architecture vision
   - Security model
+  - Unified Control Panel (`/features`) usage and endpoint inventory
   - All 92 planned features
   - Deployment modes
   - Integration points
@@ -102,6 +105,7 @@
 - **Purpose**: Real-time tracking of development progress
 - **Contains**:
   - Current milestone summary for delivered Phase 0 and Phase 1 work
+  - Control Panel delivery updates (user creation + agent build/upload workflows)
   - Phase-wise feature & function breakdown (all 157 features)
   - Feature completion matrix (status by phase)
   - Completion checklist (all 25 weeks)
@@ -122,6 +126,31 @@
 - **Audience**: All developers
 - **Update Frequency**: As needed (when new patterns emerge)
 - **Use**: Quick lookup for commands/setup
+
+#### 5A. **FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md**
+- **Purpose**: Complete implementation blueprint for the new Vite SPA frontend
+- **Contains**:
+  - Recommended stack and dependency versions
+  - Route map and module boundaries
+  - API-to-page mapping
+  - Database dependency map
+  - Auth/RBAC/tenant handling strategy
+  - Migration plan and zero-conflict rollout rules
+  - Required backend additions for full SPA replacement
+- **Audience**: Frontend developers, architects, platform leads
+- **Update Frequency**: When frontend scope or backend contracts change
+- **Use**: Primary plan for replacing the legacy template UI with SPA
+
+#### 5B. **FRONTEND_PHASE_1_TO_5_TRACKING.md**
+- **Purpose**: Live status tracking for frontend Phase 1 to Phase 5 migration progress
+- **Contains**:
+  - Phase-wise status (complete/in-progress/not-started)
+  - Progress percentages by phase
+  - Completed implementation summary
+  - Pending tasks and immediate next actions
+- **Audience**: Frontend developers, PM/engineering leads
+- **Update Frequency**: After each major frontend implementation milestone
+- **Use**: Quick checkpoint file for current migration state and next priorities
 
 ---
 

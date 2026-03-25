@@ -1,15 +1,64 @@
+# Git
 .git
+.gitignore
 .github
+
+# Python
 .venv
+.env
+.env.*.example
 .pytest_cache
 .coverage
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+*.egg-info/
+dist/
+build/
+.tox/
+
+# Development
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Database
 *.db
+*.sqlite
+*.sqlite3
 instance/
-server/__pycache__/
-tests/__pycache__/
+
+# Logs
+*.log
+logs/
+
+# Build artifacts
+frontend/dist
+frontend/node_modules
+frontend/.parcel-cache
+
+# Documentation
 ARCHIVE/
 README_OLD.md
+*.md
+
+# Docker
+Dockerfile.dev
+docker-compose.dev.yml
+docker-compose.prod.yml
+scripts/
+
+# Tests
+tests/
+pytest.ini
+.coverage*
+
+# Editor files
+*.sublime-workspace
+.vscode/
+.idea/

@@ -1,0 +1,10 @@
+Search: export type ScheduledJobsResponse = {
+  status: string;
+  jobs: ScheduledJob[];
+};
+
+Replace: export type ScheduledJobsResponse = {
+  status: string;
+  scheduled_jobs?: ScheduledJob[];
+  jobs?: ScheduledJob[];
+};

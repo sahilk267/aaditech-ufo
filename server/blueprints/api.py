@@ -4,10 +4,12 @@ REST API endpoints for agent data submission and system management
 """
 
 import logging
+import os
 import re
 from flask import current_app
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, send_file, abort, url_for
 from sqlalchemy import text
+from werkzeug.utils import secure_filename
 from ..extensions import limiter
 from ..auth import (
     require_api_key,
@@ -21,7 +23,7 @@ from ..auth import (
     revoke_token,
 )
 from ..schemas import validate_and_clean_system_data
-from ..models import db, SystemData, Organization, User, Role, Permission
+from ..models import db, SystemData, Organization, User, Role, Permission, AuditEvent
 from ..audit import log_audit_event
 from ..queue import (
     get_queue_status,
@@ -29,7 +31,7 @@ from ..queue import (
     enqueue_alert_notification_job,
     enqueue_automation_workflow_job,
 )
-from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService, PerformanceService
+from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService, PerformanceService, AgentReleaseService, BackupService
 from marshmallow import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -80,6 +82,27 @@ def _get_or_create_default_admin_role(organization_id: int) -> Role:
             role.permissions.append(_get_or_create_permission(code, description))
 
     return role
+
+
+def _serialize_user(user: User) -> dict:
+    return {
+        'id': user.id,
+        'organization_id': user.organization_id,
+        'email': user.email,
+        'full_name': user.full_name,
+        'is_active': user.is_active,
+        'roles': [
+            {
+                'id': role.id,
+                'name': role.name,
+                'description': role.description,
+                'permissions': [permission.code for permission in role.permissions],
+            }
+            for role in user.roles
+        ],
+        'created_at': user.created_at.isoformat() if user.created_at else None,
+        'updated_at': user.updated_at.isoformat() if user.updated_at else None,
+    }
 
 
 @api_bp.route('/submit_data', methods=['POST'])
@@ -197,6 +220,179 @@ def optimize_database_queries():
     )
     status_code = 200 if result.get('status') == 'success' else 202
     return jsonify({'status': 'success', 'optimization': result}), status_code
+
+
+@api_bp.route('/agent/releases', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def list_agent_releases_api():
+    """List versioned Windows agent releases for API clients."""
+    releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path)
+    release_payload = []
+    for release in releases:
+        item = release.to_dict()
+        item['download_url'] = url_for('api.download_agent_release_api', filename=release.filename, _external=True)
+        release_payload.append(item)
+
+    log_audit_event('agent.release.list', outcome='success', release_count=len(release_payload))
+    return jsonify({'status': 'success', 'count': len(release_payload), 'releases': release_payload}), 200
+
+
+@api_bp.route('/agent/releases/upload', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def upload_agent_release_api():
+    """Upload versioned agent release via API (CI/CD friendly endpoint)."""
+    release_file = request.files.get('release_file')
+    version = str(request.form.get('version') or '').strip()
+
+    if release_file is None:
+        log_audit_event('agent.release.upload.api', outcome='failure', reason='file_missing', version=version)
+        return jsonify({'error': 'Validation failed', 'details': {'release_file': ['Field required.']}}), 400
+
+    max_mb = int(current_app.config.get('AGENT_RELEASE_MAX_MB', 256))
+    max_bytes = max_mb * 1024 * 1024
+    if request.content_length and request.content_length > max_bytes:
+        log_audit_event('agent.release.upload.api', outcome='failure', reason='file_too_large', version=version)
+        return jsonify({'error': 'Validation failed', 'details': {'release_file': [f'Max size is {max_mb} MB.']}}), 400
+
+    try:
+        release = AgentReleaseService.save_uploaded_release(
+            release_file,
+            version,
+            current_app.config,
+            current_app.instance_path,
+        )
+    except ValueError as exc:
+        log_audit_event('agent.release.upload.api', outcome='failure', reason=str(exc), version=version)
+        return jsonify({'error': 'Validation failed', 'details': {'version': [str(exc)]}}), 400
+    except Exception as exc:
+        log_audit_event('agent.release.upload.api', outcome='failure', reason='server_error', version=version)
+        return jsonify({'error': 'Upload failed', 'details': str(exc)}), 500
+
+    payload = release.to_dict()
+    payload['download_url'] = url_for('api.download_agent_release_api', filename=release.filename, _external=True)
+    log_audit_event('agent.release.upload.api', outcome='success', version=release.version, filename=release.filename)
+    return jsonify({'status': 'success', 'release': payload}), 201
+
+
+@api_bp.route('/agent/build/status', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_agent_build_status_api():
+    """Report whether a server-built agent binary is currently available."""
+    binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
+    payload = {
+        'binary_available': binary_path.exists() and binary_path.is_file(),
+        'binary_name': binary_path.name,
+    }
+    return jsonify({'status': 'success', 'build': payload}), 200
+
+
+@api_bp.route('/agent/build', methods=['POST'])
+@limiter.limit("5 per hour")
+@require_api_key_or_permission('tenant.manage')
+def build_agent_binary_api():
+    """Trigger server-side PyInstaller build for agent binary."""
+    result = AgentReleaseService.build_agent_binary(current_app.root_path, timeout_seconds=180)
+
+    if not result.get('success'):
+        log_audit_event('agent.build.api', outcome='failure', reason=result.get('reason'), details=result.get('details'))
+        reason = str(result.get('reason') or '')
+        if reason in {'spec_not_found', 'pyinstaller_missing'}:
+            return jsonify({'error': 'Build unavailable', 'details': result}), 503
+        if reason == 'build_timeout':
+            return jsonify({'error': 'Build timeout', 'details': result}), 504
+        return jsonify({'error': 'Build failed', 'details': result}), 500
+
+    log_audit_event('agent.build.api', outcome='success', binary_path=result.get('binary_path'))
+    return jsonify({'status': 'success', 'build': result}), 200
+
+
+@api_bp.route('/agent/build/download', methods=['GET'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('dashboard.view')
+def download_built_agent_binary_api():
+    """Download latest server-built agent binary."""
+    binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
+    if not binary_path.exists() or not binary_path.is_file():
+        log_audit_event('agent.build.download.api', outcome='failure', reason='not_found')
+        return jsonify({'error': 'Built binary not found'}), 404
+
+    log_audit_event('agent.build.download.api', outcome='success', filename=binary_path.name)
+    return send_file(binary_path, as_attachment=True, download_name=binary_path.name)
+
+
+@api_bp.route('/agent/releases/download/<path:filename>', methods=['GET'])
+@require_api_key
+def download_agent_release_api(filename):
+    """Download versioned agent release for agent/self-update flows."""
+    file_path = AgentReleaseService.resolve_download_path(filename, current_app.config, current_app.instance_path)
+    if file_path is None:
+        log_audit_event('agent.release.download.api', outcome='failure', reason='not_found', filename=filename)
+        abort(404)
+
+    log_audit_event('agent.release.download.api', outcome='success', filename=file_path.name)
+    return send_file(file_path, as_attachment=True, download_name=file_path.name)
+
+
+@api_bp.route('/agent/releases/policy', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_agent_release_policy_api():
+    """Return active server-side release policy used by guide endpoint."""
+    policy = AgentReleaseService.get_policy(current_app.config, current_app.instance_path)
+    return jsonify({'status': 'success', 'policy': policy}), 200
+
+
+@api_bp.route('/agent/releases/policy', methods=['PUT'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('tenant.manage')
+def set_agent_release_policy_api():
+    """Set server-side target version for guided upgrade/downgrade."""
+    payload = request.get_json(silent=True) or {}
+    target_version = str(payload.get('target_version') or '').strip()
+    notes = str(payload.get('notes') or '').strip()
+
+    try:
+        policy = AgentReleaseService.set_policy(
+            target_version,
+            notes,
+            current_app.config,
+            current_app.instance_path,
+        )
+    except ValueError as exc:
+        log_audit_event('agent.release.policy.update', outcome='failure', reason=str(exc), target_version=target_version)
+        return jsonify({'error': 'Validation failed', 'details': {'target_version': [str(exc)]}}), 400
+
+    log_audit_event('agent.release.policy.update', outcome='success', target_version=policy.get('target_version'))
+    return jsonify({'status': 'success', 'policy': policy}), 200
+
+
+@api_bp.route('/agent/releases/guide', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_agent_release_guide_api():
+    """Return guided update/downgrade decision for a given current version."""
+    current_version = str(request.args.get('current_version') or '').strip()
+    guide = AgentReleaseService.build_update_guide(current_version, current_app.config, current_app.instance_path)
+
+    for release in guide.get('releases', []):
+        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''), _external=True)
+    for release in guide.get('downgrade_candidates', []):
+        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''), _external=True)
+
+    recommended = str(guide.get('recommended_version') or '').strip()
+    recommended_release = next((item for item in guide.get('releases', []) if item.get('version') == recommended), None)
+    if recommended_release:
+        guide['recommended_download_url'] = recommended_release.get('download_url')
+    else:
+        guide['recommended_download_url'] = None
+
+    log_audit_event(
+        'agent.release.guide',
+        outcome='success',
+        current_version=current_version,
+        recommended_version=guide.get('recommended_version'),
+        recommended_action=guide.get('action'),
+    )
+    return jsonify({'status': 'success', 'guide': guide}), 200
 
 
 @api_bp.route('/jobs/maintenance', methods=['POST'])
@@ -341,6 +537,252 @@ def update_tenant_status(tenant_id):
     logger.info("Updated tenant status '%s' -> %s", org.slug, org.is_active)
     log_audit_event('tenant.status_update', outcome='success', tenant_id=org.id, tenant_slug=org.slug, is_active=org.is_active)
     return jsonify({'status': 'success', 'tenant': org.to_dict()}), 200
+
+
+@api_bp.route('/users', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_users_api():
+    """List tenant-scoped users with role and permission context."""
+    users = (
+        User.query
+        .filter_by(organization_id=g.tenant.id)
+        .order_by(User.created_at.desc())
+        .all()
+    )
+    return jsonify({
+        'status': 'success',
+        'count': len(users),
+        'users': [_serialize_user(user) for user in users],
+    }), 200
+
+
+@api_bp.route('/users', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def create_user_api():
+    """Create tenant-scoped user with optional role assignment."""
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get('email') or '').strip().lower()
+    full_name = (payload.get('full_name') or '').strip()
+    password = (payload.get('password') or '').strip()
+    role_ids = payload.get('role_ids') if isinstance(payload.get('role_ids'), list) else []
+
+    errors = {}
+    if not email:
+        errors['email'] = ['Field required.']
+    if not full_name:
+        errors['full_name'] = ['Field required.']
+    if not password:
+        errors['password'] = ['Field required.']
+    elif len(password) < 8:
+        errors['password'] = ['Minimum length is 8.']
+
+    if errors:
+        log_audit_event('users.create', outcome='failure', reason='validation_failed', details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+    existing = User.query.filter_by(organization_id=g.tenant.id, email=email).first()
+    if existing:
+        log_audit_event('users.create', outcome='failure', reason='email_exists', user_email=email)
+        return jsonify({'error': 'User already exists'}), 409
+
+    roles = []
+    if role_ids:
+        roles = (
+            Role.query
+            .filter(Role.organization_id == g.tenant.id, Role.id.in_(role_ids))
+            .all()
+        )
+        if len(roles) != len(set(int(rid) for rid in role_ids if isinstance(rid, int) or str(rid).isdigit())):
+            return jsonify({'error': 'Validation failed', 'details': {'role_ids': ['One or more role_ids are invalid.']}}), 400
+
+    user = User(
+        organization_id=g.tenant.id,
+        email=email,
+        full_name=full_name,
+        password_hash=hash_password(password),
+        is_active=bool(payload.get('is_active', True)),
+    )
+    for role in roles:
+        user.roles.append(role)
+
+    db.session.add(user)
+    db.session.commit()
+
+    log_audit_event('users.create', outcome='success', user_id=user.id, user_email=user.email)
+    return jsonify({'status': 'success', 'user': _serialize_user(user)}), 201
+
+
+@api_bp.route('/users/<int:user_id>', methods=['PATCH'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('tenant.manage')
+def update_user_api(user_id):
+    """Patch tenant-scoped user details and role assignments."""
+    user = User.query.filter_by(id=user_id, organization_id=g.tenant.id).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    payload = request.get_json(silent=True) or {}
+
+    if 'email' in payload:
+        email = str(payload.get('email') or '').strip().lower()
+        if not email:
+            return jsonify({'error': 'Validation failed', 'details': {'email': ['Field cannot be blank.']}}), 400
+        existing = User.query.filter_by(organization_id=g.tenant.id, email=email).first()
+        if existing and existing.id != user.id:
+            return jsonify({'error': 'User already exists'}), 409
+        user.email = email
+
+    if 'full_name' in payload:
+        full_name = str(payload.get('full_name') or '').strip()
+        if not full_name:
+            return jsonify({'error': 'Validation failed', 'details': {'full_name': ['Field cannot be blank.']}}), 400
+        user.full_name = full_name
+
+    if 'password' in payload:
+        password = str(payload.get('password') or '').strip()
+        if len(password) < 8:
+            return jsonify({'error': 'Validation failed', 'details': {'password': ['Minimum length is 8.']}}), 400
+        user.password_hash = hash_password(password)
+
+    if 'is_active' in payload:
+        user.is_active = bool(payload.get('is_active'))
+
+    if 'role_ids' in payload:
+        role_ids = payload.get('role_ids')
+        if not isinstance(role_ids, list):
+            return jsonify({'error': 'Validation failed', 'details': {'role_ids': ['Must be a list.']}}), 400
+        roles = (
+            Role.query
+            .filter(Role.organization_id == g.tenant.id, Role.id.in_(role_ids))
+            .all()
+        ) if role_ids else []
+        if len(roles) != len(set(int(rid) for rid in role_ids if isinstance(rid, int) or str(rid).isdigit())):
+            return jsonify({'error': 'Validation failed', 'details': {'role_ids': ['One or more role_ids are invalid.']}}), 400
+        user.roles = roles
+
+    db.session.commit()
+
+    log_audit_event('users.update', outcome='success', user_id=user.id, user_email=user.email)
+    return jsonify({'status': 'success', 'user': _serialize_user(user)}), 200
+
+
+@api_bp.route('/roles', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_roles_api():
+    """List tenant-scoped roles and associated permissions."""
+    roles = Role.query.filter_by(organization_id=g.tenant.id).order_by(Role.name.asc()).all()
+    payload = [
+        {
+            'id': role.id,
+            'name': role.name,
+            'description': role.description,
+            'is_system': role.is_system,
+            'permissions': [permission.code for permission in role.permissions],
+        }
+        for role in roles
+    ]
+    return jsonify({'status': 'success', 'count': len(payload), 'roles': payload}), 200
+
+
+@api_bp.route('/permissions', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_permissions_api():
+    """List known permission codes."""
+    permissions = Permission.query.order_by(Permission.code.asc()).all()
+    payload = [
+        {
+            'id': permission.id,
+            'code': permission.code,
+            'description': permission.description,
+        }
+        for permission in permissions
+    ]
+    return jsonify({'status': 'success', 'count': len(payload), 'permissions': payload}), 200
+
+
+@api_bp.route('/backups', methods=['GET'])
+@require_api_key_or_permission('backup.manage')
+def list_backups_api():
+    """List available database backups."""
+    backups = BackupService.list_backups()
+    return jsonify({'status': 'success', 'count': len(backups), 'backups': backups}), 200
+
+
+@api_bp.route('/backups', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_api_key_or_permission('backup.manage')
+def create_backup_api():
+    """Create a database backup."""
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'toolboxgalaxy.db')
+    result = BackupService.create_backup(db_path)
+    if not result.get('success'):
+        log_audit_event('backup.create.api', outcome='failure', reason='service_failed', error=result.get('error'))
+        return jsonify({'error': 'Backup creation failed', 'details': result.get('error')}), 500
+
+    log_audit_event('backup.create.api', outcome='success', backup_filename=result.get('backup_filename'))
+    return jsonify({'status': 'success', 'backup': result}), 201
+
+
+@api_bp.route('/backups/<path:filename>/restore', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_api_key_or_permission('backup.manage')
+def restore_backup_api(filename):
+    """Restore database from a named backup file."""
+    safe_filename = secure_filename(filename)
+    if not safe_filename:
+        return jsonify({'error': 'Validation failed', 'details': {'filename': ['Invalid filename.']}}), 400
+
+    backup_path = os.path.join(BackupService.BACKUP_DIR, safe_filename)
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'toolboxgalaxy.db')
+
+    result = BackupService.restore_backup(backup_path, db_path)
+    if not result.get('success'):
+        status = 404 if 'not found' in str(result.get('error', '')).lower() else 500
+        log_audit_event('backup.restore.api', outcome='failure', reason='service_failed', backup_filename=safe_filename, error=result.get('error'))
+        return jsonify({'error': 'Backup restore failed', 'details': result.get('error')}), status
+
+    log_audit_event('backup.restore.api', outcome='success', backup_filename=safe_filename)
+    return jsonify({'status': 'success', 'restore': result}), 200
+
+
+@api_bp.route('/audit-events', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_audit_events_api():
+    """List audit events for current tenant with lightweight pagination."""
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    per_page = max(min(int(request.args.get('per_page', 25) or 25), 100), 1)
+
+    query = AuditEvent.query
+    tenant_id = getattr(g.tenant, 'id', None)
+    if tenant_id is not None:
+        query = query.filter((AuditEvent.tenant_id == tenant_id) | (AuditEvent.tenant_id.is_(None)))
+
+    pagination = query.order_by(AuditEvent.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    items = [
+        {
+            'id': event.id,
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'action': event.action,
+            'outcome': event.outcome,
+            'tenant_id': event.tenant_id,
+            'user_id': event.user_id,
+            'method': event.method,
+            'path': event.path,
+            'remote_addr': event.remote_addr,
+            'metadata': event.event_metadata,
+        }
+        for event in pagination.items
+    ]
+
+    return jsonify({
+        'status': 'success',
+        'page': page,
+        'per_page': per_page,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'events': items,
+    }), 200
 
 
 @api_bp.route('/auth/register', methods=['POST'])

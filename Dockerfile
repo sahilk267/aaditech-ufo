@@ -16,6 +16,8 @@ RUN pip install --upgrade pip \
 
 COPY . /app
 
+RUN chmod +x /app/entrypoint.sh
+
 EXPOSE 5000
 
-CMD ["flask", "--app", "server.app", "run", "--host", "0.0.0.0", "--port", "5000"]
+ENTRYPOINT ["/app/entrypoint.sh"]

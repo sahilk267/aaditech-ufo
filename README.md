@@ -195,6 +195,15 @@ Portal URLs:
 - `GET /agent/releases` — web portal page for listing versioned agent builds
 - `GET /agent/releases/download/<filename>` — direct artifact download
 
+API URLs (automation and agent self-update support):
+
+- `GET /api/agent/releases` — list versioned agent builds with API download URLs
+- `POST /api/agent/releases/upload` — CI/CD-friendly release upload (multipart)
+- `GET /api/agent/releases/download/<filename>` — API-key protected direct download
+- `GET /api/agent/releases/policy` — get active target version policy
+- `PUT /api/agent/releases/policy` — set target version policy (guided upgrade/downgrade)
+- `GET /api/agent/releases/guide?current_version=<x.y.z>` — recommended action (`upgrade`/`downgrade`/`none`)
+
 Upload workflow (admin):
 
 - Tenant admin can upload a new `.exe` release from the portal.
@@ -216,10 +225,66 @@ Server-side publish helper:
 ./scripts/publish_agent_release.sh --file /path/to/aaditech-agent.exe --version 1.0.0
 ```
 
+CI auto-build + auto-publish workflow:
+
+- Workflow file: `.github/workflows/agent-release-publish.yml`
+- Trigger by tag: `agent-v1.2.3` (or manual dispatch with version input)
+- Builds Windows `.exe`, uploads CI artifact, publishes GitHub release asset
+- Optional auto-publish to server release API when secrets are configured:
+	- `AGENT_RELEASE_UPLOAD_URL` (example: `https://your-server/api/agent/releases/upload`)
+	- `AGENT_RELEASE_API_KEY`
+	- Optional tenant slug via env (defaults to `default`)
+
 Configuration:
 
 - `AGENT_RELEASES_DIR` (default: `instance/agent_releases`)
 - `AGENT_RELEASE_MAX_MB` (default: `256`)
+
+## Unified Control Panel (`/features`)
+
+The platform includes a unified browser control panel at:
+
+- `GET /features`
+
+This page centralizes feature discovery and operational controls in one place.
+
+Control Panel tabs:
+
+1. Quick Nav
+- Direct launch cards for key web pages (Dashboard, User, History, Admin, Backup, Agent Releases).
+
+2. User Management
+- Create new tenant user/admin directly from UI.
+- Inputs: full name, email, password, optional role assignment.
+- Shows existing users with active/inactive state and assigned roles.
+- Shows available roles and mapped RBAC permissions.
+
+3. Agent Build & Releases
+- Build server-side agent binary using PyInstaller from `agent/build.spec`.
+- Download latest built binary from control panel.
+- Upload Windows `.exe` releases with semantic version.
+- View/download all uploaded release artifacts.
+
+4. API Reference
+- Read-only grouped table of implemented API endpoints and purpose.
+
+Control Panel action endpoints:
+
+- `POST /features/create-user` — create tenant user from UI (`tenant.manage`)
+- `POST /features/build-agent` — trigger PyInstaller build (`tenant.manage`)
+- `GET /features/download-built-agent` — download latest built server binary (`dashboard.view`)
+
+Security model:
+
+- Control Panel page access requires `dashboard.view`.
+- User creation/build actions require `tenant.manage`.
+- All actions are tenant-scoped and audit logged.
+
+Guided downgrade behavior:
+
+- Set `target_version` through `PUT /api/agent/releases/policy`
+- Agents/clients call `GET /api/agent/releases/guide` with current version
+- Server recommends upgrade/downgrade target and provides download URL
 
 Supported environments include:
 
