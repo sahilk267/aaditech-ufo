@@ -1,8 +1,13 @@
 """Tests for Phase 2 Week 15 reliability history foundation."""
 
+from datetime import UTC, datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from server.auth import get_api_key
+from server.extensions import db
+from server.models import Organization, SystemData
 
 
 def _headers(tenant_slug=None):
@@ -10,6 +15,30 @@ def _headers(tenant_slug=None):
     if tenant_slug:
         headers['X-Tenant-Slug'] = tenant_slug
     return headers
+
+
+def _seed_reliability_rows(app_fixture, hostname: str, rows: list[dict[str, float | str]]) -> None:
+    with app_fixture.app_context():
+        tenant = Organization.query.filter_by(slug='default').first()
+        if tenant is None:
+            tenant = Organization(name='Default Organization', slug='default', is_active=True)
+            db.session.add(tenant)
+            db.session.commit()
+
+        for index, row in enumerate(rows, start=1):
+            db.session.add(
+                SystemData(
+                    organization_id=tenant.id,
+                    serial_number=f'REL-{hostname}-{index}',
+                    hostname=hostname,
+                    cpu_usage=float(row.get('cpu_usage', 0.0)),
+                    ram_usage=float(row.get('ram_usage', 0.0)),
+                    storage_usage=float(row.get('storage_usage', 0.0)),
+                    status=str(row.get('status', 'active')),
+                    last_update=datetime.fromisoformat(str(row['observed_at']).replace('Z', '+00:00')).astimezone(UTC).replace(tzinfo=None),
+                )
+            )
+        db.session.commit()
 
 
 def test_reliability_history_uses_linux_test_double_path(client, app_fixture):
@@ -73,6 +102,62 @@ def test_reliability_history_uses_windows_boundary(client, app_fixture):
     assert payload['history']['record_count'] == 2
 
 
+def test_reliability_local_database_runtime_path(client, app_fixture):
+    app_fixture.config['RELIABILITY_HISTORY_ADAPTER'] = 'local_database'
+    app_fixture.config['RELIABILITY_SCORER_ADAPTER'] = 'local_database'
+    app_fixture.config['RELIABILITY_TREND_ADAPTER'] = 'local_database'
+    app_fixture.config['RELIABILITY_PREDICTION_ADAPTER'] = 'local_database'
+    app_fixture.config['RELIABILITY_PATTERN_ADAPTER'] = 'local_database'
+    app_fixture.config['RELIABILITY_ALLOWED_HOSTS'] = 'host-local'
+    app_fixture.config['RELIABILITY_TREND_WINDOW_SIZE'] = 4
+    app_fixture.config['RELIABILITY_PREDICTION_WINDOW_SIZE'] = 4
+    app_fixture.config['RELIABILITY_PREDICTION_HORIZON'] = 2
+    app_fixture.config['RELIABILITY_PATTERN_WINDOW_SIZE'] = 4
+
+    _seed_reliability_rows(
+        app_fixture,
+        'host-local',
+        [
+            {'observed_at': '2026-03-18T12:00:00Z', 'cpu_usage': 85, 'ram_usage': 82, 'storage_usage': 80, 'status': 'active'},
+            {'observed_at': '2026-03-18T12:10:00Z', 'cpu_usage': 72, 'ram_usage': 68, 'storage_usage': 70, 'status': 'active'},
+            {'observed_at': '2026-03-18T12:20:00Z', 'cpu_usage': 58, 'ram_usage': 55, 'storage_usage': 60, 'status': 'active'},
+            {'observed_at': '2026-03-18T12:30:00Z', 'cpu_usage': 40, 'ram_usage': 42, 'storage_usage': 52, 'status': 'active'},
+        ],
+    )
+
+    history = client.post('/api/reliability/history', headers=_headers(), json={'host_name': 'host-local'})
+    assert history.status_code == 200
+    history_payload = history.get_json()
+    assert history_payload['history']['adapter'] == 'local_database'
+    assert history_payload['history']['record_count'] == 4
+    assert history_payload['history']['records'][0]['source'] == 'system_data'
+
+    score = client.post('/api/reliability/score', headers=_headers(), json={'host_name': 'host-local'})
+    assert score.status_code == 200
+    score_payload = score.get_json()
+    assert score_payload['reliability']['adapter'] == 'local_database'
+    assert score_payload['reliability']['reliability_score']['current_score'] > 0
+
+    trend = client.post('/api/reliability/trends/analyze', headers=_headers(), json={'host_name': 'host-local'})
+    assert trend.status_code == 200
+    trend_payload = trend.get_json()
+    assert trend_payload['trend']['adapter'] == 'local_database'
+    assert trend_payload['trend']['trend']['direction'] == 'improving'
+
+    prediction = client.post('/api/reliability/predictions/analyze', headers=_headers(), json={'host_name': 'host-local'})
+    assert prediction.status_code == 200
+    prediction_payload = prediction.get_json()
+    assert prediction_payload['prediction']['adapter'] == 'local_database'
+    assert prediction_payload['prediction']['prediction']['predicted_score'] >= prediction_payload['prediction']['prediction']['current_score']
+
+    patterns = client.post('/api/reliability/patterns/detect', headers=_headers(), json={'host_name': 'host-local'})
+    assert patterns.status_code == 200
+    patterns_payload = patterns.get_json()
+    assert patterns_payload['patterns']['adapter'] == 'local_database'
+    assert patterns_payload['patterns']['patterns']['point_count'] == 4
+    assert patterns_payload['patterns']['patterns']['primary_pattern'] in {'none_detected', 'stable_plateau', 'recurring_degradation', 'oscillation'}
+
+
 def test_parse_crash_dump_uses_linux_test_double_path(client, app_fixture):
     app_fixture.config['RELIABILITY_CRASH_DUMP_ADAPTER'] = 'linux_test_double'
     app_fixture.config['RELIABILITY_ALLOWED_HOSTS'] = 'host-a,host-b'
@@ -131,6 +216,50 @@ def test_parse_crash_dump_uses_windows_boundary(client, app_fixture):
     assert payload['crash_dump']['adapter'] == 'windows'
     assert payload['crash_dump']['parsed_dump']['primary_module'] == 'app'
     assert payload['crash_dump']['parsed_dump']['dump_type'] == 'full_dump'
+
+
+def test_crash_dump_local_filesystem_runtime_path(client, app_fixture):
+    with TemporaryDirectory() as temp_dir:
+        dump_dir = Path(temp_dir)
+        dump_path = dump_dir / 'access-violation-app.dmp'
+        dump_path.write_bytes(b'crash-dump-content')
+
+        app_fixture.config['RELIABILITY_CRASH_DUMP_ADAPTER'] = 'local_filesystem'
+        app_fixture.config['RELIABILITY_EXCEPTION_IDENTIFIER_ADAPTER'] = 'local_filesystem'
+        app_fixture.config['RELIABILITY_STACK_TRACE_ADAPTER'] = 'local_filesystem'
+        app_fixture.config['RELIABILITY_ALLOWED_HOSTS'] = 'host-a'
+        app_fixture.config['RELIABILITY_ALLOWED_DUMP_ROOTS'] = str(dump_dir)
+        app_fixture.config['RELIABILITY_CRASH_DUMP_ROOT'] = str(dump_dir)
+
+        parse_response = client.post(
+            '/api/reliability/crash-dumps/parse',
+            headers=_headers(),
+            json={'host_name': 'host-a', 'dump_name': dump_path.name},
+        )
+        assert parse_response.status_code == 200
+        parse_payload = parse_response.get_json()
+        assert parse_payload['crash_dump']['adapter'] == 'local_filesystem'
+        assert parse_payload['crash_dump']['parsed_dump']['size_bytes'] == len(b'crash-dump-content')
+
+        exception_response = client.post(
+            '/api/reliability/exceptions/identify',
+            headers=_headers(),
+            json={'host_name': 'host-a', 'dump_name': dump_path.name},
+        )
+        assert exception_response.status_code == 200
+        exception_payload = exception_response.get_json()
+        assert exception_payload['exception']['adapter'] == 'local_filesystem'
+        assert exception_payload['exception']['identified_exception']['exception_name'] == 'access_violation'
+
+        stack_response = client.post(
+            '/api/reliability/stack-traces/analyze',
+            headers=_headers(),
+            json={'host_name': 'host-a', 'dump_name': dump_path.name},
+        )
+        assert stack_response.status_code == 200
+        stack_payload = stack_response.get_json()
+        assert stack_payload['stack_trace']['adapter'] == 'local_filesystem'
+        assert stack_payload['stack_trace']['stack_trace']['frame_count'] >= 2
 
 
 def test_identify_exception_uses_linux_test_double_path(client, app_fixture):

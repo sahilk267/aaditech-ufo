@@ -2,7 +2,7 @@
 
 import json
 import uuid
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from server.auth import get_api_key, WEB_SESSION_TENANT_SLUG_KEY, WEB_SESSION_USER_ID_KEY
 from server.extensions import db
@@ -50,6 +50,29 @@ def _login_browser(client, email, tenant_slug='default', follow_redirects=False)
 class TestSPAHardRefreshServing:
     """Test that `/app` and `/app/<path>` serve the SPA shell with proper caching."""
 
+    @staticmethod
+    def _write_test_dist(tmp_path):
+        dist_path = tmp_path / 'dist'
+        assets_path = dist_path / 'assets'
+        assets_path.mkdir(parents=True)
+        (dist_path / 'index.html').write_text(
+            '<!DOCTYPE html><html><body><div id="root"></div></body></html>',
+            encoding='utf-8',
+        )
+        (assets_path / 'app-test-ABC123.js').write_text(
+            'console.log("asset ok");',
+            encoding='utf-8',
+        )
+        (assets_path / 'app-test-ABC123.css').write_text(
+            'body { color: black; }',
+            encoding='utf-8',
+        )
+        (dist_path / 'favicon.svg').write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+            encoding='utf-8',
+        )
+        return dist_path
+
     def test_spa_root_path_serves_index_html(self, client):
         """GET /app should serve index.html (SPA shell)."""
         response = client.get('/app')
@@ -95,29 +118,74 @@ class TestSPAHardRefreshServing:
         assert response.status_code == 200
         assert response.content_type.startswith('text/html')
 
-    def test_spa_asset_js_returns_javascript_with_cache_headers(self, client):
-        """GET /app/assets/*.js should serve JavaScript with 1-year cache for hashed files."""
-        # This test assumes a test asset exists; we'll patch the file system
-        with patch('server.blueprints.web.send_from_directory') as mock_send:
-            mock_send.return_value = MagicMock(
-                headers={'Cache-Control': 'public, max-age=31536000'},
-                status_code=200,
-                content_type='application/javascript',
-            )
-            # We can't truly verify cache headers without modifying the test fixture,
-            # but this demonstrates the structure.
-            assert True
+    def test_spa_asset_js_returns_javascript_with_cache_headers(self, client, monkeypatch, tmp_path):
+        """GET /app/assets/*.js should serve JavaScript with 1-year cache for deployed assets."""
+        dist_path = self._write_test_dist(tmp_path)
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: dist_path)
 
-    def test_spa_asset_css_returns_stylesheet(self, client):
-        """GET /app/assets/*.css should serve CSS."""
-        # Similar structure to JS test
-        assert True
+        response = client.get('/app/assets/app-test-ABC123.js')
 
-    def test_spa_404_on_missing_dist_folder(self, client):
+        assert response.status_code == 200
+        assert response.content_type.startswith('text/javascript') or response.content_type.startswith('application/javascript')
+        assert response.cache_control.public is True
+        assert response.cache_control.max_age == 31536000
+
+    def test_spa_asset_css_returns_stylesheet(self, client, monkeypatch, tmp_path):
+        """GET /app/assets/*.css should serve stylesheet assets with long-lived cache headers."""
+        dist_path = self._write_test_dist(tmp_path)
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: dist_path)
+
+        response = client.get('/app/assets/app-test-ABC123.css')
+
+        assert response.status_code == 200
+        assert response.content_type.startswith('text/css')
+        assert response.cache_control.public is True
+        assert response.cache_control.max_age == 31536000
+
+    def test_spa_index_html_is_served_with_no_cache_headers(self, client, monkeypatch, tmp_path):
+        """GET /app should serve the SPA shell without caching so deploys pick up fresh index.html."""
+        dist_path = self._write_test_dist(tmp_path)
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: dist_path)
+
+        response = client.get('/app')
+
+        assert response.status_code == 200
+        assert response.content_type.startswith('text/html')
+        assert response.cache_control.no_cache
+        assert response.cache_control.no_store is True
+        assert 'no-cache' in response.headers['Cache-Control']
+        assert 'no-store' in response.headers['Cache-Control']
+
+    def test_spa_asset_returns_404_when_missing_in_deployed_dist(self, client, monkeypatch, tmp_path):
+        """GET missing deployed assets should return a 404 instead of the SPA shell."""
+        dist_path = self._write_test_dist(tmp_path)
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: dist_path)
+
+        response = client.get('/app/assets/missing.js')
+
+        assert response.status_code == 404
+        assert response.get_json() == {'error': 'Asset not found'}
+
+    def test_non_hashed_spa_asset_is_not_marked_long_lived(self, client, monkeypatch, tmp_path):
+        """Non-hashed static assets should not get a year-long cache policy."""
+        dist_path = self._write_test_dist(tmp_path)
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: dist_path)
+
+        response = client.get('/app/favicon.svg')
+
+        assert response.status_code == 200
+        assert response.cache_control.no_cache
+        assert response.cache_control.no_store is True
+
+    def test_spa_503_on_missing_dist_folder(self, client, monkeypatch, tmp_path):
         """If frontend dist is not deployed, /app should return 503."""
-        # This test depends on deployment state; it's informational
-        # In a real test, we'd mock the dist path check
-        assert True
+        missing_dist_path = tmp_path / 'missing-dist'
+        monkeypatch.setattr('server.blueprints.web._get_spa_dist_path', lambda: missing_dist_path)
+
+        response = client.get('/app')
+
+        assert response.status_code == 503
+        assert response.get_json() == {'error': 'SPA not deployed'}
 
 
 # ============================================================================

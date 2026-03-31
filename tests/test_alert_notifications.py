@@ -4,8 +4,9 @@ from datetime import datetime
 from unittest.mock import patch
 
 from server.auth import get_api_key
-from server.models import AuditEvent, Organization, SystemData
+from server.models import AuditEvent, NotificationDelivery, Organization, SystemData
 from server.extensions import db
+from server.tasks import dispatch_alert_notifications as dispatch_alert_notifications_task
 
 
 def _headers(tenant_slug=None):
@@ -218,3 +219,61 @@ def test_dispatch_notifications_escalates_severity_on_repeat_threshold(client, a
     sent_alerts = webhook_mock.call_args[0][0]
     assert sent_alerts[0]['severity'] == 'critical'
     assert sent_alerts[0]['escalated'] is True
+
+
+def test_dispatch_notification_task_records_delivery_audit_without_request_context(app_fixture):
+    app_fixture.config['ALERT_WEBHOOK_ENABLED'] = True
+    app_fixture.config['ALERT_WEBHOOK_URL'] = 'http://example.local/hook'
+
+    with app_fixture.app_context():
+        tenant = Organization.query.filter_by(slug='default').first()
+        if tenant is None:
+            tenant = Organization(name='Default Organization', slug='default', is_active=True)
+            db.session.add(tenant)
+            db.session.commit()
+
+        with patch('server.services.notification_service.NotificationService.send_webhook_notification') as webhook_mock:
+            webhook_mock.return_value = None
+
+            result = dispatch_alert_notifications_task(
+                organization_id=tenant.id,
+                alerts=[
+                    {
+                        'rule_id': 303,
+                        'rule_name': 'Disk Pressure',
+                        'severity': 'warning',
+                        'metric': 'storage_usage',
+                        'operator': '>',
+                        'threshold': 90,
+                        'actual_value': 95,
+                        'system_id': 12,
+                        'hostname': 'gamma',
+                        'serial_number': 'G-1',
+                        'triggered_at': '2026-03-17T10:00:00+00:00',
+                    },
+                ],
+                channels=['webhook'],
+                webhook_retries=0,
+            )
+
+        assert result['failure_count'] == 0
+        audit_row = (
+            AuditEvent.query
+            .filter_by(action='alerts.dispatch.delivery')
+            .order_by(AuditEvent.id.desc())
+            .first()
+        )
+        delivery_row = (
+            NotificationDelivery.query
+            .filter_by(organization_id=tenant.id)
+            .order_by(NotificationDelivery.id.desc())
+            .first()
+        )
+
+    assert audit_row is not None
+    assert audit_row.outcome == 'success'
+    assert audit_row.tenant_id == tenant.id
+    assert delivery_row is not None
+    assert delivery_row.status == 'success'
+    assert delivery_row.failure_count == 0
+    assert delivery_row.delivered_channels == ['webhook']

@@ -35,7 +35,7 @@ class TestAPIEndpointsAuth:
                 'serial_number': 'TEST-001',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 45.5,
                 'ram_usage': 60.0
             }
@@ -52,7 +52,7 @@ class TestAPIEndpointsAuth:
                 'serial_number': 'TEST-001',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success'
+                'status': 'active'
             }
         )
         # Tenant middleware checks auth, returns 403 for invalid key
@@ -71,7 +71,7 @@ class TestSubmitDataEndpoint:
                 'serial_number': 'TEST-001',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 45.5
             }
         )
@@ -88,7 +88,7 @@ class TestSubmitDataEndpoint:
                 'serial_number': 'TEST-002',
                 'hostname': 'test-host-2',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 50.0,
                 'ram_usage': 65.0,
                 'disk_info': [
@@ -113,7 +113,7 @@ class TestSubmitDataEndpoint:
             json={
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success'
+                'status': 'active'
                 # Missing: serial_number
             }
         )
@@ -129,7 +129,7 @@ class TestSubmitDataEndpoint:
                 'serial_number': 'TEST-003',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 'not-a-number'  # Invalid: should be float
             }
         )
@@ -145,7 +145,7 @@ class TestSubmitDataEndpoint:
                 'serial_number': 'TEST-004',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 150.0  # High value: schema may or may not validate
             }
         )
@@ -165,7 +165,7 @@ class TestAPIResponseFormat:
                 'serial_number': 'TEST-005',
                 'hostname': 'test-host',
                 'last_update': datetime.utcnow().isoformat(),
-                'status': 'success',
+                'status': 'active',
                 'cpu_usage': 150.0  # Invalid
             }
         )

@@ -71,8 +71,22 @@ def log_audit_event(action: str, outcome: str = 'success', **metadata):
         event['user_id'] = getattr(user, 'id', None)
         event['user_email'] = getattr(user, 'email', None)
 
+    explicit_context_keys = {
+        'method',
+        'path',
+        'remote_addr',
+        'tenant_id',
+        'tenant_slug',
+        'user_id',
+        'user_email',
+    }
+
     for key, value in metadata.items():
-        event[key] = _safe_str(value)
+        safe_value = _safe_str(value)
+        if key in explicit_context_keys and event.get(key) is None:
+            event[key] = safe_value
+        else:
+            event[key] = safe_value
 
     _persist_audit_event(
         action=action,

@@ -3,6 +3,7 @@
 from unittest.mock import patch
 
 from server.auth import get_api_key
+from server.models import LogEntry, LogSource
 
 
 def _headers(tenant_slug=None):
@@ -65,6 +66,34 @@ def test_ingest_logs_uses_windows_adapter_boundary(client, app_fixture):
     assert payload['logs']['entries'] == ['Event 1', 'Event 2', 'Event 3']
 
 
+def test_ingest_logs_persists_entries_and_source(client, app_fixture):
+    app_fixture.config['LOG_PERSISTENT_STORE_ENABLED'] = True
+    app_fixture.config['LOG_INGESTION_ADAPTER'] = 'linux_test_double'
+    app_fixture.config['LOG_INGESTION_ALLOWED_SOURCES'] = 'system'
+    app_fixture.config['LOG_LINUX_INGESTION_TEST_DOUBLE'] = 'system=event_a|event_b'
+
+    response = client.post(
+        '/api/logs/ingest',
+        headers=_headers(),
+        json={'source_name': 'system'},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()['logs']
+    assert payload['persisted_count'] == 2
+    assert payload['log_source_id'] is not None
+
+    with app_fixture.app_context():
+        source = LogSource.query.filter_by(name='system').first()
+        entries = LogEntry.query.filter_by(source_name='system', capture_kind='ingest').order_by(LogEntry.id.asc()).all()
+
+    assert source is not None
+    assert source.adapter == 'linux_test_double'
+    assert len(entries) == 2
+    assert entries[0].message == 'event_a'
+    assert entries[1].raw_entry == 'event_b'
+
+
 def test_query_event_entries_uses_linux_test_double_path(client, app_fixture):
     app_fixture.config['LOG_EVENT_QUERY_ADAPTER'] = 'linux_test_double'
     app_fixture.config['LOG_INGESTION_ALLOWED_SOURCES'] = 'System,Application'
@@ -120,6 +149,44 @@ def test_query_event_entries_uses_windows_wrapper_boundary(client, app_fixture):
     payload = response.get_json()
     assert payload['events']['adapter'] == 'windows'
     assert payload['events']['entry_count'] == 2
+
+
+def test_search_logs_can_use_persistent_store_after_query(client, app_fixture):
+    app_fixture.config['LOG_PERSISTENT_STORE_ENABLED'] = True
+    app_fixture.config['LOG_EVENT_QUERY_ADAPTER'] = 'linux_test_double'
+    app_fixture.config['LOG_INGESTION_ALLOWED_SOURCES'] = 'System'
+    app_fixture.config['LOG_LINUX_EVENT_QUERY_TEST_DOUBLE'] = (
+        'System=2026-03-18T10:00:00Z|Error|1001|System|Disk failure'
+        '||2026-03-18T10:01:00Z|Warning|1002|System|Retry started'
+    )
+    app_fixture.config['LOG_SEARCH_ADAPTER'] = 'linux_test_double'
+    app_fixture.config['LOG_LINUX_SEARCH_TEST_DOUBLE'] = ''
+
+    query_response = client.post(
+        '/api/logs/events/query',
+        headers=_headers(),
+        json={'source_name': 'System'},
+    )
+    assert query_response.status_code == 200
+    assert query_response.get_json()['events']['persisted_count'] == 2
+
+    search_response = client.post(
+        '/api/logs/search',
+        headers=_headers(),
+        json={'source_name': 'System', 'query_text': 'Disk'},
+    )
+
+    assert search_response.status_code == 200
+    payload = search_response.get_json()['search']
+    assert payload['adapter'] == 'persistent_store'
+    assert payload['result_count'] == 1
+    assert payload['results'][0]['message'] == 'Disk failure'
+
+    with app_fixture.app_context():
+        stored_entry = LogEntry.query.filter_by(source_name='System', capture_kind='event_query', event_id='1001').first()
+
+    assert stored_entry is not None
+    assert stored_entry.severity == 'error'
 
 
 def test_parse_logs_structures_entries(client, app_fixture):

@@ -11,6 +11,8 @@ from unittest.mock import patch
 import pytest
 
 from server.auth import get_api_key
+from server.extensions import db
+from server.models import Organization
 from server.services.ai_service import AIService
 from server.services.alert_service import AlertService
 
@@ -182,6 +184,50 @@ class TestPatternAlerts:
                 results = AlertService.evaluate_patterns_for_tenant(org.id)
                 # Empty DB → no patterns, correct return type
                 assert isinstance(results, list)
+    def test_create_rule_duplicate_rolls_back_and_allows_followup_write(self, app_fixture):
+        with app_fixture.app_context():
+            org = Organization(name='Alert Tenant', slug='alert-tenant', is_active=True)
+            db.session.add(org)
+            db.session.commit()
+
+            rule, errors = AlertService.create_rule(
+                org.id,
+                {
+                    'name': 'CPU High',
+                    'metric': 'cpu_usage',
+                    'operator': '>',
+                    'threshold': 80,
+                    'severity': 'warning',
+                },
+            )
+            assert rule is not None
+            assert errors == {}
+
+            duplicate_rule, duplicate_errors = AlertService.create_rule(
+                org.id,
+                {
+                    'name': 'CPU High',
+                    'metric': 'cpu_usage',
+                    'operator': '>',
+                    'threshold': 90,
+                    'severity': 'critical',
+                },
+            )
+            assert duplicate_rule is None
+            assert 'name' in duplicate_errors
+
+            followup_rule, followup_errors = AlertService.create_rule(
+                org.id,
+                {
+                    'name': 'RAM High',
+                    'metric': 'ram_usage',
+                    'operator': '>',
+                    'threshold': 85,
+                    'severity': 'warning',
+                },
+            )
+            assert followup_rule is not None
+            assert followup_errors == {}
 
 
 # ─────────────────────────────────────────────
@@ -340,3 +386,4 @@ class TestAIAnomalyAnalysis:
         with app_fixture.app_context():
             result, error = AIService.analyze_anomalies([], runtime_config={})
             assert error == 'anomalies_missing_or_invalid'
+

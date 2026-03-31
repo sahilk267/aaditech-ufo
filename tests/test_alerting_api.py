@@ -4,7 +4,7 @@ from datetime import datetime, UTC
 
 from server.auth import get_api_key
 from server.extensions import db
-from server.models import Organization, SystemData
+from server.models import IncidentRecord, Organization, SystemData
 
 
 def _headers(tenant_slug=None):
@@ -249,3 +249,18 @@ def test_evaluate_alert_rules_returns_correlated_alert_groups(client, app_fixtur
 
     assert payload['correlated_count'] >= 1
     assert payload['correlated_alerts'][0]['metric_count'] >= 2
+    assert payload['incident_count'] >= 1
+
+    with app_fixture.app_context():
+        tenant = Organization.query.filter_by(slug='default').first()
+        assert tenant is not None
+        incident = (
+            IncidentRecord.query
+            .filter_by(organization_id=tenant.id, hostname='corr-host', status='open')
+            .order_by(IncidentRecord.id.desc())
+            .first()
+        )
+
+    assert incident is not None
+    assert incident.metric_count >= 2
+    assert incident.alert_count >= 2

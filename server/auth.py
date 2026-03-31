@@ -98,6 +98,9 @@ def _user_has_permission(user, permission_code: str) -> bool:
 def _bind_authenticated_user(user, payload=None):
     g.current_user = user
     g.jwt_payload = payload
+    # Authenticated browser/JWT requests should operate in the user's tenant
+    # even when tenant middleware ran earlier without auth context.
+    g.tenant = user.organization
     return user
 
 

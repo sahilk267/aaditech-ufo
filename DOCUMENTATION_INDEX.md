@@ -1,6 +1,6 @@
 # 📚 AADITECH UFO - DOCUMENTATION INDEX
 
-**Guide to All Project Documentation** | Updated March 24, 2026 for Control Panel + user management + agent build/release sync
+**Guide to All Project Documentation** | Updated March 31, 2026 for Phase 5 product-surface implementation
 
 ---
 
@@ -14,8 +14,19 @@
 | **See project vision & goals** | [README.md](README.md) (92 features) | 20 min |
 | **Control Panel operations guide** | [README.md](README.md) → "Unified Control Panel (/features)" | 8 min |
 | **New frontend migration blueprint** | [FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md](FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md) | 15 min |
+| **Frontend developer guide** | [frontend/README.md](frontend/README.md) | 8 min |
 | **Know what to do this week** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
 | **Track implementation progress** | [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) | 5 min |
+| **Start backend correctly** | [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md) | 8 min |
+| **Run first staging deploy checks** | [STAGING_VERIFICATION_CHECKLIST.md](STAGING_VERIFICATION_CHECKLIST.md) | 8 min |
+| **Rollback SPA wave safely** | [SPA_WAVE_ROLLBACK_CHECKLIST.md](SPA_WAVE_ROLLBACK_CHECKLIST.md) | 6 min |
+| **Know feature exit criteria** | [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md) | 8 min |
+| **Review Phase 4 remediation todos** | [PHASE4_REVIEW_REMEDIATION_TODOS.md](PHASE4_REVIEW_REMEDIATION_TODOS.md) | 5 min |
+| **Review Phase 5 product gaps** | [PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md](PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md) | 10 min |
+| **Decide agent enrollment model** | [AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md](AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md) | 8 min |
+| **Decide tenant secret model** | [TENANT_SECRET_MANAGEMENT_DECISION.md](TENANT_SECRET_MANAGEMENT_DECISION.md) | 8 min |
+| **Read supportability policy draft** | [PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md](PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md) | 8 min |
+| **Run restore-drill ops checklist** | [RESTORE_DRILL_CHECKLIST.md](RESTORE_DRILL_CHECKLIST.md) | 6 min |
 | **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
 | **See feature details** | [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) | 20 min |
 | **Map all 157 features** | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) | 10 min |
@@ -27,13 +38,29 @@
 
 ## 🎯 FOR IMPLEMENTATION (THE ESSENTIALS)
 
-**During actual development, use only these 6 files:**
+**During actual development, use these 16 files:**
+
+Status vocabulary source of truth:
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
+- `PROGRESS_TRACKER.md`
+- `FEATURE_COVERAGE_MAP.md`
+- `FEATURE_ACCEPTANCE_CRITERIA.md`
 
 | File | Purpose | When | Update |
 |------|---------|------|--------|
 | **IMPLEMENTATION_REFERENCE_GUIDE.md** | 🗺️ File usage map (START HERE FIRST!) | Before any work | Never |
 | **WEEK_BY_WEEK_CHECKLIST.md** | 📋 Today's tasks & step-by-step | Every morning | Weekly (plan) |
 | **PROGRESS_TRACKER.md** | ✅ Track completed functions | After each task | 2-3x daily |
+| **BACKEND_STARTUP_RUNBOOK.md** | Backend local/dev/test startup | When running backend or fixing startup | When startup flow changes |
+| **STAGING_VERIFICATION_CHECKLIST.md** | First real staging deploy checklist | Before staging deploys and promotions | When deployment flow changes |
+| **FEATURE_ACCEPTANCE_CRITERIA.md** | Feature exit criteria by product area | During Phase 3 productization and review | When delivery definition changes |
+| **PHASE4_REVIEW_REMEDIATION_TODOS.md** | Phase 4 deployment/runtime remediation checklist | During deployment hardening and review follow-up | When Phase 4 findings change |
+| **PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md** | Phase 5 product-gap review and decision backlog | During overlooked-feature review and roadmap clarification | When Phase 5 decisions change |
+| **AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md** | Agent lifecycle and enrollment decision | During agent platform planning and rollout preparation | When agent identity decisions change |
+| **TENANT_SECRET_MANAGEMENT_DECISION.md** | Tenant secret ownership, storage, and rotation decision | During tenant integration/security planning | When tenant secret design changes |
+| **PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md** | Supportability baseline for backup, retention, and platform observability | During operations/readiness planning | When supportability policy changes |
+| **RESTORE_DRILL_CHECKLIST.md** | Restore-drill execution and evidence checklist | During backup verification and operational drills | When restore-drill flow changes |
+| **SPA_WAVE_ROLLBACK_CHECKLIST.md** | SPA redirect rollback checklist | Before/after SPA wave activation | When redirect scope or rollout flow changes |
 | **UPDATED_ARCHITECTURE.md** | 🏗️ System design reference | When coding | Rarely |
 | **README.md** | 📚 Feature specifications | When figuring out what a feature does | Rarely |
 | **FEATURE_COVERAGE_MAP.md** | 📍 Feature status dashboard | Weekly review | Weekly |
@@ -151,6 +178,18 @@
 - **Audience**: Frontend developers, PM/engineering leads
 - **Update Frequency**: After each major frontend implementation milestone
 - **Use**: Quick checkpoint file for current migration state and next priorities
+
+#### 5C. **frontend/README.md**
+- **Purpose**: Project-specific frontend developer and deployment guide
+- **Contains**:
+  - local dev/build/test commands
+  - `/app` deployment assumptions
+  - auth/tenant/RBAC notes
+  - key frontend file map
+  - current validation baseline
+- **Audience**: Frontend developers, reviewers, operators validating SPA behavior
+- **Update Frequency**: When frontend runtime behavior, commands, or validation baselines change
+- **Use**: First stop when working directly in `frontend/`
 
 ---
 
@@ -540,3 +579,5 @@ PRIORITY 5 (Historical/Reference - rarely update):
 **Status**: 🟢 Documentation aligned to the current Phase 1 milestone  
 
 **🎉 No more confusion. Everything in one place. Let's build!** 🚀
+
+

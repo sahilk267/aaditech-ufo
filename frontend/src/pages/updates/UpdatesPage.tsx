@@ -56,8 +56,15 @@ export function UpdatesPage() {
             Score Confidence {updatesCount ? `(${updatesCount} updates)` : ""}
           </button>
         </div>
+        {!updatesCount ? (
+          <div className="module-status loading" style={{ marginTop: 12 }}>Run update monitoring first so confidence scoring has update entries to evaluate.</div>
+        ) : null}
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Last response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Last response" />
+        ) : (
+          <div className="module-status loading">Run update monitoring or confidence scoring to inspect the latest result here.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

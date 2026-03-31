@@ -1,39 +1,36 @@
-"""Database migration environment configuration"""
+"""Database migration environment configuration."""
 
 from __future__ import with_statement
 
-import logging
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
-from sqlalchemy import pool
-
 from alembic import context
+from flask import current_app
 
-# this is the Alembic Config object
+
 config = context.config
 
-# Interpret the config file for Python logging.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
-logger = logging.getLogger('alembic.env')
 
-# add your model's MetaData object here
-# for 'autogenerate' support
-# from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
-from server.models import db
+target_metadata = current_app.extensions["migrate"].db.metadata
 
-target_metadata = db.metadata
+
+def get_engine():
+    return current_app.extensions["migrate"].db.engine
+
+
+def get_engine_url():
+    return str(get_engine().url).replace("%", "%%")
+
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode."""
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=get_engine_url(),
         target_metadata=target_metadata,
         literal_binds=True,
-        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
     )
 
     with context.begin_transaction():
@@ -42,18 +39,13 @@ def run_migrations_offline() -> None:
 
 def run_migrations_online() -> None:
     """Run migrations in 'online' mode."""
-    configuration = config.get_section(config.config_ini_section)
-    configuration["sqlalchemy.url"] = "sqlite:///toolboxgalaxy.db"
-
-    connectable = engine_from_config(
-        configuration,
-        prefix="sqlalchemy.",
-        poolclass=pool.StaticPool,
-    )
+    connectable = get_engine()
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
         )
 
         with context.begin_transaction():

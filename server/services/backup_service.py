@@ -7,6 +7,8 @@ Handles database backup creation, restoration, and management
 import logging
 import os
 import shutil
+import sqlite3
+import tempfile
 from datetime import datetime
 import pytz
 
@@ -142,6 +144,88 @@ class BackupService:
         except Exception as e:
             logger.error(f"Error restoring backup: {e}")
             return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def verify_backup(backup_path):
+        """
+        Verify that a backup is readable and restorable without mutating live state.
+
+        Returns:
+            dict: Verification result
+        """
+        try:
+            if not os.path.exists(backup_path):
+                logger.error(f"Backup not found: {backup_path}")
+                return {'success': False, 'error': 'Backup not found'}
+
+            backup_size = os.path.getsize(backup_path)
+            if backup_size <= 0:
+                return {'success': False, 'error': 'Backup file is empty'}
+
+            with sqlite3.connect(backup_path) as connection:
+                integrity_row = connection.execute('PRAGMA integrity_check').fetchone()
+                integrity_check = integrity_row[0] if integrity_row else 'unknown'
+                table_count_row = connection.execute(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table'"
+                ).fetchone()
+                table_count = int(table_count_row[0]) if table_count_row else 0
+
+            with tempfile.TemporaryDirectory(prefix='aaditech_backup_verify_') as temp_dir:
+                restore_copy_path = os.path.join(temp_dir, 'restored_check.db')
+                shutil.copy2(backup_path, restore_copy_path)
+                restore_connection = sqlite3.connect(restore_copy_path)
+                try:
+                    restore_connection.execute('SELECT name FROM sqlite_master LIMIT 1').fetchone()
+                finally:
+                    restore_connection.close()
+
+            verified = integrity_check == 'ok'
+            return {
+                'success': verified,
+                'verified': verified,
+                'backup_path': backup_path,
+                'size_bytes': backup_size,
+                'integrity_check': integrity_check,
+                'table_count': table_count,
+                'verified_at': datetime.now(pytz.timezone('Asia/Kolkata')).isoformat(),
+                'message': 'Backup verification passed' if verified else 'Backup verification failed',
+            }
+        except Exception as e:
+            logger.error(f"Error verifying backup: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def run_restore_drill(backup_path):
+        """
+        Run a lightweight non-destructive restore drill against a backup.
+
+        Returns:
+            dict: Drill result with checklist-style evidence
+        """
+        verification = BackupService.verify_backup(backup_path)
+        if not verification.get('success'):
+            return {
+                'success': False,
+                'backup_path': backup_path,
+                'verification': verification,
+                'checklist': [
+                    {'id': 'backup_exists', 'status': 'failed'},
+                    {'id': 'integrity_check', 'status': 'failed'},
+                    {'id': 'restore_copy_readable', 'status': 'failed'},
+                ],
+            }
+
+        return {
+            'success': True,
+            'backup_path': backup_path,
+            'verification': verification,
+            'checklist': [
+                {'id': 'backup_exists', 'status': 'passed'},
+                {'id': 'integrity_check', 'status': 'passed'},
+                {'id': 'restore_copy_readable', 'status': 'passed'},
+                {'id': 'app_smoke_after_restore', 'status': 'manual_followup_required'},
+            ],
+        }
     
     @staticmethod
     def delete_backup(backup_path):

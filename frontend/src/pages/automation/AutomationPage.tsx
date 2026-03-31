@@ -68,15 +68,24 @@ export function AutomationPage() {
   const onErr = (err: unknown) => setActionError(err);
 
   const createWorkflowMutation = useMutation({
-    mutationFn: (data: CreateAutomationWorkflowInput) =>
-      createAutomationWorkflow({
+    mutationFn: (data: CreateAutomationWorkflowInput) => {
+      const firstStep = data.steps[0] || { action: "restart_service" };
+      const actionType =
+        firstStep.action === "restart_service" ? "service_restart" : firstStep.action;
+
+      return createAutomationWorkflow({
         name: data.name,
         description: data.description,
         trigger_type: data.triggerType,
-        trigger_match: data.triggerMatch,
-        steps: data.steps,
+        trigger_conditions: data.triggerMatch || {},
+        action_type: actionType,
+        action_config: {
+          service_name: firstStep.service,
+          ...(firstStep.params || {}),
+        },
         is_active: data.isActive,
-      }),
+      });
+    },
     onSuccess: (data) => {
       onOk(data);
       form.reset();
@@ -112,6 +121,16 @@ export function AutomationPage() {
         <StatCard label="Workflows" value={workflows.length} detail="Tenant automation definitions" />
         <StatCard label="Scheduled Jobs" value={scheduledJobs.length} detail="Recurring workflow executions" />
       </div>
+
+      {workflowsQuery.isLoading || scheduledJobsQuery.isLoading ? (
+        <div className="module-status loading">Loading automation workflows and jobs...</div>
+      ) : null}
+      {workflowsQuery.error || scheduledJobsQuery.error ? (
+        <div className="module-status error-text">Failed to load automation workflows or scheduled jobs.</div>
+      ) : null}
+      {!workflowsQuery.isLoading && !scheduledJobsQuery.isLoading && !workflows.length && !scheduledJobs.length ? (
+        <div className="module-status loading">No workflows or scheduled jobs exist yet. Create a workflow to begin automation testing.</div>
+      ) : null}
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3>Create Workflow</h3>
@@ -152,13 +171,20 @@ export function AutomationPage() {
           </select>
           <input value={serviceName} onChange={(e) => setServiceName(e.target.value)} placeholder="Service name" />
         </div>
+        {!selectedWorkflowId && workflows.length ? (
+          <div className="module-status loading" style={{ marginTop: 12 }}>Select a workflow before running the dry-run execution.</div>
+        ) : null}
         <div className="row-between" style={{ marginTop: 12 }}>
           <button onClick={() => selectedWorkflowId && executeWorkflowMutation.mutate(selectedWorkflowId)} disabled={!selectedWorkflowId || executeWorkflowMutation.isPending}>Execute (Dry Run)</button>
           <button onClick={() => serviceStatusMutation.mutate()} disabled={serviceStatusMutation.isPending}>Check Service</button>
           <button onClick={() => selfHealMutation.mutate()} disabled={selfHealMutation.isPending}>Self-Heal (Dry Run)</button>
         </div>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Last response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Last response" />
+        ) : (
+          <div className="module-status loading">Run a workflow, service check, or self-heal dry run to inspect the latest response.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

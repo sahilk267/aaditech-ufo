@@ -14,6 +14,22 @@ def init_queue(app):
     The app keeps running even when Celery is unavailable so local/test workflows
     do not break.
     """
+    if app.config.get('TESTING', False):
+        app.extensions['celery'] = None
+        app.extensions['queue_tasks'] = {
+            'cleanup_revoked_tokens': 'maintenance.cleanup_revoked_tokens',
+            'purge_audit_events': 'maintenance.purge_audit_events',
+            'purge_notification_deliveries': 'maintenance.purge_notification_deliveries',
+            'purge_workflow_runs': 'maintenance.purge_workflow_runs',
+            'purge_resolved_incidents': 'maintenance.purge_resolved_incidents',
+            'purge_log_entries': 'maintenance.purge_log_entries',
+            'dispatch_alert_notifications': 'alerts.dispatch_notifications',
+            'execute_automation_workflow': 'automation.execute_workflow',
+        }
+        app.extensions['queue_handlers'] = get_background_job_handlers()
+        logger.info("Queue initialized in inline test mode")
+        return None
+
     try:
         from celery import Celery
         from celery.schedules import crontab
@@ -23,6 +39,10 @@ def init_queue(app):
         app.extensions['queue_tasks'] = {
             'cleanup_revoked_tokens': 'maintenance.cleanup_revoked_tokens',
             'purge_audit_events': 'maintenance.purge_audit_events',
+            'purge_notification_deliveries': 'maintenance.purge_notification_deliveries',
+            'purge_workflow_runs': 'maintenance.purge_workflow_runs',
+            'purge_resolved_incidents': 'maintenance.purge_resolved_incidents',
+            'purge_log_entries': 'maintenance.purge_log_entries',
             'dispatch_alert_notifications': 'alerts.dispatch_notifications',
             'execute_automation_workflow': 'automation.execute_workflow',
         }
@@ -58,6 +78,26 @@ def init_queue(app):
                 'task': queue_tasks['purge_audit_events'],
                 'schedule': crontab(hour=3, minute=0),
                 'args': (int(app.config.get('AUDIT_RETENTION_DAYS', 90)),),
+            },
+            'purge-notification-deliveries-daily': {
+                'task': queue_tasks['purge_notification_deliveries'],
+                'schedule': crontab(hour=3, minute=10),
+                'args': (int(app.config.get('NOTIFICATION_DELIVERY_RETENTION_DAYS', 60)),),
+            },
+            'purge-workflow-runs-daily': {
+                'task': queue_tasks['purge_workflow_runs'],
+                'schedule': crontab(hour=3, minute=20),
+                'args': (int(app.config.get('WORKFLOW_RUN_RETENTION_DAYS', 60)),),
+            },
+            'purge-resolved-incidents-daily': {
+                'task': queue_tasks['purge_resolved_incidents'],
+                'schedule': crontab(hour=3, minute=30),
+                'args': (int(app.config.get('RESOLVED_INCIDENT_RETENTION_DAYS', 90)),),
+            },
+            'purge-log-entries-daily': {
+                'task': queue_tasks['purge_log_entries'],
+                'schedule': crontab(hour=3, minute=40),
+                'args': (int(app.config.get('LOG_ENTRY_RETENTION_DAYS', 30)),),
             },
         }
 
@@ -136,6 +176,7 @@ def get_queue_status(app):
         return {
             'enabled': False,
             'state': 'degraded' if app.config.get('TESTING', False) else 'disabled',
+            'mode': 'inline_test' if app.config.get('TESTING', False) else 'disabled',
             'broker_url': app.config.get('CELERY_BROKER_URL') or app.config.get('REDIS_URL'),
             'tasks': list(app.extensions.get('queue_tasks', {}).keys()),
             'inline_fallback': bool(app.config.get('TESTING', False)),
@@ -147,6 +188,7 @@ def get_queue_status(app):
         return {
             'enabled': True,
             'state': 'healthy' if ping else 'degraded',
+            'mode': 'celery',
             'broker_url': celery_app.conf.broker_url,
             'workers': list((ping or {}).keys()),
             'tasks': list(app.extensions.get('queue_tasks', {}).keys()),
@@ -155,6 +197,7 @@ def get_queue_status(app):
         return {
             'enabled': True,
             'state': 'degraded',
+            'mode': 'celery',
             'broker_url': celery_app.conf.broker_url,
             'tasks': list(app.extensions.get('queue_tasks', {}).keys()),
             'error': str(exc),

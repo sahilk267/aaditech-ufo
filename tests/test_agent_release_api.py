@@ -40,6 +40,49 @@ def test_agent_release_upload_and_list_via_api(client, app_fixture, tmp_path):
     assert '/api/agent/releases/download/' in list_payload['releases'][0]['download_url']
 
 
+def test_agent_release_api_round_trip_matches_deployment_update_flow(client, app_fixture, tmp_path):
+    release_dir = tmp_path / 'agent_releases'
+    release_dir.mkdir(parents=True)
+    app_fixture.config['AGENT_RELEASES_DIR'] = str(release_dir)
+
+    binary_bytes = b'deployment-like-agent-binary'
+    upload = client.post(
+        '/api/agent/releases/upload',
+        headers=_headers(),
+        data={
+            'version': '3.4.5',
+            'release_file': (BytesIO(binary_bytes), 'agent.exe'),
+        },
+        content_type='multipart/form-data',
+    )
+    assert upload.status_code == 201
+
+    stored_file = release_dir / 'aaditech-agent-3.4.5.exe'
+    assert stored_file.exists()
+    assert stored_file.read_bytes() == binary_bytes
+
+    listing = client.get('/api/agent/releases', headers=_headers())
+    assert listing.status_code == 200
+    list_payload = listing.get_json()
+    assert list_payload['count'] == 1
+    release = list_payload['releases'][0]
+    assert release['filename'] == 'aaditech-agent-3.4.5.exe'
+    assert release['download_url'].endswith('/api/agent/releases/download/aaditech-agent-3.4.5.exe')
+
+    guide = client.get('/api/agent/releases/guide?current_version=3.0.0', headers=_headers())
+    assert guide.status_code == 200
+    guide_payload = guide.get_json()['guide']
+    assert guide_payload['recommended_version'] == '3.4.5'
+    assert guide_payload['action'] == 'upgrade'
+    assert guide_payload['recommended_download_url'].endswith('/api/agent/releases/download/aaditech-agent-3.4.5.exe')
+
+    download = client.get('/api/agent/releases/download/aaditech-agent-3.4.5.exe', headers={'X-API-Key': get_api_key()})
+    assert download.status_code == 200
+    assert download.data == binary_bytes
+    assert 'attachment' in (download.headers.get('Content-Disposition') or '').lower()
+    assert 'aaditech-agent-3.4.5.exe' in (download.headers.get('Content-Disposition') or '')
+
+
 def test_agent_release_guide_supports_server_side_downgrade_target(client, app_fixture, tmp_path):
     release_dir = tmp_path / 'agent_releases'
     release_dir.mkdir(parents=True)

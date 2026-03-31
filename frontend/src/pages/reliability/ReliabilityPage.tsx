@@ -40,7 +40,11 @@ export function ReliabilityPage() {
           <button onClick={() => predictionMutation.mutate()} disabled={isPending}>Predict</button>
         </div>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Last response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Last response" />
+        ) : (
+          <div className="module-status loading">Run a reliability diagnostic to see scoring, trend, or prediction output here.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

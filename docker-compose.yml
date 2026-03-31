@@ -1,12 +1,10 @@
-version: '3.9'
-
 # Main docker-compose file with shared services configuration
 # Use docker-compose -f docker-compose.yml -f docker-compose.dev.yml for development
 # Or docker-compose -f docker-compose.yml -f docker-compose.prod.yml for production
 
 x-app-environment: &app-environment
   DATABASE_URL: postgresql://${DB_USER:-aaditech}:${DB_PASSWORD:-admin123}@postgres:5432/${DB_NAME:-aaditech_ufo}
-  REDIS_URL: redis://redis:6379/0
+  REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379/0
   FLASK_DEBUG: ${FLASK_DEBUG:-False}
   FLASK_ENV: ${FLASK_ENV:-production}
   ENABLE_PROXY_FIX: "True"
@@ -60,7 +58,7 @@ services:
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis123}", "--raw", "incr", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5

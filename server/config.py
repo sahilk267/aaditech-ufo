@@ -6,6 +6,8 @@ Development, Testing, and Production configurations
 import os
 from datetime import timedelta
 
+_TEST_DB_PATH = os.path.abspath(os.getenv('TEST_DATABASE_PATH', 'aaditech_ufo_test.db')).replace('\\', '/')
+
 
 class Config:
     """Base configuration with common settings"""
@@ -40,6 +42,10 @@ class Config:
     CELERY_RESULT_BACKEND = os.getenv('CELERY_RESULT_BACKEND', REDIS_URL)
     QUEUE_ENABLE_BEAT = os.getenv('QUEUE_ENABLE_BEAT', 'True').lower() == 'true'
     AUDIT_RETENTION_DAYS = int(os.getenv('AUDIT_RETENTION_DAYS', '90'))
+    NOTIFICATION_DELIVERY_RETENTION_DAYS = int(os.getenv('NOTIFICATION_DELIVERY_RETENTION_DAYS', '60'))
+    WORKFLOW_RUN_RETENTION_DAYS = int(os.getenv('WORKFLOW_RUN_RETENTION_DAYS', '60'))
+    RESOLVED_INCIDENT_RETENTION_DAYS = int(os.getenv('RESOLVED_INCIDENT_RETENTION_DAYS', '90'))
+    LOG_ENTRY_RETENTION_DAYS = int(os.getenv('LOG_ENTRY_RETENTION_DAYS', '30'))
 
     # API gateway readiness
     ENABLE_PROXY_FIX = os.getenv('ENABLE_PROXY_FIX', 'True').lower() == 'true'
@@ -59,12 +65,15 @@ class Config:
     
     # Agent configuration
     AGENT_API_KEY = os.getenv('AGENT_API_KEY', 'default-key-change-this')
+    AGENT_ENROLLMENT_TOKEN_TTL_HOURS = int(os.getenv('AGENT_ENROLLMENT_TOKEN_TTL_HOURS', '24'))
+    AGENT_CREDENTIAL_TTL_DAYS = int(os.getenv('AGENT_CREDENTIAL_TTL_DAYS', '365'))
 
     # JWT configuration (Week 6)
     JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', SECRET_KEY)
     JWT_ALGORITHM = os.getenv('JWT_ALGORITHM', 'HS256')
     JWT_ACCESS_TOKEN_EXPIRES_MINUTES = int(os.getenv('JWT_ACCESS_TOKEN_EXPIRES_MINUTES', '30'))
     JWT_REFRESH_TOKEN_EXPIRES_MINUTES = int(os.getenv('JWT_REFRESH_TOKEN_EXPIRES_MINUTES', str(60 * 24 * 7)))
+    TENANT_SECRET_ENCRYPTION_KEY = os.getenv('TENANT_SECRET_ENCRYPTION_KEY', '')
 
     # Alert notification settings (Phase 2 Week 9-10)
     ALERT_EMAIL_ENABLED = os.getenv('ALERT_EMAIL_ENABLED', 'False').lower() == 'true'
@@ -84,6 +93,11 @@ class Config:
     AUTOMATION_ALLOWED_SERVICES = os.getenv('AUTOMATION_ALLOWED_SERVICES', '')
     AUTOMATION_SERVICE_RESTART_BINARY = os.getenv('AUTOMATION_SERVICE_RESTART_BINARY', 'systemctl')
     AUTOMATION_COMMAND_TIMEOUT_SECONDS = int(os.getenv('AUTOMATION_COMMAND_TIMEOUT_SECONDS', '8'))
+    AUTOMATION_SCRIPT_EXECUTOR_ADAPTER = os.getenv('AUTOMATION_SCRIPT_EXECUTOR_ADAPTER', 'subprocess')
+    AUTOMATION_ALLOWED_SCRIPT_ROOTS = os.getenv('AUTOMATION_ALLOWED_SCRIPT_ROOTS', '')
+    AUTOMATION_WEBHOOK_ADAPTER = os.getenv('AUTOMATION_WEBHOOK_ADAPTER', 'urllib')
+    AUTOMATION_ALLOWED_WEBHOOK_HOSTS = os.getenv('AUTOMATION_ALLOWED_WEBHOOK_HOSTS', '')
+    AUTOMATION_WEBHOOK_TIMEOUT_SECONDS = int(os.getenv('AUTOMATION_WEBHOOK_TIMEOUT_SECONDS', '5'))
     AUTOMATION_SERVICE_STATUS_ADAPTER = os.getenv('AUTOMATION_SERVICE_STATUS_ADAPTER', 'linux_test_double')
     AUTOMATION_LINUX_SERVICE_STATUS_TEST_DOUBLE = os.getenv('AUTOMATION_LINUX_SERVICE_STATUS_TEST_DOUBLE', '')
     AUTOMATION_SERVICE_DEPENDENCY_ADAPTER = os.getenv('AUTOMATION_SERVICE_DEPENDENCY_ADAPTER', 'linux_test_double')
@@ -140,9 +154,11 @@ class Config:
     UPDATE_MONITOR_MAX_ENTRIES = int(os.getenv('UPDATE_MONITOR_MAX_ENTRIES', '25'))
     OLLAMA_ADAPTER = os.getenv('OLLAMA_ADAPTER', 'linux_test_double')
     OLLAMA_ENDPOINT = os.getenv('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate')
+    OLLAMA_ALLOWED_HOSTS = os.getenv('OLLAMA_ALLOWED_HOSTS', 'localhost,127.0.0.1,ollama')
     OLLAMA_ALLOWED_MODELS = os.getenv('OLLAMA_ALLOWED_MODELS', 'llama3.2')
     OLLAMA_DEFAULT_MODEL = os.getenv('OLLAMA_DEFAULT_MODEL', 'llama3.2')
     OLLAMA_LINUX_TEST_DOUBLE_RESPONSES = os.getenv('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
+    OLLAMA_HTTP_FALLBACK_TO_TEST_DOUBLE = os.getenv('OLLAMA_HTTP_FALLBACK_TO_TEST_DOUBLE', 'false').lower() in {'1', 'true', 'yes', 'on'}
     OLLAMA_TIMEOUT_SECONDS = int(os.getenv('OLLAMA_TIMEOUT_SECONDS', '8'))
     OLLAMA_PROMPT_MAX_CHARS = int(os.getenv('OLLAMA_PROMPT_MAX_CHARS', '4000'))
     OLLAMA_RESPONSE_MAX_CHARS = int(os.getenv('OLLAMA_RESPONSE_MAX_CHARS', '4000'))
@@ -223,8 +239,9 @@ class TestingConfig(Config):
     DEBUG = True
     TESTING = True
     
-    # Use in-memory SQLite for testing
-    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    # Use file-backed SQLite for testing so separate connections/tasks
+    # see the same database state during request + queue workflows.
+    SQLALCHEMY_DATABASE_URI = os.getenv('TEST_DATABASE_URL', f'sqlite:///{_TEST_DB_PATH}')
     
     # Disable CSRF for testing
     WTF_CSRF_ENABLED = False

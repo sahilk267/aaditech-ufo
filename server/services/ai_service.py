@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
+from urllib.parse import urlparse
 
 import requests
 
@@ -90,6 +92,7 @@ class AIService:
             'context_count': len(normalized_context),
             'guidance': guidance,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @classmethod
@@ -165,6 +168,7 @@ class AIService:
             'tag_count': len(normalized_tags),
             'learning': learning,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @classmethod
@@ -241,6 +245,7 @@ class AIService:
             'probable_cause': probable_cause,
             'recommendations': recommendation_data,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @classmethod
@@ -316,6 +321,7 @@ class AIService:
             'evidence_count': len(normalized_evidence),
             'root_cause': root_cause,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @classmethod
@@ -326,10 +332,16 @@ class AIService:
     ) -> tuple[dict[str, Any], str | None]:
         """Run Ollama inference through a safe adapter boundary."""
         runtime_config = runtime_config or {}
+        started_at = time.perf_counter()
+        requested_adapter = str(runtime_config.get('adapter') or 'linux_test_double').strip() or 'linux_test_double'
 
         prompt_text = str(prompt_text or '').strip()
         if not prompt_text:
-            return {'status': 'validation_failed', 'reason': 'prompt_missing'}, 'prompt_missing'
+            return cls._attach_observability(
+                {'status': 'validation_failed', 'reason': 'prompt_missing'},
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+            ), 'prompt_missing'
 
         prompt_max_chars = runtime_config.get('prompt_max_chars', 4000)
         try:
@@ -339,32 +351,52 @@ class AIService:
         prompt_max_chars = max(50, min(prompt_max_chars, 8000))
 
         if len(prompt_text) > prompt_max_chars:
-            return {
-                'status': 'policy_blocked',
-                'reason': 'prompt_too_long',
-                'max_prompt_chars': prompt_max_chars,
-            }, 'prompt_too_long'
+            return cls._attach_observability(
+                {
+                    'status': 'policy_blocked',
+                    'reason': 'prompt_too_long',
+                    'max_prompt_chars': prompt_max_chars,
+                },
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+            ), 'prompt_too_long'
 
         if cls._contains_unsafe_control_characters(prompt_text):
-            return {'status': 'policy_blocked', 'reason': 'prompt_invalid'}, 'prompt_invalid'
+            return cls._attach_observability(
+                {'status': 'policy_blocked', 'reason': 'prompt_invalid'},
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+            ), 'prompt_invalid'
 
-        adapter = str(runtime_config.get('adapter') or 'linux_test_double').strip()
+        adapter = requested_adapter
         if adapter not in cls.ALLOWED_ADAPTERS:
-            return {'status': 'policy_blocked', 'reason': 'adapter_not_allowed'}, 'adapter_not_allowed'
+            return cls._attach_observability(
+                {'status': 'policy_blocked', 'reason': 'adapter_not_allowed'},
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+            ), 'adapter_not_allowed'
 
         model = str(runtime_config.get('model') or 'llama3.2').strip()
         if not cls.SAFE_MODEL_PATTERN.fullmatch(model):
-            return {'status': 'policy_blocked', 'reason': 'model_invalid'}, 'model_invalid'
+            return cls._attach_observability(
+                {'status': 'policy_blocked', 'reason': 'model_invalid'},
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+            ), 'model_invalid'
 
         allowed_models = runtime_config.get('allowed_models') or []
         if allowed_models:
             allowed_set = {str(value).strip() for value in allowed_models if str(value).strip()}
             if model not in allowed_set:
-                return {
-                    'status': 'policy_blocked',
-                    'reason': 'model_not_allowlisted',
-                    'model': model,
-                }, 'model_not_allowlisted'
+                return cls._attach_observability(
+                    {
+                        'status': 'policy_blocked',
+                        'reason': 'model_not_allowlisted',
+                        'model': model,
+                    },
+                    requested_adapter=requested_adapter,
+                    duration_ms=cls._elapsed_ms(started_at),
+                ), 'model_not_allowlisted'
 
         response_max_chars = runtime_config.get('response_max_chars', 4000)
         try:
@@ -383,18 +415,73 @@ class AIService:
         if adapter == 'ollama_http':
             endpoint = str(runtime_config.get('endpoint') or 'http://localhost:11434/api/generate').strip()
             if not cls.SAFE_ENDPOINT_PATTERN.fullmatch(endpoint):
-                return {'status': 'policy_blocked', 'reason': 'endpoint_invalid'}, 'endpoint_invalid'
+                return cls._attach_observability(
+                    {'status': 'policy_blocked', 'reason': 'endpoint_invalid'},
+                    requested_adapter=requested_adapter,
+                    duration_ms=cls._elapsed_ms(started_at),
+                ), 'endpoint_invalid'
 
-            return cls._run_ollama_http_inference(
+            allowed_hosts = {
+                str(value).strip().lower()
+                for value in (runtime_config.get('allowed_hosts') or [])
+                if str(value).strip()
+            }
+            endpoint_host = (urlparse(endpoint).hostname or '').strip().lower()
+            if allowed_hosts and endpoint_host not in allowed_hosts:
+                return cls._attach_observability(
+                    {
+                        'status': 'policy_blocked',
+                        'reason': 'endpoint_host_not_allowlisted',
+                        'endpoint_host': endpoint_host,
+                    },
+                    requested_adapter=requested_adapter,
+                    duration_ms=cls._elapsed_ms(started_at),
+                ), 'endpoint_host_not_allowlisted'
+
+            result, error = cls._run_ollama_http_inference(
                 prompt_text,
                 model,
                 endpoint,
                 timeout_seconds,
                 response_max_chars,
             )
+            if error and cls._normalize_bool(runtime_config.get('fallback_to_test_double_on_http_error', False)):
+                fallback_result, fallback_error = cls._run_linux_test_double_inference(
+                    prompt_text,
+                    model,
+                    runtime_config.get('linux_test_double_responses') or {},
+                    response_max_chars,
+                )
+                if not fallback_error:
+                    fallback_result['fallback'] = {
+                        'status': 'used',
+                        'from_adapter': 'ollama_http',
+                        'to_adapter': 'linux_test_double',
+                        'reason': result.get('reason'),
+                        'http_status': result.get('http_status'),
+                    }
+                    return cls._attach_observability(
+                        fallback_result,
+                        requested_adapter=requested_adapter,
+                        duration_ms=cls._elapsed_ms(started_at),
+                        fallback_used=True,
+                        primary_error_reason=result.get('reason'),
+                    ), None
+
+            return cls._attach_observability(
+                result,
+                requested_adapter=requested_adapter,
+                duration_ms=cls._elapsed_ms(started_at),
+                primary_error_reason=result.get('reason') if error else None,
+            ), error
 
         responses_map = runtime_config.get('linux_test_double_responses') or {}
-        return cls._run_linux_test_double_inference(prompt_text, model, responses_map, response_max_chars)
+        result, error = cls._run_linux_test_double_inference(prompt_text, model, responses_map, response_max_chars)
+        return cls._attach_observability(
+            result,
+            requested_adapter=requested_adapter,
+            duration_ms=cls._elapsed_ms(started_at),
+        ), error
 
     @staticmethod
     def _build_root_cause_prompt(symptom_summary: str, evidence_points: list[str]) -> str:
@@ -767,6 +854,46 @@ class AIService:
         }, None
 
     @staticmethod
+    def _normalize_bool(value: Any) -> bool:
+        """Normalize config-style boolean values."""
+        if isinstance(value, bool):
+            return value
+        return str(value or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+
+    @staticmethod
+    def _elapsed_ms(started_at: float) -> int:
+        """Return elapsed execution time in milliseconds."""
+        return max(0, int((time.perf_counter() - started_at) * 1000))
+
+    @staticmethod
+    def _attach_observability(
+        result: dict[str, Any],
+        *,
+        requested_adapter: str,
+        duration_ms: int,
+        fallback_used: bool = False,
+        primary_error_reason: str | None = None,
+    ) -> dict[str, Any]:
+        """Attach lightweight runtime metadata for operations/support."""
+        payload = dict(result or {})
+        observability = dict(payload.get('observability') or {})
+        observability['requested_adapter'] = requested_adapter
+        observability['duration_ms'] = duration_ms
+        observability['fallback_used'] = fallback_used
+        if primary_error_reason:
+            observability['primary_error_reason'] = primary_error_reason
+        payload['observability'] = observability
+
+        inference = payload.get('inference')
+        if isinstance(inference, dict):
+            enriched_inference = dict(inference)
+            enriched_inference['duration_ms'] = duration_ms
+            enriched_inference['fallback_used'] = fallback_used
+            payload['inference'] = enriched_inference
+
+        return payload
+
+    @staticmethod
     def _contains_unsafe_control_characters(value: str) -> bool:
         """Reject control characters except newline/tab/carriage-return."""
         for char in str(value):
@@ -836,6 +963,7 @@ class AIService:
             'anomaly_count': len(safe_anomalies),
             'analysis': analysis,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @staticmethod
@@ -955,6 +1083,7 @@ class AIService:
             'affected_system_count': len(safe_systems),
             'explanation': explanation,
             'inference': inference,
+            'observability': inference_result.get('observability') or {},
         }, None
 
     @staticmethod

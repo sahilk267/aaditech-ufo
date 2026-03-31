@@ -18,6 +18,8 @@ from .dashboard_service import DashboardService
 from .remote_executor_service import RemoteExecutorService
 from .performance_service import PerformanceService
 from .agent_release_service import AgentReleaseService
+from .agent_identity_service import AgentIdentityService
+from .tenant_secret_service import TenantSecretService
 
 __all__ = [
 	'SystemService',
@@ -34,4 +36,6 @@ __all__ = [
 	'RemoteExecutorService',
 	'PerformanceService',
 	'AgentReleaseService',
+	'AgentIdentityService',
+	'TenantSecretService',
 ]

@@ -49,7 +49,11 @@ export function AiPage() {
           <button onClick={() => recommendationsMutation.mutate()} disabled={isPending}>Generate Recommendations</button>
         </div>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Last response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Last response" />
+        ) : (
+          <div className="module-status loading">Run an AI operation to inspect the latest inference or recommendation payload.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

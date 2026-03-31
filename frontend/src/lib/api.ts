@@ -103,7 +103,7 @@ export async function setTenantStatus(tenantId: number, isActive: boolean) {
 }
 
 export async function registerUser(payload: { email: string; full_name: string; password: string }) {
-  const { data } = await apiClient.post<UserRegistrationResponse>("/features/create-user", payload);
+  const { data } = await apiClient.post<UserRegistrationResponse>("/api/users", payload);
   return data;
 }
 
@@ -326,17 +326,17 @@ export async function runOllamaInference(prompt: string) {
 
 export async function analyzeRootCause(symptomSummary: string, evidencePoints: string[]) {
   const { data } = await apiClient.post<RootCauseAnalysisResponse>("/api/ai/root-cause/analyze", {
-    symptoms: symptomSummary,
-    evidence: evidencePoints,
+    symptom_summary: symptomSummary,
+    evidence_points: evidencePoints,
   });
   return data;
 }
 
 export async function generateAiRecommendations(symptomSummary: string, probableCause: string, evidencePoints: string[]) {
   const { data } = await apiClient.post<RecommendationsGenerationResponse>("/api/ai/recommendations/generate", {
-    symptoms: symptomSummary,
+    symptom_summary: symptomSummary,
     probable_cause: probableCause,
-    evidence: evidencePoints,
+    evidence_points: evidencePoints,
   });
   return data;
 }

@@ -54,10 +54,18 @@ export function UsersPage() {
   return (
     <ModulePage
       title="Users"
-      description="Tenant-scoped user provisioning using /api/auth/register with current identity context from /api/auth/me."
+      description="Tenant-scoped user provisioning using /api/users with current identity context from /api/auth/me."
     >
       <ActionPanel title="Current Session User">
-        <JsonViewer data={meQuery.data} />
+        {meQuery.isLoading ? (
+          <div className="module-status loading">Loading current session user...</div>
+        ) : meQuery.error ? (
+          <div className="module-status error-text">Failed to load current session user.</div>
+        ) : meQuery.data ? (
+          <JsonViewer data={meQuery.data} />
+        ) : (
+          <div className="module-status loading">No current session user payload is available.</div>
+        )}
       </ActionPanel>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="module-card" style={{ marginTop: 12 }}>
@@ -105,11 +113,13 @@ export function UsersPage() {
           Create User
         </FormSubmitButton>
 
-        {Boolean(latestResult) && (
-          <ActionPanel title="New User Created" style={{ marginTop: 16 }}>
+        <ActionPanel title="New User Created" style={{ marginTop: 16 }}>
+          {latestResult ? (
             <JsonViewer data={latestResult} />
-          </ActionPanel>
-        )}
+          ) : (
+            <div className="module-status loading">Create a user to see the API response payload here.</div>
+          )}
+        </ActionPanel>
       </form>
     </ModulePage>
   );

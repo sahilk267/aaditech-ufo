@@ -1,7 +1,5 @@
 # Production overrides - use with: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up
 
-version: '3.9'
-
 services:
   postgres:
     restart: always
@@ -33,24 +31,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # Frontend Production Server (Pre-built assets served by Nginx)
-  frontend:
-    build:
-      context: ./frontend
-      dockerfile: Dockerfile.prod
-      args:
-        NODE_ENV: production
-        VITE_API_BASE_URL: /api
-    container_name: aaditech-frontend
-    environment:
-      NODE_ENV: production
-    expose:
-      - "3000"
-    networks:
-      - aaditech-network
-    profiles:
-      - full
-
   app:
     restart: always
     build:
@@ -58,6 +38,8 @@ services:
       dockerfile: Dockerfile
       args:
         PYTHON_VERSION: "3.12"
+    env_file:
+      - .env.prod
     environment:
       FLASK_DEBUG: "False"
       FLASK_ENV: production

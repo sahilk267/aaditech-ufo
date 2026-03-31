@@ -120,7 +120,11 @@ export function AuditPage() {
 
       <ActionPanel title="Audit Query Result" style={{ marginTop: 12 }}>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="/api/audit-events response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="/api/audit-events response" />
+        ) : (
+          <div className="module-status loading">Run an audit query to load matching events here.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

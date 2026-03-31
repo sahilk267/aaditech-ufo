@@ -5,6 +5,7 @@ Web UI routes for dashboard and management
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
@@ -26,6 +27,16 @@ from ..audit import log_audit_event
 logger = logging.getLogger(__name__)
 
 web_bp = Blueprint('web', __name__)
+
+
+def _should_use_long_lived_asset_cache(path: str) -> bool:
+    """Only cache hashed build assets for a year; keep other files short-lived."""
+    normalized = str(path or '').strip().lstrip('/')
+    if not normalized.startswith('assets/'):
+        return False
+
+    filename = Path(normalized).name
+    return bool(filename and re.search(r'-[A-Za-z0-9]{6,}\.', filename))
 
 
 def _get_spa_dist_path() -> Path:
@@ -75,9 +86,14 @@ def spa_shell(path=None):
     if path and '.' in path.split('/')[-1]:
         try:
             response = make_response(send_from_directory(dist_path, path))
-            # Set cache headers for hashed assets (1 year)
-            response.cache_control.max_age = 31536000
-            response.cache_control.public = True
+            if _should_use_long_lived_asset_cache(path):
+                # Hashed build assets are safe to cache for a year.
+                response.cache_control.max_age = 31536000
+                response.cache_control.public = True
+            else:
+                # Non-hashed assets should be refreshable across deploys.
+                response.cache_control.no_cache = True
+                response.cache_control.no_store = True
             return response
         except Exception as e:
             logger.debug(f"Static asset not found: {path}")

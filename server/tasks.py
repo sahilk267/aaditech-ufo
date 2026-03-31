@@ -8,10 +8,41 @@ from typing import Any
 from flask import current_app
 
 from .extensions import db
-from .models import AuditEvent, RevokedToken
+from .models import AuditEvent, IncidentRecord, LogEntry, NotificationDelivery, RevokedToken, WorkflowRun
 
 
 logger = logging.getLogger(__name__)
+
+
+def _persist_notification_delivery(
+    organization_id: int,
+    alerts: list[dict[str, Any]] | None,
+    channels: list[str] | None,
+    result: dict[str, Any],
+):
+    """Persist durable notification delivery history without breaking dispatch."""
+    try:
+        delivery = NotificationDelivery(
+            organization_id=organization_id,
+            task_id=result.get('task_id'),
+            delivery_scope='alerts.dispatch',
+            status=str(result.get('status') or 'unknown'),
+            channels_requested=list(channels or []),
+            delivered_channels=list(result.get('delivered_channels') or []),
+            alerts_count=int(result.get('alerts_count') or 0),
+            raw_alerts_count=int(result.get('raw_alerts_count') or 0),
+            deduplicated_count=int(result.get('deduplicated_count') or 0),
+            escalated_count=int(result.get('escalated_count') or 0),
+            failure_count=int(result.get('failure_count') or 0),
+            failures=list(result.get('failures') or []),
+            alert_snapshot=list(alerts or [])[:20],
+        )
+        db.session.add(delivery)
+        db.session.commit()
+        result['delivery_record_id'] = delivery.id
+    except Exception as exc:
+        db.session.rollback()
+        logger.warning("Failed to persist notification delivery history: %s", exc, exc_info=True)
 
 
 def cleanup_expired_revoked_tokens():
@@ -49,6 +80,66 @@ def purge_old_audit_events(retention_days=90):
     }
 
 
+def purge_notification_deliveries(retention_days=None):
+    """Purge old notification-delivery history according to retention policy."""
+    if retention_days is None:
+        retention_days = int(current_app.config.get('NOTIFICATION_DELIVERY_RETENTION_DAYS', 60))
+    retention_days = int(retention_days)
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    deleted = (
+        NotificationDelivery.query
+        .filter(NotificationDelivery.created_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+    return {'deleted': deleted, 'retention_days': retention_days, 'cutoff': cutoff.isoformat()}
+
+
+def purge_workflow_runs(retention_days=None):
+    """Purge old workflow execution history according to retention policy."""
+    if retention_days is None:
+        retention_days = int(current_app.config.get('WORKFLOW_RUN_RETENTION_DAYS', 60))
+    retention_days = int(retention_days)
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    deleted = (
+        WorkflowRun.query
+        .filter(WorkflowRun.executed_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+    return {'deleted': deleted, 'retention_days': retention_days, 'cutoff': cutoff.isoformat()}
+
+
+def purge_resolved_incidents(retention_days=None):
+    """Purge resolved incidents older than retention policy."""
+    if retention_days is None:
+        retention_days = int(current_app.config.get('RESOLVED_INCIDENT_RETENTION_DAYS', 90))
+    retention_days = int(retention_days)
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    deleted = (
+        IncidentRecord.query
+        .filter(IncidentRecord.status == 'resolved', IncidentRecord.resolved_at.isnot(None), IncidentRecord.resolved_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+    return {'deleted': deleted, 'retention_days': retention_days, 'cutoff': cutoff.isoformat()}
+
+
+def purge_log_entries(retention_days=None):
+    """Purge persisted log entries according to retention policy."""
+    if retention_days is None:
+        retention_days = int(current_app.config.get('LOG_ENTRY_RETENTION_DAYS', 30))
+    retention_days = int(retention_days)
+    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    deleted = (
+        LogEntry.query
+        .filter(LogEntry.created_at < cutoff)
+        .delete(synchronize_session=False)
+    )
+    db.session.commit()
+    return {'deleted': deleted, 'retention_days': retention_days, 'cutoff': cutoff.isoformat()}
+
+
 def dispatch_alert_notifications(
     organization_id: int,
     alerts: list[dict[str, Any]] | None = None,
@@ -60,6 +151,7 @@ def dispatch_alert_notifications(
 ):
     """Dispatch alert notifications via email/webhook channels."""
     from .services import AlertService, NotificationService
+    from .audit import log_audit_event
 
     if alerts is None:
         alerts = AlertService.evaluate_rules_for_tenant(organization_id)
@@ -78,7 +170,7 @@ def dispatch_alert_notifications(
         'escalation_repeat_threshold': int(current_app.config.get('ALERT_ESCALATION_REPEAT_THRESHOLD', 3)),
     }
 
-    return NotificationService.dispatch_notifications(
+    result = NotificationService.dispatch_notifications(
         alerts=alerts,
         config=config,
         channels=channels,
@@ -87,6 +179,24 @@ def dispatch_alert_notifications(
         deduplicate=deduplicate,
         escalation_threshold=escalation_threshold,
     )
+
+    delivery_outcome = 'failure' if result.get('failure_count', 0) > 0 else 'success'
+    log_audit_event(
+        'alerts.dispatch.delivery',
+        outcome=delivery_outcome,
+        tenant_id=organization_id,
+        alerts_count=result.get('alerts_count', 0),
+        delivered_channels=','.join(result.get('delivered_channels', [])),
+        failure_count=result.get('failure_count', 0),
+    )
+    _persist_notification_delivery(
+        organization_id=organization_id,
+        alerts=alerts,
+        channels=channels,
+        result=result,
+    )
+
+    return result
 
 
 def execute_automation_workflow(
@@ -107,11 +217,26 @@ def execute_automation_workflow(
         for item in str(allowed_services_raw).split(',')
         if item.strip()
     ]
+    allowed_script_roots = [
+        item.strip()
+        for item in str(current_app.config.get('AUTOMATION_ALLOWED_SCRIPT_ROOTS', '')).split(',')
+        if item.strip()
+    ]
+    allowed_webhook_hosts = [
+        item.strip()
+        for item in str(current_app.config.get('AUTOMATION_ALLOWED_WEBHOOK_HOSTS', '')).split(',')
+        if item.strip()
+    ]
 
     runtime_config = {
         'allowed_services': allowed_services,
         'restart_binary': current_app.config.get('AUTOMATION_SERVICE_RESTART_BINARY', 'systemctl'),
         'command_timeout_seconds': int(current_app.config.get('AUTOMATION_COMMAND_TIMEOUT_SECONDS', 8)),
+        'script_executor_adapter': current_app.config.get('AUTOMATION_SCRIPT_EXECUTOR_ADAPTER', 'subprocess'),
+        'allowed_script_roots': allowed_script_roots,
+        'webhook_adapter': current_app.config.get('AUTOMATION_WEBHOOK_ADAPTER', 'urllib'),
+        'allowed_webhook_hosts': allowed_webhook_hosts,
+        'webhook_timeout_seconds': int(current_app.config.get('AUTOMATION_WEBHOOK_TIMEOUT_SECONDS', 5)),
     }
 
     result, error = AutomationService.execute_workflow(
@@ -127,6 +252,7 @@ def execute_automation_workflow(
             'status': 'failed',
             'reason': error,
             'workflow_id': workflow_id,
+            'result': result,
         }
 
     return {
@@ -140,6 +266,10 @@ def get_background_job_handlers():
     return {
         'cleanup_revoked_tokens': cleanup_expired_revoked_tokens,
         'purge_audit_events': purge_old_audit_events,
+        'purge_notification_deliveries': purge_notification_deliveries,
+        'purge_workflow_runs': purge_workflow_runs,
+        'purge_resolved_incidents': purge_resolved_incidents,
+        'purge_log_entries': purge_log_entries,
         'dispatch_alert_notifications': dispatch_alert_notifications,
         'execute_automation_workflow': execute_automation_workflow,
     }
@@ -158,6 +288,26 @@ def register_background_tasks(app, celery_app):
     def purge_audit_events_task(retention_days=90):
         with app.app_context():
             return handlers['purge_audit_events'](retention_days=retention_days)
+
+    @celery_app.task(name='maintenance.purge_notification_deliveries')
+    def purge_notification_deliveries_task(retention_days=None):
+        with app.app_context():
+            return handlers['purge_notification_deliveries'](retention_days=retention_days)
+
+    @celery_app.task(name='maintenance.purge_workflow_runs')
+    def purge_workflow_runs_task(retention_days=None):
+        with app.app_context():
+            return handlers['purge_workflow_runs'](retention_days=retention_days)
+
+    @celery_app.task(name='maintenance.purge_resolved_incidents')
+    def purge_resolved_incidents_task(retention_days=None):
+        with app.app_context():
+            return handlers['purge_resolved_incidents'](retention_days=retention_days)
+
+    @celery_app.task(name='maintenance.purge_log_entries')
+    def purge_log_entries_task(retention_days=None):
+        with app.app_context():
+            return handlers['purge_log_entries'](retention_days=retention_days)
 
     @celery_app.task(name='alerts.dispatch_notifications')
     def dispatch_alert_notifications_task(
@@ -198,6 +348,10 @@ def register_background_tasks(app, celery_app):
     return {
         'cleanup_revoked_tokens': 'maintenance.cleanup_revoked_tokens',
         'purge_audit_events': 'maintenance.purge_audit_events',
+        'purge_notification_deliveries': 'maintenance.purge_notification_deliveries',
+        'purge_workflow_runs': 'maintenance.purge_workflow_runs',
+        'purge_resolved_incidents': 'maintenance.purge_resolved_incidents',
+        'purge_log_entries': 'maintenance.purge_log_entries',
         'dispatch_alert_notifications': 'alerts.dispatch_notifications',
         'execute_automation_workflow': 'automation.execute_workflow',
     }

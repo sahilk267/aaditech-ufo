@@ -76,6 +76,68 @@ def test_ollama_inference_uses_http_boundary(client, app_fixture):
     assert payload['status'] == 'success'
     assert payload['ollama']['adapter'] == 'ollama_http'
     assert payload['ollama']['inference']['response_text'] == 'Likely root cause is a failing dependency.'
+    assert payload['ollama']['observability']['requested_adapter'] == 'ollama_http'
+    assert payload['ollama']['observability']['fallback_used'] is False
+    assert isinstance(payload['ollama']['observability']['duration_ms'], int)
+
+
+def test_ollama_inference_blocks_endpoint_host_outside_allowlist(client, app_fixture):
+    app_fixture.config['OLLAMA_ADAPTER'] = 'ollama_http'
+    app_fixture.config['OLLAMA_ENDPOINT'] = 'http://external-ollama:11434/api/generate'
+    app_fixture.config['OLLAMA_ALLOWED_HOSTS'] = 'localhost,127.0.0.1,ollama'
+    app_fixture.config['OLLAMA_ALLOWED_MODELS'] = 'llama3.2'
+
+    response = client.post(
+        '/api/ai/ollama/infer',
+        headers=_headers(),
+        json={'prompt': 'Analyze recurring latency spikes.'},
+    )
+
+    assert response.status_code == 400
+    payload = response.get_json()
+    assert payload['error'] == 'Validation failed'
+    assert payload['details']['reason'] == 'endpoint_host_not_allowlisted'
+    assert payload['details']['endpoint_host'] == 'external-ollama'
+
+
+def test_ollama_inference_falls_back_to_test_double_on_http_error_when_enabled(client, app_fixture):
+    app_fixture.config['OLLAMA_ADAPTER'] = 'ollama_http'
+    app_fixture.config['OLLAMA_ENDPOINT'] = 'http://ollama:11434/api/generate'
+    app_fixture.config['OLLAMA_ALLOWED_HOSTS'] = 'ollama'
+    app_fixture.config['OLLAMA_ALLOWED_MODELS'] = 'llama3.2'
+    app_fixture.config['OLLAMA_DEFAULT_MODEL'] = 'llama3.2'
+    app_fixture.config['OLLAMA_HTTP_FALLBACK_TO_TEST_DOUBLE'] = True
+    app_fixture.config['OLLAMA_LINUX_TEST_DOUBLE_RESPONSES'] = (
+        'llama3.2|Summarize outage impact.=Fallback guidance from deterministic AI path.'
+    )
+
+    class _OllamaHttpErrorResponseDouble:
+        status_code = 502
+        text = 'upstream unavailable'
+
+        @staticmethod
+        def json():
+            return {'error': 'upstream unavailable'}
+
+    with patch(
+        'server.services.ai_service.AIService._run_ollama_http_request',
+        return_value=_OllamaHttpErrorResponseDouble(),
+    ):
+        response = client.post(
+            '/api/ai/ollama/infer',
+            headers=_headers(),
+            json={'prompt': 'Summarize outage impact.'},
+        )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['ollama']['adapter'] == 'linux_test_double'
+    assert payload['ollama']['inference']['response_text'] == 'Fallback guidance from deterministic AI path.'
+    assert payload['ollama']['fallback']['status'] == 'used'
+    assert payload['ollama']['fallback']['reason'] == 'http_status_not_success'
+    assert payload['ollama']['observability']['requested_adapter'] == 'ollama_http'
+    assert payload['ollama']['observability']['fallback_used'] is True
+    assert payload['ollama']['observability']['primary_error_reason'] == 'http_status_not_success'
 
 
 def test_ollama_inference_blocks_model_outside_allowlist(client, app_fixture):

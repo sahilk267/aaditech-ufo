@@ -41,14 +41,14 @@ export function TenantsPage() {
         is_active: data.isActive,
       }),
     onSuccess: () => {
-      setFeedback("✓ Tenant created successfully");
+      setFeedback("Tenant created successfully.");
       form.reset();
       queryClient.invalidateQueries({ queryKey: queryKeys.tenants });
       setTimeout(() => setFeedback(""), 4000);
     },
     onError: (err) => {
       const msg = extractErrorMessage(err);
-      setFeedback(`✗ ${msg}`);
+      setFeedback(`Error: ${msg}`);
     },
   });
 
@@ -56,13 +56,13 @@ export function TenantsPage() {
     mutationFn: ({ id, active }: { id: number; active: boolean }) =>
       setTenantStatus(id, active),
     onSuccess: () => {
-      setFeedback("✓ Tenant status updated");
+      setFeedback("Tenant status updated.");
       queryClient.invalidateQueries({ queryKey: queryKeys.tenants });
       setTimeout(() => setFeedback(""), 4000);
     },
     onError: (err) => {
       const msg = extractErrorMessage(err);
-      setFeedback(`✗ ${msg}`);
+      setFeedback(`Error: ${msg}`);
     },
   });
 
@@ -80,7 +80,7 @@ export function TenantsPage() {
           <h3>Create Tenant</h3>
 
           {feedback && (
-            <div className={`feedback-message ${feedback.startsWith("✓") ? "feedback-success" : "feedback-error"}`}>
+            <div className={`feedback-message ${feedback.startsWith("Error:") ? "feedback-error" : "feedback-success"}`}>
               {feedback}
             </div>
           )}
@@ -119,36 +119,44 @@ export function TenantsPage() {
 
         <div className="module-card">
           <h3>Tenant List ({tenantsQuery.data?.count ?? 0})</h3>
-          <table className="table-lite">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>Status</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(tenantsQuery.data?.tenants || []).map((tenant) => (
-                <tr key={tenant.id}>
-                  <td>{tenant.name}</td>
-                  <td>{tenant.slug}</td>
-                  <td>{tenant.is_active ? "✓ Active" : "✗ Inactive"}</td>
-                  <td>
-                    <button
-                      onClick={() =>
-                        statusMutation.mutate({ id: tenant.id, active: !tenant.is_active })
-                      }
-                      disabled={statusMutation.isPending || tenant.slug === "default"}
-                      className="button-sm"
-                    >
-                      {tenant.is_active ? "Deactivate" : "Activate"}
-                    </button>
-                  </td>
+          {tenantsQuery.isLoading ? (
+            <div className="module-status loading">Loading tenants...</div>
+          ) : tenantsQuery.error ? (
+            <div className="module-status error-text">Failed to load tenants.</div>
+          ) : tenantsQuery.data?.tenants?.length ? (
+            <table className="table-lite">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Slug</th>
+                  <th>Status</th>
+                  <th>Action</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(tenantsQuery.data?.tenants || []).map((tenant) => (
+                  <tr key={tenant.id}>
+                    <td>{tenant.name}</td>
+                    <td>{tenant.slug}</td>
+                    <td>{tenant.is_active ? "Active" : "Inactive"}</td>
+                    <td>
+                      <button
+                        onClick={() =>
+                          statusMutation.mutate({ id: tenant.id, active: !tenant.is_active })
+                        }
+                        disabled={statusMutation.isPending || tenant.slug === "default"}
+                        className="button-sm"
+                      >
+                        {tenant.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="module-status loading">No tenants found yet.</div>
+          )}
         </div>
       </div>
     </ModulePage>

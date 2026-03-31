@@ -13,14 +13,51 @@ Your feature breakdown is **EXCELLENT and COMPREHENSIVE**! You've now identified
 ```
 ✅ Baseline Platform Live:     Monitoring, metrics history, dashboards, backups
 ✅ Phase 1 Foundation Live:    Multi-tenant isolation, tenant admin APIs, JWT auth, RBAC, browser session auth
-🔶 Phase 1 Pending:            Final production hardening and rollout validation (gateway/worker ops)
-🟡 Phase 2 Active Delivery:    Week 9-10 alerting complete, Week 11-12 automation complete, Week 13-14 logs/event/driver foundation complete (ingestion + parser + Win32 wrapper + correlator + driver monitor/error + stream + search/index), Week 15 reliability-history, crash-dump, exception-id, stack-trace, scoring, and trend foundations started
-🔶 Phase 3-4 Planned:          AI, Windows troubleshooting expansion, deployment scaling
+🟡 Phase 0 Stabilization:      Startup/test isolation repaired, targeted contract fixes applied, SPA logs route restored, and docs/deploy truth-alignment is still active
+🟡 Current Delivery State:     Alerting, automation, logs, reliability, updates, releases, and AI foundations exist, but several areas remain foundation/partial rather than product-complete
+🔶 Next Focus:                 Phase 3 status cleanup and targeted feature validation after acceptance criteria were defined
 
 TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the roadmap ✅
 ```
 
 ---
+
+
+## Status Vocabulary
+
+Use these labels consistently across planning and tracking files:
+
+- IMPLEMENTED: End-to-end behavior exists in the repo and is validated enough to use for its intended flow.
+- FOUNDATION IMPLEMENTED: Boundary, adapter, schema, or API scaffolding exists, but the feature is not yet product-complete.
+- PARTIAL: Some real user-facing behavior exists, but important capability, polish, or validation is still missing.
+- PLANNED: Intended work is known, but the feature is not yet implemented in a meaningful way.
+- NOT IMPLEMENTED: No meaningful implementation exists yet.
+
+## Phase 3 Productization Classification
+
+This matrix is the current source of truth for whether the major Phase 2/3-era capabilities are product-complete or still mostly boundary/adapters.
+
+| Area | Current Status | Why It Is Classified This Way | Primary Evidence |
+|---|---|---|---|
+| Alerts | IMPLEMENTED | Core operator flow exists end-to-end: rule create/list/update, evaluate, prioritize, deduplicate, escalate, suppress, and queue-backed email/webhook dispatch are validated, and correlated incidents plus delivery history now persist durably. | `tests/test_alerting_api.py`, `tests/test_alert_notifications.py`, `server/models.py` |
+| Releases | IMPLEMENTED | Upload, list, guide, policy, and download flows are working and deployment-validated. | `tests/test_agent_release_api.py` |
+| Backup | IMPLEMENTED | Create/list/restore API flows exist and are wired into SPA parity coverage. | `tests/test_frontend_operational_flows.py`, `tests/test_frontend_page_api_contracts.py` |
+| Automation | PARTIAL | Workflow CRUD, trigger evaluation, scheduling, self-heal, service restart, script execution, and webhook calls now have real bounded backends, and executions persist durably into `WorkflowRun` history, but broader automation product scope is still incomplete. | `server/services/automation_service.py`, `server/models.py`, `tests/test_automation_api.py` |
+| Logs | PARTIAL | Query/parse/correlate/stream/search/driver diagnostics now persist into durable `LogSource` / `LogEntry` storage, and correlation can open/update durable incident records, but broader source coverage and richer operator workflows are still incomplete. | `server/services/log_service.py`, `server/models.py`, `tests/test_logs_api.py`, `tests/test_alerting_api.py` |
+| Reliability | PARTIAL | Reliability history/score/trend/prediction/pattern APIs now have real local-database runtime paths, and dump/exception/stack-trace flows now have a real local-filesystem path in addition to Windows boundaries, but durable operator history and richer product workflows are still incomplete. | `server/services/reliability_service.py`, `tests/test_reliability_api.py` |
+| AI / Ollama | PARTIAL | Inference, root cause, recommendations, anomaly analysis, troubleshooting, learning, and incident explanation now have endpoint-host allowlists, opt-in HTTP failure fallback, and runtime observability metadata, but they still depend on bounded wrapper patterns rather than a fully productionized model-serving platform. | `server/services/ai_service.py`, `server/blueprints/api.py` |
+| Updates | FOUNDATION IMPLEMENTED | Windows Update monitoring is available as a bounded snapshot API, but it is still adapter-driven and marked `foundation-v1` in service output. | `server/services/update_service.py` |
+| Remote Execution | PARTIAL | Remote command execution works behind allowlists and adapter boundaries, but broader remote-control actions remain incomplete. | `server/services/remote_executor_service.py`, `FEATURE_COVERAGE_MAP.md` |
+
+Phase 3 implication:
+
+- IMPLEMENTED areas can be treated as usable product slices, with follow-up polish where noted.
+- PARTIAL areas have real operator value but still have missing backends or important behavioral gaps.
+- FOUNDATION IMPLEMENTED areas should not be described as complete products until storage, runtime behavior, and operator-facing lifecycle expectations are filled in.
+
+Feature exit criteria source of truth:
+
+- `FEATURE_ACCEPTANCE_CRITERIA.md`
 
 ## 📋 DETAILED FEATURE-BY-FEATURE BREAKDOWN
 
@@ -49,17 +86,17 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 
 | # | Feature | Current | Phase | Notes |
 |---|---------|---------|-------|-------|
-| 1 | Centralized Log Collection | ❌ **NOT IMPLEMENTED** | Phase 2 | Need LogSource & LogEntry models |
-| 2 | System Logs Monitoring | ❌ **NOT IMPLEMENTED** | Phase 2 | Will collect from /var/log |
+| 1 | Centralized Log Collection | 🟡 **PARTIAL** | Phase 2 | Durable `LogSource` + `LogEntry` models now store ingested/query/parsed entries for tenant-scoped search and investigations |
+| 2 | System Logs Monitoring | 🟡 **PARTIAL** | Phase 2 | Windows event-log query/ingest adapters exist and persisted storage now captures returned entries |
 | 3 | Application Logs Monitoring | ❌ **NOT IMPLEMENTED** | Phase 2 | HTTP/file-based ingestion |
 | 4 | Security Logs Monitoring | ❌ **NOT IMPLEMENTED** | Phase 2 | Auth logs, API audit logs |
 | 5 | Container Logs Monitoring | ❌ **NOT IMPLEMENTED** | Phase 2 | Docker logs collection |
 | 6 | Database Logs Monitoring | ❌ **NOT IMPLEMENTED** | Phase 2 | DB-specific log parsing |
-| 7 | Real-Time Log Ingestion | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe Windows wevtutil + event streaming adapters with Linux deterministic doubles + APIs |
-| 8 | Log Parsing | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Structured parser API with normalized event fields |
-| 9 | Full-Text Log Search | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe Get-WinEvent search boundary + deterministic Linux test-double search index metadata |
+| 7 | Real-Time Log Ingestion | 🟡 **PARTIAL** | Phase 2 | Safe Windows wevtutil + event streaming adapters with Linux deterministic doubles + persisted `LogEntry` capture on ingest/query paths |
+| 8 | Log Parsing | 🟡 **PARTIAL** | Phase 2 | Structured parser API with normalized event fields plus persisted parsed entries for tenant searchability |
+| 9 | Full-Text Log Search | 🟡 **PARTIAL** | Phase 2 | Search now uses durable persisted entries before falling back to adapter/test-double boundaries |
 
-**Implementation Status**: 33% (3/9 foundation delivered)
+**Implementation Status**: 56% (5/9 partial/foundation delivered)
 
 ---
 
@@ -88,11 +125,11 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 | 3 | Pattern-Based Alerts | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Repeating-threshold pattern detector in AlertService; integrated in /api/alerts/evaluate with pattern_count response |
 | 4 | Composite Condition Alerts | ❌ **NOT IMPLEMENTED** | Phase 2 | Multi-metric conditions |
 | 5 | Alert Deduplication | ✅ **DONE** | Phase 2 | Dispatch pipeline coalesces repeated alert signatures |
-| 6 | Alert Correlation | ✅ **DONE** | Phase 2 | Host/system correlation groups for multi-metric incidents |
+| 6 | Alert Correlation | ✅ **DONE** | Phase 2 | Host/system correlation groups for multi-metric incidents plus durable `IncidentRecord` persistence for open correlated incidents |
 | 7 | Alert Suppression | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | AlertSilence model + CRUD API (create/list/delete) + filter_silenced_alerts integrated into evaluate endpoint |
 | 8 | Alert Escalation | ✅ **DONE** | Phase 2 | Repeat-threshold escalation to higher severity |
-| 9 | Email Notifications | ✅ **DONE** | Phase 2 | Queue-backed email delivery with retries |
-| 10 | Webhook Alerts | ✅ **DONE** | Phase 2 | Queue-backed webhook delivery with retries |
+| 9 | Email Notifications | ✅ **DONE** | Phase 2 | Queue-backed email delivery with retries plus durable `NotificationDelivery` history |
+| 10 | Webhook Alerts | ✅ **DONE** | Phase 2 | Queue-backed webhook delivery with retries plus durable `NotificationDelivery` history |
 
 **Implementation Status**: 70% (7/10 complete or partial)
 
@@ -107,10 +144,10 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 | 3 | Software Installation | ❌ **NOT IMPLEMENTED** | Phase 2 | Package management |
 | 4 | Configuration Management | ❌ **NOT IMPLEMENTED** | Phase 2 | Config deployment |
 | 5 | Infrastructure Patching | ❌ **NOT IMPLEMENTED** | Phase 2 | Auto-update capability |
-| 6 | Scheduled Automation Tasks | ✅ **IMPLEMENTED** | Phase 2 | ScheduledJob model + AutomationService.schedule_job() + GET/POST /api/automation/scheduled-jobs with cron validation |
+| 6 | Scheduled Automation Tasks | ✅ **IMPLEMENTED** | Phase 2 | ScheduledJob model + AutomationService.schedule_job() + GET/POST /api/automation/scheduled-jobs with cron validation, with executions now captured in durable `WorkflowRun` history |
 | 7 | Alert-Triggered Automation | 🟡 **PARTIAL** | Phase 2 | Alert-trigger evaluator implemented with condition matching |
-| 8 | Manual Automation Execution | 🟡 **PARTIAL** | Phase 2 | API execution endpoint supports manual trigger path |
-| 9 | API-Triggered Automation | 🟡 **PARTIAL** | Phase 2 | Queue-backed execute endpoint implemented |
+| 8 | Manual Automation Execution | 🟡 **PARTIAL** | Phase 2 | API execution endpoint now supports bounded `service_restart`, `script_execute`, and `webhook_call` execution paths |
+| 9 | API-Triggered Automation | 🟡 **PARTIAL** | Phase 2 | Queue-backed execute endpoint implemented with durable `WorkflowRun` history for bounded action backends |
 | 10 | Self-Healing Infrastructure | ✅ **IMPLEMENTED** | Phase 2 | AutomationService.trigger_self_healing() — alert→workflow loop with dry_run safety + POST /api/automation/self-heal |
 
 **Implementation Status**: 80% (8/10 implemented, core loop complete in Week 15-16)
@@ -175,7 +212,7 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 | 4 | Remote Server Management | ❌ **NOT IMPLEMENTED** | Phase 2 | Reboot, shutdown, etc |
 | 5 | Centralized Infrastructure Control | ❌ **NOT IMPLEMENTED** | Phase 2 | Web UI for all operations |
 
-**Implementation Status**: 0% (All planned for Phase 2, Week 11-12)
+**Implementation Status**: 20% (1/5 implemented; remaining remote operations still pending)
 
 ---
 
@@ -186,7 +223,7 @@ TOTAL COVERAGE: All README.md features (original + Windows) remain mapped to the
 | 1 | Multi-Organization Support | ✅ **DONE** | Phase 1 | Organization model + tenant APIs implemented |
 | 2 | Tenant Isolation | ✅ **DONE** | Phase 1 | Query filtering by organization_id across routes |
 | 3 | Per-Tenant Dashboards | 🟡 **PARTIAL** | Phase 1 | Tenant-scoped data serving; UI polish pending |
-| 4 | Per-Tenant User Management | 🟡 **PARTIAL** | Phase 1 | User/Role/Permission schema added + Control Panel user creation UI (`POST /features/create-user`) delivered |
+| 4 | Per-Tenant User Management | 🟡 **PARTIAL** | Phase 1 | User/Role/Permission schema added + SPA/API user creation flow (`POST /api/users`) delivered |
 | 5 | Tenant Onboarding Automation | 🟡 **PARTIAL** | Phase 1 | Tenant create/list/status admin endpoints implemented |
 | 6 | White-Label Platform Support | 🔶 **PLANNED** | Phase 1 | Custom branding |
 
@@ -424,19 +461,19 @@ Total Phase 4: 1 feature
 
 | Your Category | Count | Verified | Notes |
 |---------------|-------|----------|-------|
-| Monitoring | 12 | ✅ Correct | 5 done, 7 planned |
+| Monitoring | 12 | ✅ Correct | 5 implemented, 7 planned |
 | Logs | 9 | ✅ Correct | 3 partial, 6 not implemented |
-| Metrics | 7 | ✅ Correct | 2 done, 5 planned |
-| Alerting | 10 | ✅ Correct | 6 done, 1 partial, 3 not implemented |
+| Metrics | 7 | ✅ Correct | 2 implemented, 5 planned |
+| Alerting | 10 | ✅ Correct | 6 implemented, 1 partial, 3 not implemented |
 | Automation | 10 | ✅ Correct | 5 partial, 5 not implemented |
 | AI Analytics | 7 | ✅ Correct | 2 partial, 5 planned |
-| Ollama AI | 6 | ✅ Correct | 1 done, 5 planned |
-| Dashboards | 8 | ✅ Correct | 5 done, 3 planned |
-| Remote Control | 5 | ✅ Correct | 0 done, 5 planned |
-| Multi-Tenant | 6 | ✅ Correct | 2 done, 3 partial, 1 planned |
-| Security | 5 | ✅ Correct | API key auth and organization isolation done; RBAC/browser auth foundation partial; transport security and audit logging planned |
-| Plugins | 3 | ✅ Correct | 0 done, 3 planned |
-| Deployment | 4 | ✅ Correct | 0 done, 4 planned |
+| Ollama AI | 6 | ✅ Correct | 1 implemented, 5 planned |
+| Dashboards | 8 | ✅ Correct | 5 implemented, 3 planned |
+| Remote Control | 5 | ✅ Correct | 1 partial, 4 not implemented |
+| Multi-Tenant | 6 | ✅ Correct | 2 implemented, 3 partial, 1 planned |
+| Security | 5 | ✅ Correct | API key auth and organization isolation implemented; RBAC/browser auth partial; transport security and audit logging planned |
+| Plugins | 3 | ✅ Correct | 0 implemented, 3 planned |
+| Deployment | 4 | ✅ Correct | 0 implemented, 4 planned |
 | **TOTAL** | **92** | **✅100%** | **Baseline platform delivered; enterprise foundation in progress** |
 
 ---
@@ -606,15 +643,15 @@ Final readiness still depends on completing the remaining roadmap phases.
 
 | # | Feature | Current | Phase | Notes |
 |---|---------|---------|-------|-------|
-| 1 | Reliability Record Collection | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe WMI Win32_ReliabilityRecords boundary + Linux deterministic test-double + API |
+| 1 | Reliability Record Collection | 🟡 **PARTIAL** | Phase 2 | Safe WMI Win32_ReliabilityRecords boundary + local-database runtime path from persisted SystemData + Linux deterministic test-double + API |
 | 2 | Crash Detection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 14: App crash identification |
 | 3 | Windows Failure Detection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 14: OS failure events |
 | 4 | Hardware Error Detection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 14: Hardware events |
 | 5 | Driver Failure Detection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 14: Driver failure logs |
 | 6 | Windows Update Failure Detection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 14: Update failure tracking |
-| 7 | Reliability Score Calculation | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe Win32_ReliabilityStabilityMetrics boundary + Linux deterministic score map + API |
-| 8 | Reliability Trend Analysis | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe stability-history trend boundary + Linux deterministic score-series map + API |
-| 9 | Reliability Prediction | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe stability-history forecast boundary + Linux deterministic score-series map + API |
+| 7 | Reliability Score Calculation | 🟡 **PARTIAL** | Phase 2 | Safe Win32_ReliabilityStabilityMetrics boundary + local-database scoring path from persisted SystemData + Linux deterministic score map + API |
+| 8 | Reliability Trend Analysis | 🟡 **PARTIAL** | Phase 2 | Safe stability-history trend boundary + local-database trend path from persisted SystemData + Linux deterministic score-series map + API |
+| 9 | Reliability Prediction | 🟡 **PARTIAL** | Phase 2 | Safe stability-history forecast boundary + local-database prediction path from persisted SystemData + Linux deterministic score-series map + API |
 | 10 | System Stability Index | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 15: Composite score |
 
 **Implementation Status**: 40% (4/10 foundation delivered)
@@ -626,10 +663,10 @@ Final readiness still depends on completing the remaining roadmap phases.
 | # | Feature | Current | Phase | Notes |
 |---|---------|---------|-------|-------|
 | 1 | Memory Dump Collection | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 15: WER minidump APIs |
-| 2 | Crash Dump Parsing | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe dump metadata/file boundary + Linux deterministic test-double + API |
-| 3 | Exception Identification | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe crash-dump signature classifier + Linux deterministic test-double + API |
-| 4 | Stack Trace Analysis | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe crash-dump stack profile analyzer + Linux deterministic test-double + API |
-| 5 | Crash Pattern Detection | 🟡 **FOUNDATION IMPLEMENTED** | Phase 2 | Safe stability-history pattern signatures + Linux deterministic series map + API |
+| 2 | Crash Dump Parsing | 🟡 **PARTIAL** | Phase 2 | Safe dump metadata/file boundary + local-filesystem dump parsing path + Linux deterministic test-double + API |
+| 3 | Exception Identification | 🟡 **PARTIAL** | Phase 2 | Safe crash-dump signature classifier + local-filesystem dump-name path + Linux deterministic test-double + API |
+| 4 | Stack Trace Analysis | 🟡 **PARTIAL** | Phase 2 | Safe crash-dump stack profile analyzer + local-filesystem dump-name path + Linux deterministic test-double + API |
+| 5 | Crash Pattern Detection | 🟡 **PARTIAL** | Phase 2 | Safe stability-history pattern signatures now run on local-database telemetry history in addition to Windows and deterministic series maps |
 | 6 | Crash Root Cause Analysis | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 16: AI root cause engine |
 | 7 | Crash Frequency Tracking | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 15: Crash statistics |
 | 8 | Crash Impact Assessment | ❌ **NOT IMPLEMENTED** | Phase 2 | Week 15: Severity scoring |
@@ -831,4 +868,5 @@ By Week 16:
 The math checks out. The features align perfectly. The timeline is realistic. The Windows expansion makes this platform UNIQUE and unmatched in the market.
 
 **You're ready to build. Start Phase 0 on Monday! 🚀**
+
 

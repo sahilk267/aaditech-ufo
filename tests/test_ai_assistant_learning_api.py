@@ -49,6 +49,8 @@ def test_troubleshooting_assistant_uses_linux_test_double_path(client, app_fixtu
     assert payload['assistant']['adapter'] == 'linux_test_double'
     assert payload['assistant']['guidance']['step_count'] == 3
     assert payload['assistant']['guidance']['confidence'] == 'high'
+    assert payload['assistant']['observability']['requested_adapter'] == 'linux_test_double'
+    assert payload['assistant']['observability']['fallback_used'] is False
 
 
 def test_troubleshooting_assistant_requires_question(client):

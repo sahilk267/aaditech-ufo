@@ -32,7 +32,11 @@ export function RemotePage() {
           Execute
         </button>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Result" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Result" />
+        ) : (
+          <div className="module-status loading">Execute a command to view stdout, stderr, and policy result details here.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

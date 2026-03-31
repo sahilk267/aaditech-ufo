@@ -6,6 +6,8 @@ from datetime import datetime, UTC
 from statistics import mean, pstdev
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
+
 from ..extensions import db
 from ..models import AlertRule, AlertSilence, SystemData
 
@@ -23,6 +25,24 @@ class AlertService:
     }
     ALLOWED_OPERATORS = {'>', '>=', '<', '<=', '==', '!='}
     ALLOWED_SEVERITIES = {'info', 'warning', 'critical'}
+
+    @staticmethod
+    def _commit_with_rollback(
+        duplicate_field: str | None = None,
+        duplicate_message: str | None = None,
+        generic_message: str = 'Database operation failed.',
+    ) -> dict[str, list[str]]:
+        try:
+            db.session.commit()
+            return {}
+        except IntegrityError:
+            db.session.rollback()
+            if duplicate_field and duplicate_message:
+                return {duplicate_field: [duplicate_message]}
+            return {'database': ['Constraint violation.']}
+        except SQLAlchemyError:
+            db.session.rollback()
+            return {'database': [generic_message]}
 
     @staticmethod
     def list_rules(organization_id: int) -> list[AlertRule]:
@@ -51,7 +71,13 @@ class AlertService:
             is_active=bool(payload.get('is_active', True)),
         )
         db.session.add(rule)
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(
+            duplicate_field='name',
+            duplicate_message='Alert rule name already exists for this tenant.',
+            generic_message='Failed to persist alert rule.',
+        )
+        if commit_errors:
+            return None, commit_errors
         return rule, {}
 
     @classmethod
@@ -83,7 +109,13 @@ class AlertService:
         if 'is_active' in payload:
             rule.is_active = bool(payload['is_active'])
 
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(
+            duplicate_field='name',
+            duplicate_message='Alert rule name already exists for this tenant.',
+            generic_message='Failed to update alert rule.',
+        )
+        if commit_errors:
+            return None, commit_errors, None
         return rule, {}, None
 
     @classmethod
@@ -330,7 +362,9 @@ class AlertService:
             ends_at=ends_at,
         )
         db.session.add(silence)
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(generic_message='Failed to persist alert silence.')
+        if commit_errors:
+            return None, commit_errors
         return silence, {}
 
     @staticmethod
@@ -340,8 +374,7 @@ class AlertService:
         if not silence:
             return False
         db.session.delete(silence)
-        db.session.commit()
-        return True
+        return not bool(AlertService._commit_with_rollback(generic_message='Failed to delete alert silence.'))
 
     @staticmethod
     def filter_silenced_alerts(

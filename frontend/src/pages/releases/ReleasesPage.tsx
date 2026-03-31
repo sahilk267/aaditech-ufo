@@ -162,9 +162,14 @@ export function ReleasesPage() {
               required
             />
           </label>
-          <button type="submit" disabled={uploadMutation.isPending}>
+          <button
+            type="submit"
+            disabled={uploadMutation.isPending || !canManagePolicy}
+            title={!canManagePolicy ? `Missing permission: ${PERMISSIONS.TENANT_MANAGE}` : undefined}
+          >
             {uploadMutation.isPending ? "Uploading..." : "Upload"}
           </button>
+          {!canManagePolicy ? <small>Release uploads require {PERMISSIONS.TENANT_MANAGE}.</small> : null}
           <small>
             Download is available via legacy session route links shown below.
           </small>

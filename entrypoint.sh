@@ -2,10 +2,11 @@
 # Wait for any services to be ready
 sleep 2
 
-# Initialize database with seed data
+# Apply migrations and seed baseline data
+flask --app server.app db upgrade
+
 python << 'PYTHON_EOF'
 from server.app import app
-from server.extensions import db
 from server.models import Organization, User, Role, Permission
 from server.auth import hash_password
 
@@ -18,9 +19,6 @@ required_permissions = [
 ]
 
 with app.app_context():
-    # Create all tables
-    db.create_all()
-    
     # Check if default organization exists
     org = Organization.query.filter_by(slug='default').first()
     if not org:

@@ -115,6 +115,16 @@ export function AlertsPage() {
         <StatCard label="Silences" value={silences.length} detail="Active suppression windows" />
       </div>
 
+      {rulesQuery.isLoading || silencesQuery.isLoading ? (
+        <div className="module-status loading">Loading alert configuration...</div>
+      ) : null}
+      {rulesQuery.error || silencesQuery.error ? (
+        <div className="module-status error-text">Failed to load alert rules or silences.</div>
+      ) : null}
+      {!rulesQuery.isLoading && !silencesQuery.isLoading && !rules.length && !silences.length ? (
+        <div className="module-status loading">No alert rules or silences exist yet. Create a rule to start the flow.</div>
+      ) : null}
+
       <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3>Create Alert Rule</h3>
         
@@ -193,7 +203,11 @@ export function AlertsPage() {
           <button onClick={() => dispatchMutation.mutate()} disabled={dispatchMutation.isPending}>Dispatch</button>
         </div>
         <MutationFeedback error={actionError} />
-        <JsonViewer data={latestResult} title="Last response" />
+        {latestResult ? (
+          <JsonViewer data={latestResult} title="Last response" />
+        ) : (
+          <div className="module-status loading">Run evaluate, prioritize, or dispatch to see the latest alert response here.</div>
+        )}
       </ActionPanel>
     </ModulePage>
   );

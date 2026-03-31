@@ -132,6 +132,59 @@ def test_tenant_admin_endpoints_allow_jwt_with_permission(client):
     assert response.status_code == 200
 
 
+def test_tenant_admin_jwt_rebinds_current_tenant_to_authenticated_user(client, app_fixture):
+    with app_fixture.app_context():
+        beta = Organization(name='Beta Tenant', slug='beta-tenant', is_active=True)
+        db.session.add(beta)
+        db.session.flush()
+
+        role = Role(
+            organization_id=beta.id,
+            name='beta-admin',
+            description='Tenant admin for beta tenant',
+            is_system=False,
+        )
+        db.session.add(role)
+        db.session.flush()
+
+        permission = Permission(code='tenant.manage.beta-test', description='Manage beta tenant settings')
+        db.session.add(permission)
+        db.session.flush()
+        role.permissions.append(permission)
+
+        canonical_permission = Permission.query.filter_by(code='tenant.manage').first()
+        if canonical_permission is None:
+            canonical_permission = Permission(code='tenant.manage', description='Manage tenant settings and users')
+            db.session.add(canonical_permission)
+            db.session.flush()
+        role.permissions.append(canonical_permission)
+
+        user = User(
+            organization_id=beta.id,
+            email='beta-admin@example.com',
+            full_name='Beta Admin',
+            password_hash=hash_password('StrongPass123'),
+            is_active=True,
+        )
+        user.roles.append(role)
+        db.session.add(user)
+        db.session.commit()
+
+    login = client.post(
+        '/api/auth/login',
+        headers={'X-Tenant-Slug': 'beta-tenant'},
+        json={'email': 'beta-admin@example.com', 'password': 'StrongPass123'},
+    )
+    assert login.status_code == 200
+    access_token = login.get_json()['tokens']['access_token']
+
+    response = client.get('/api/tenants', headers={'Authorization': f'Bearer {access_token}'})
+    assert response.status_code == 200
+
+    payload = response.get_json()
+    assert payload['current_tenant']['slug'] == 'beta-tenant'
+
+
 def test_register_endpoint_allows_jwt_with_permission(client):
     access_token = _register_and_login_admin(client, email='bootstrap-admin@example.com')
 

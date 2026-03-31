@@ -100,41 +100,55 @@ export function SystemsPage() {
           </div>
           {!canManualSubmit ? <small>Manual submit requires {PERMISSIONS.SYSTEM_SUBMIT}.</small> : null}
           {message ? <small>{message}</small> : null}
-          <table className="table-lite" style={{ marginTop: 10 }}>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>Hostname</th>
-                <th>Status</th>
-                <th>Last Update</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(systemsQuery.data?.systems || []).map((system) => (
-                <tr
-                  key={system.id}
-                  onClick={() => {
-                    setSelectedId(system.id);
-                    setMessage("");
-                  }}
-                  className={selectedId === system.id ? "selected-row" : ""}
-                >
-                  <td>{system.id}</td>
-                  <td>{system.hostname}</td>
-                  <td>{system.status}</td>
-                  <td>{system.last_update || "-"}</td>
+          {systemsQuery.isLoading ? (
+            <div className="module-status loading">Loading systems inventory...</div>
+          ) : systemsQuery.error ? (
+            <div className="module-status error-text">Failed to load systems inventory.</div>
+          ) : systemsQuery.data?.systems?.length ? (
+            <table className="table-lite" style={{ marginTop: 10 }}>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Hostname</th>
+                  <th>Status</th>
+                  <th>Last Update</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {(systemsQuery.data?.systems || []).map((system) => (
+                  <tr
+                    key={system.id}
+                    onClick={() => {
+                      setSelectedId(system.id);
+                      setMessage("");
+                    }}
+                    className={selectedId === system.id ? "selected-row" : ""}
+                  >
+                    <td>{system.id}</td>
+                    <td>{system.hostname}</td>
+                    <td>{system.status}</td>
+                    <td>{system.last_update || "-"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : (
+            <div className="module-status loading">No systems found yet.</div>
+          )}
         </div>
 
         <div className="module-card">
           <h3>Selected System Detail</h3>
-          {detailQuery.data?.system ? (
+          {selectedId && detailQuery.isLoading ? (
+            <div className="module-status loading">Loading system detail...</div>
+          ) : detailQuery.error ? (
+            <div className="module-status error-text">Failed to load system detail.</div>
+          ) : detailQuery.data?.system ? (
             <JsonViewer data={detailQuery.data?.system} />
-          ) : (
+          ) : systemsQuery.data?.systems?.length ? (
             <p>Select a system from the table.</p>
+          ) : (
+            <p>System detail will appear here once inventory data is available.</p>
           )}
         </div>
       </div>

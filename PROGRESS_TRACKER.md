@@ -4,28 +4,214 @@
 
 ---
 
+
+## Status Vocabulary
+
+Use these labels consistently across planning and tracking files:
+
+- IMPLEMENTED: End-to-end behavior exists in the repo and is validated enough to use for its intended flow.
+- FOUNDATION IMPLEMENTED: Boundary, adapter, schema, or API scaffolding exists, but the feature is not yet product-complete.
+- PARTIAL: Some real user-facing behavior exists, but important capability, polish, or validation is still missing.
+- PLANNED: Intended work is known, but the feature is not yet implemented in a meaningful way.
+- NOT IMPLEMENTED: No meaningful implementation exists yet.
+
 ## 📊 EXECUTIVE SUMMARY
 
 | Metric | Status | Details |
 |--------|--------|---------|
-| **Current Phase** | Phase 3 In Progress | Week 17-18 Docker completed (5/5); Week 19-20 Kubernetes remains last |
-| **Current Week** | Phase 4 Optimization Complete | Database query optimizer, cache layer, and CDN static integration delivered (3/3) |
+| **Current Phase** | Phase 5 Product Surfaces Active | Phase 0 stabilization, Phase 2 SPA parity, Phase 3 productization, and Phase 4 remediation are validated, and the current focus has shifted to turning Phase 5 decisions into durable operator-facing platform surfaces |
+| **Current Week** | Phase 5 Product Surface Implementation Slice | Tenant settings are now first-class, durable history read APIs are landed for workflow runs/delivery history/incidents, and supportability now includes metrics plus restore-drill automation |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
-| **Overall Progress** | Phase 0-2 Complete + Phase 4 Delivered | Phase 0 complete, Phase 1 delivered, Phase 2 complete, and Phase 4 optimization items complete (3/3) |
+| **Overall Progress** | Foundations delivered, stabilization and Phase 4 runtime remediation validated | Major backend/frontend foundations exist, the backend test baseline is green, and the reviewed Phase 4 deployment/runtime gaps have been corrected and revalidated |
 | **Implemented Milestones** | Baseline + Phase 1 Security + Queue Foundation + Alerting + Automation + Logs/Drivers + Reliability/Crash + AI/Updates/Dashboard Foundation | Multi-tenant isolation, tenant admin APIs, JWT auth, RBAC decorators, protected web routes, browser session login/logout, async maintenance queue jobs, tenant-scoped alerting stack, automation workflow APIs with queue-backed execution, service status monitor backend adapters, service dependency mapper adapters, service failure detector adapters, command executor remote adapters, log ingestion pipeline adapters, structured log parser API, Win32 event query wrapper boundary, event filter/correlator foundation, driver monitor foundation, driver error detector foundation, event streaming foundation, full-text log search/indexing foundation, reliability history collector foundation, crash dump parser foundation, exception identifier foundation, stack trace analyzer foundation, reliability scorer foundation, trend analyzer foundation, prediction engine foundation, pattern detector foundation, Ollama wrapper foundation, root cause analyzer foundation, recommendation engine foundation, Windows Update monitor foundation, AI confidence scorer foundation, advanced dashboard aggregate API foundation, troubleshooting assistant foundation, and learning feedback handler foundation |
 | **Audit Status** | ✅ PASS | PHASE_0_AUDIT_REPORT.md - All code verified |
-| **Latest Validation** | ✅ PASS | 89 focused Phase 2 tests passing: alert suppression, pattern alerts, AI anomaly analysis (Week 9-10 backlog), plus all Week 11-16 foundations |
-| **Latest Validation** | ✅ PASS | 93 focused Phase 2 tests passing: all remaining Week 15-16 features (AI incident explanation, alert prioritization, scheduled jobs, remote SSH exec, self-healing loop) plus all prior items |
+| **Latest Validation** | PASS | `pytest -q` -> `294 passed` on March 30, 2026 |
+| **Latest Validation** | PASS | `npx.cmd vitest run --pool threads --maxWorkers 1` in `frontend/` -> `5 files, 85 tests passed` on March 30, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on March 30, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_app_bootstrap.py tests/test_spa_serving_and_wave1_redirects.py tests/test_gateway_proxy_contract.py -q` -> `41 passed` on March 31, 2026 |
+| **Latest Validation** | PASS | `docker compose -f docker-compose.yml config`, `docker compose --profile full -f docker-compose.yml -f docker-compose.dev.yml config`, and `docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml config` -> PASS on March 31, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `7 passed` on March 31, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase5_migration_validation.db` -> PASS on March 31, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `11 passed` on March 31, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_frontend_operational_flows.py::test_backup_releases_and_audit_operational_flow -q` -> `1 passed` on March 31, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase5_product_surfaces_validation.db` -> PASS on March 31, 2026 |
 
 ---
 
 ## 🧾 LATEST AUDIT UPDATE (2026-03-24)
 
+## Phase 0 Stabilization Update (2026-03-26)
+
+### Completed now
+- Backend startup refactored to use an app-factory path (`create_app()`) instead of import-time database creation.
+- `server.app` no longer runs `db.create_all()` on import, and startup now applies Alembic migrations instead of creating schema directly.
+- Test harness rebuilt around per-test isolated SQLite databases to avoid bootstrap collisions and cross-test contamination.
+- Queue initialization now uses inline execution in testing mode for deterministic maintenance and notification workflow tests.
+- Authenticated JWT/session requests now rebind `g.tenant` from the authenticated user so tenant-scoped views, auth, and audit context stay aligned after middleware runs.
+- Alert-notification delivery audit now lives in the task layer, so inline and queued dispatch paths record the same `alerts.dispatch.delivery` trail with tenant context.
+- Alert and automation services now roll back cleanly on DB write failures, turning duplicate-name integrity errors into validation-style responses instead of leaving the session poisoned.
+- Dedicated bootstrap regression coverage now verifies app-factory wiring, proxy-fix toggling, inline queue setup, gateway headers, and migration bootstrap calls.
+- Added a dedicated backend startup runbook covering local Flask startup, Docker dev flow, test-mode behavior, migrations, and troubleshooting.
+- `submit_data` contract drift reduced by aligning API endpoint tests with the current `active|inactive` status schema.
+- Missing SPA logs module restored so router and route-prefetch imports resolve again.
+- Alembic now follows the active Flask app configuration, and migration `008_alert_silences_and_scheduled_jobs` closes the schema gap for `alert_silences` and `scheduled_jobs`.
+- Compose validation rechecked: base, dev, and gateway configs resolve; production remains gated by required secrets.
+- Production compose verification now passes when invoked with `--env-file .env.prod` and non-placeholder runtime secrets; rendered config confirms health checks, startup ordering, volumes, and full-profile service wiring.
+- Gateway proxy contract now has deployment-focused regression coverage for SPA and API paths, and the checked-in Nginx config passes `nginx -t`.
+- Deployed SPA asset serving is now validated with real cache-header assertions for JavaScript, CSS, index-shell no-cache behavior, missing assets, and missing-dist handling.
+- Release upload/list/guide/download behavior is now validated as a deployment-like round trip, including stored artifact bytes, download URLs, and attachment download responses.
+- Added `STAGING_VERIFICATION_CHECKLIST.md` and linked it from the startup/docs index so the first real deployment has a concrete preflight, routing, auth, asset-cache, release-flow, evidence, and exit checklist.
+- Added `SPA_WAVE_ROLLBACK_CHECKLIST.md` and linked it from the docs index/front-end tracking so wave activation rollback is tied directly to `SPA_WAVE_1_ENABLED`, the current redirect route set, and recovery verification steps.
+- Frontend route-permission mapping is now centralized and corrected for Reliability/Audit guard drift, frontend Vitest passes in a shell-policy-safe single-worker mode (`85 passed`), Vite production build passes, and Phase 2 `/app` deployment validation is now reflected in the active plan.
+- Major SPA pages now have a dedicated live-backend contract suite (`tests/test_frontend_page_api_contracts.py`), and that sweep repaired four real drifts: `/api/dashboard/status` permission scope, SPA user creation path, AI root-cause/recommendation request payload keys, and releases upload permission gating.
+- Operational SPA pages now show explicit loading, empty, and failure states instead of blank tables or silent JSON panels. This hardening covered `systems`, `tenants`, `alerts`, `automation`, `users`, `audit`, `ai`, `reliability`, `remote`, and `updates`.
+- Joined operational-flow coverage now validates the SPA-backed paths for `backup`, `releases`, `alerts`, `automation`, `logs`, and `audit` together via `tests/test_frontend_operational_flows.py`, and this pass also fixed the Automation-page workflow payload mapping to the backend's current contract.
+- The placeholder Vite template documentation in `frontend/README.md` has now been replaced with project-specific frontend guidance, and the docs index links directly to it for SPA developers/operators.
+- The feature coverage map now includes an explicit Phase 3 productization classification matrix so the repo distinguishes adapter-only/foundation areas from product-complete slices in one place.
+- Log ingestion has been upgraded from adapter-only behavior to a persisted partial product capability: durable `LogSource` / `LogEntry` models now capture ingested, queried, and parsed entries, and log search can serve stored entries directly.
+- Durable Phase 3 operational history is now in place: `IncidentRecord` persists correlated alert groups, `WorkflowRun` persists automation executions, and `NotificationDelivery` persists alert-dispatch outcomes on the live task path.
+- Automation actions are no longer stub-only for `script_execute` and `webhook_call`: both now execute through bounded backends with allowlists, timeouts, and regression coverage, and task failures return backend detail instead of opaque `not_implemented` responses.
+- Reliability is no longer limited to Windows boundaries or deterministic doubles: score/trend/prediction/pattern/history can now execute from persisted local `SystemData`, and crash-dump parse/exception/stack-trace flows can now execute against allowlisted local dump files.
+- AI/Ollama routes are now materially harder and more supportable: HTTP-backed calls enforce an Ollama host allowlist, can fall back to the deterministic safe path when explicitly enabled, and return/audit runtime observability metadata including requested adapter, fallback usage, primary error reason, and duration.
+- Feature-level acceptance criteria are now written down for `alerts`, `automation`, `logs`, `reliability`, `AI/Ollama`, `updates`, and `releases`, so future status changes can be tied to explicit delivery gates instead of inferred progress language.
+- The remaining stale coverage-map summary rows now use the same `IMPLEMENTED` / `PARTIAL` / `FOUNDATION IMPLEMENTED` / `PLANNED` vocabulary, and each major Phase 3 feature area now has a targeted post-hardening validation result on record.
+
+### Validation completed
+- `docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml config` -> PASS
+- `docker compose --env-file .env.prod --profile full -f docker-compose.yml -f docker-compose.prod.yml config` -> PASS
+- `pytest tests/test_frontend_page_api_contracts.py -q` -> `4 passed`
+- `pytest tests/test_frontend_operational_flows.py tests/test_agent_release_api.py tests/test_alerting_api.py tests/test_alert_notifications.py tests/test_logs_api.py tests/test_frontend_page_api_contracts.py -q` -> `35 passed`
+- `npx.cmd vitest run --pool threads --maxWorkers 1` in `frontend/` -> `5 files, 85 tests passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `rg -n "Frontend developer guide|project-specific frontend guide|Replace placeholder/template frontend docs" DOCUMENTATION_INDEX.md FRONTEND_PHASE_1_TO_5_TRACKING.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md frontend/README.md` -> PASS
+- `rg -n "Phase 3 Productization Classification|POST /api/users|Define which features are adapter-only versus product-complete" FEATURE_COVERAGE_MAP.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md PROGRESS_TRACKER.md` -> PASS
+- `pytest tests/test_logs_api.py tests/test_frontend_operational_flows.py tests/test_frontend_page_api_contracts.py -q` -> `22 passed`
+- `flask --app server.app db upgrade` with fresh `DATABASE_URL=sqlite:///.../phase3_logs_validation_fresh.db` -> PASS
+- `pytest tests/test_alerting_api.py tests/test_alert_notifications.py tests/test_automation_api.py -q` -> `24 passed`
+- `pytest tests/test_logs_api.py tests/test_frontend_operational_flows.py tests/test_frontend_page_api_contracts.py tests/test_alerting_api.py tests/test_alert_notifications.py tests/test_automation_api.py -q` -> `46 passed`
+- `flask --app server.app db upgrade` with fresh `DATABASE_URL=sqlite:///.../phase3_durable_history_validation.db` -> PASS
+- `pytest tests/test_automation_api.py -q` -> `17 passed`
+- `pytest tests/test_phase2_remaining_features.py -q` -> `34 passed`
+- `pytest tests/test_automation_api.py tests/test_phase2_remaining_features.py tests/test_frontend_operational_flows.py tests/test_frontend_page_api_contracts.py -q` -> `57 passed`
+- `pytest tests/test_reliability_api.py -q` -> `18 passed`
+- `pytest tests/test_frontend_page_api_contracts.py tests/test_phase4_performance_features.py -q` -> `9 passed`
+- `pytest tests/test_ollama_api.py tests/test_ai_assistant_learning_api.py tests/test_alert_suppression_pattern_ai_anomaly.py tests/test_phase2_remaining_features.py -q` -> `71 passed`
+- `pytest tests/test_alerting_api.py tests/test_alert_notifications.py -q` -> `11 passed`
+- `pytest tests/test_automation_api.py -q` -> `17 passed`
+- `pytest tests/test_logs_api.py -q` -> `16 passed`
+- `pytest tests/test_reliability_api.py -q` -> `18 passed`
+- `pytest tests/test_update_monitor_api.py -q` -> `3 passed`
+- `pytest tests/test_agent_release_api.py tests/test_agent_release_service.py -q` -> `7 passed`
+- `rg -n "Feature Acceptance Criteria|Feature exit criteria source of truth|During actual development, use these 10 files|Add feature-level acceptance criteria" FEATURE_ACCEPTANCE_CRITERIA.md FEATURE_COVERAGE_MAP.md DOCUMENTATION_INDEX.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md PROGRESS_TRACKER.md` -> PASS
+- `rg -n "Current Week|Feature exit criteria source of truth|implemented, 7 planned|1 partial, 4 not implemented|Validate each feature area with targeted tests" PROGRESS_TRACKER.md FEATURE_COVERAGE_MAP.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md` -> PASS
+- `rg -n "SPA_WAVE_ROLLBACK_CHECKLIST|use these 9 files|SPA_WAVE_1_ENABLED|rollback checklist" DOCUMENTATION_INDEX.md FRONTEND_PHASE_1_TO_5_TRACKING.md SPA_WAVE_ROLLBACK_CHECKLIST.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md PROGRESS_TRACKER.md` -> PASS
+- `rg -n "STAGING_VERIFICATION_CHECKLIST|use these 8 files|staging deploy" DOCUMENTATION_INDEX.md BACKEND_STARTUP_RUNBOOK.md STAGING_VERIFICATION_CHECKLIST.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md PROGRESS_TRACKER.md` -> PASS
+- `pytest tests/test_agent_release_api.py tests/test_agent_release_service.py tests/test_web_session_auth.py -q` -> `17 passed`
+- `pytest tests/test_spa_serving_and_wave1_redirects.py tests/test_gateway_proxy_contract.py tests/test_app_bootstrap.py -q` -> `39 passed`
+- `pytest tests/test_gateway_proxy_contract.py tests/test_spa_serving_and_wave1_redirects.py tests/test_app_bootstrap.py -q` -> `37 passed`
+- `docker run --rm -v "${PWD}/gateway/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.27-alpine nginx -t` -> PASS
+- `pytest -q` -> `294 passed`
+- Backend startup runbook created and linked from `DOCUMENTATION_INDEX.md` -> PASS
+- `pytest tests/test_app_bootstrap.py -q` -> `6 passed`
+- `pytest tests/test_alert_suppression_pattern_ai_anomaly.py tests/test_phase2_remaining_features.py -q` -> `53 passed`
+- `pytest tests/test_alert_notifications.py -q` -> `5 passed`
+- `pytest tests/test_tenant_admin_api.py tests/test_tenant_context.py tests/test_web_session_auth.py -q` -> `25 passed`
+- `pytest tests/test_api_endpoints.py tests/test_alerting_api.py tests/test_async_maintenance_jobs.py -q` -> `21 passed`
+- `flask --app server.app db upgrade` against a fresh SQLite database -> PASS (`alert_silences` and `scheduled_jobs` included)
+- `node .\\node_modules\\typescript\\bin\\tsc -b` in `frontend/` -> PASS
+- `docker compose --profile full -f docker-compose.yml -f docker-compose.dev.yml config` -> PASS
+- `docker compose -f docker-compose.gateway.yml config` -> PASS
+
+### Phase 0 status
+
+Phase 0 stabilization goals are now validated. Remaining work has shifted to deployment/runtime checks and later-phase productization tasks.
+
+## Phase 4 Review Remediation Update (2026-03-31)
+
+### Completed now
+- Shared Compose runtime now passes the same passworded Redis URL into the app and the Redis healthcheck, removing the previous auth mismatch in the base deployment path.
+- `/health` now reports Redis status explicitly and degrades when Redis is unavailable instead of presenting a fully healthy response that only reflected database readiness.
+- SPA asset caching is now limited to hashed build assets under `/app/assets/...`; non-hashed files now fall back to no-cache behavior.
+- The unused production `frontend` container has been removed from the Compose runtime path so production deployment matches the actual app/gateway-served SPA architecture.
+- Staging and frontend deployment docs were corrected so they no longer describe a required production frontend service that is not part of the current runtime path.
+
+### Validation completed
+- `pytest tests/test_app_bootstrap.py tests/test_spa_serving_and_wave1_redirects.py tests/test_gateway_proxy_contract.py -q` -> `41 passed`
+- `docker compose -f docker-compose.yml config` -> PASS
+- `docker compose --profile full -f docker-compose.yml -f docker-compose.dev.yml config` -> PASS
+- `docker compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml config` -> PASS
+
+### Residual Phase 4 note
+
+The remaining work in this area is first real staging deployment execution and production secret/ops handling, not unresolved code-path drift in the reviewed Phase 4 implementation.
+
+## Phase 5 Product Gaps Review Update (2026-03-31)
+
+### Completed now
+- Added `PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md` as a decision-focused review of the unchecked Phase 5 planning items.
+- Mapped the current repo state against agent lifecycle, secret management, tenant settings, operator history surfaces, incident/case handling, realtime transport, enterprise auth, commercial controls, and supportability policy.
+- Reclassified the Phase 5 risk as a product-definition gap rather than a code-stability gap: several foundations exist, but first-class product decisions are still required before broad new implementation begins.
+
+### Main report outcomes
+- Highest-priority Phase 5 decisions are now identified as agent enrollment/credential lifecycle, tenant secret management, and supportability policy.
+- Durable history storage is no longer the main blocker for workflow/delivery/incident areas; the next blocker is operator-facing API and UX surface.
+- Realtime transport, enterprise auth roadmap, and commercial controls remain largely unplanned and should be treated as deliberate roadmap decisions, not opportunistic implementation.
+
+## Phase 5 P0 Decision Pack Update (2026-03-31)
+
+### Completed now
+- Added `AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md` to define the recommended v1 agent model, enrollment token flow, issued credentials, lifecycle states, and migration path away from the shared global agent API key.
+- Added `TENANT_SECRET_MANAGEMENT_DECISION.md` to define the recommended v1 tenant-scoped secret model, encrypted-at-rest handling, rotation rules, permission scope, and boundary between tenant-owned secrets and platform-global infrastructure secrets.
+- Added `PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md` to define the minimum supportability baseline for backup verification, retention defaults, platform observability, and recurring operational drills.
+
+### Main outcomes
+- Phase 5 now has a concrete `P0` decision pack instead of only open-ended checklist items.
+- The next implementation-ready planning slice is clearer: agent inventory/enrollment, tenant secret APIs, and supportability-backed operational history/metrics.
+
+## Phase 5 P0 Implementation Update (2026-03-31)
+
+### Completed now
+- Added durable `Agent`, `AgentCredential`, `AgentEnrollmentToken`, and `TenantSecret` models plus migration `011_agents_tenant_secrets_and_supportability`.
+- Added agent enrollment foundation endpoints for enrollment-token creation, one-time agent enrollment, and tenant-scoped agent listing.
+- Added encrypted tenant-secret service/API foundation with create/list/rotate/revoke flows and write-only secret handling.
+- Added backup verification support and a supportability policy API exposing current retention defaults.
+- Added retention-backed maintenance handlers and queue task wiring for notification deliveries, workflow runs, resolved incidents, and log entries.
+
+### Validation completed
+- `pytest tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `7 passed`
+- `pytest tests/test_frontend_operational_flows.py::test_backup_releases_and_audit_operational_flow -q` -> `1 passed`
+- `flask --app server.app db upgrade` against fresh `phase5_migration_validation.db` -> PASS
+
+## Phase 5 Product Surface Update (2026-03-31)
+
+### Completed now
+- Added first-class `TenantSetting` model plus migration `012_tenant_settings`.
+- Added tenant-scoped `GET/PATCH /api/tenant-settings` so retention, notification, branding, auth-policy, and feature-flag settings have a durable API surface.
+- Added read APIs for durable workflow execution history, notification delivery history, and incidents:
+  - `GET /api/automation/workflow-runs`
+  - `GET /api/alerts/delivery-history`
+  - `GET /api/incidents`
+- Added supportability metrics at `GET /api/supportability/metrics`.
+- Added automated non-destructive restore-drill execution at `POST /api/backups/<filename>/restore-drill`.
+- Added `RESTORE_DRILL_CHECKLIST.md` so the automated drill has an operator-facing procedure and evidence list.
+- Enriched queue status with an explicit `mode` field for clearer supportability telemetry.
+
+### Validation completed
+- `pytest tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `11 passed`
+- `pytest tests/test_frontend_operational_flows.py::test_backup_releases_and_audit_operational_flow -q` -> `1 passed`
+- `flask --app server.app db upgrade` against fresh `phase5_product_surfaces_validation.db` -> PASS
+
+### Scope note
+- Tenant settings are now implemented as a first-class model/API.
+- Workflow run, delivery-history, and incident read APIs are now implemented, but the broader UX/timeline/case-management planning items remain open in Phase 5.
+
+
 ### What happened
 - Full regression run identified legacy test breakage after code evolution.
 - Initial full-suite result: `26 failed, 227 passed`.
-- Current full-suite result: `3 failed, 250 passed`.
+- Historical March 24 snapshot: `3 failed, 250 passed`.
+- Current post-stabilization baseline on March 30, 2026: `294 passed`.
 
 ### Errors encountered and how they were solved
 1. Schema payload mismatch in tests (`fstype`, `total_bytes`, `used_bytes`, `free_bytes`, missing `last_update/status`).
@@ -47,9 +233,9 @@ Solution: Explicitly disabled limiter in test setup after loading `TestingConfig
 Solution: Added `apply_silences: false` in targeted evaluation tests.
 
 ### Pending errors
-1. `tests/test_alerting_api.py::test_evaluate_alert_rules_returns_anomaly_alerts`
-2. `tests/test_database.py::TestSystemDataModel::test_system_data_with_all_fields`
-3. `tests/test_database.py::TestSystemDataModel::test_system_data_json_fields`
+1. Previously reported targeted failures in `test_alerting_api.py` were repaired during the March 26 stabilization sweep.
+2. Wider full-suite verification still needs a fresh end-to-end run after the startup/test-harness refactor.
+3. Any remaining failures should now be re-baselined from a new full-suite result rather than the older March 24 snapshot.
 
 ### Config/documentation updates completed
 - `.env` updated to production-oriented defaults (`FLASK_ENV=production`, secure secret keys, Redis/Celery settings, proxy-fix settings).
@@ -916,15 +1102,20 @@ PHASE 3 (Weeks 17-20):    in progress 🟡
 PHASE 4 (Weeks 21-25):    complete ✅
 
 TARGET COMPLETION: 25 Weeks
-CURRENT STATUS: Week 17-18 Docker FULLY COMPLETE (5/5) + Phase 4 optimization FULLY COMPLETE (3/3); Week 19-20 Kubernetes remains intentionally deferred as final phase
-LATEST VALIDATION: Docker build/publish flow verified; Phase 4 cache/database/CDN tests passing
+CURRENT STATUS: Phase 3 productization review active; Phase 4 deployment/runtime remediation closed on March 31, 2026; Kubernetes remains intentionally deferred as final deployment phase
+LATEST VALIDATION: `pytest -q` -> `294 passed`; frontend Vitest/build passing; Phase 4 remediation regression/config validation passing on March 31, 2026
 ```
 
 ---
 
 ## ✉️ LAST UPDATED
 
-- **Date**: March 24, 2026
-- **By**: Current implementation sync
+- **Date**: March 31, 2026
+- **By**: Current implementation sync + Phase 4 remediation review closure
 - **Next Update**: Start Phase 3 Week 19-20 Kubernetes deployment (kept last by plan)
 - **Status**: 🟡 PHASE 3 IN PROGRESS (Kubernetes pending only)
+
+
+
+
+

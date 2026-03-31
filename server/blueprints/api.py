@@ -6,9 +6,11 @@ REST API endpoints for agent data submission and system management
 import logging
 import os
 import re
+from hashlib import sha1
+from datetime import UTC, datetime
 from flask import current_app
 from flask import Blueprint, request, jsonify, g, send_file, abort, url_for
-from sqlalchemy import text
+from sqlalchemy import or_, text
 from werkzeug.utils import secure_filename
 from ..extensions import limiter
 from ..auth import (
@@ -23,7 +25,21 @@ from ..auth import (
     revoke_token,
 )
 from ..schemas import validate_and_clean_system_data
-from ..models import db, SystemData, Organization, User, Role, Permission, AuditEvent
+from ..models import (
+    db,
+    SystemData,
+    Organization,
+    User,
+    Role,
+    Permission,
+    AuditEvent,
+    LogSource,
+    LogEntry,
+    IncidentRecord,
+    TenantSetting,
+    WorkflowRun,
+    NotificationDelivery,
+)
 from ..audit import log_audit_event
 from ..queue import (
     get_queue_status,
@@ -31,7 +47,22 @@ from ..queue import (
     enqueue_alert_notification_job,
     enqueue_automation_workflow_job,
 )
-from ..services import AlertService, AutomationService, LogService, ReliabilityService, AIService, UpdateService, ConfidenceService, DashboardService, RemoteExecutorService, PerformanceService, AgentReleaseService, BackupService
+from ..services import (
+    AlertService,
+    AutomationService,
+    LogService,
+    ReliabilityService,
+    AIService,
+    UpdateService,
+    ConfidenceService,
+    DashboardService,
+    RemoteExecutorService,
+    PerformanceService,
+    AgentReleaseService,
+    BackupService,
+    AgentIdentityService,
+    TenantSecretService,
+)
 from marshmallow import ValidationError
 
 logger = logging.getLogger(__name__)
@@ -82,6 +113,243 @@ def _get_or_create_default_admin_role(organization_id: int) -> Role:
             role.permissions.append(_get_or_create_permission(code, description))
 
     return role
+
+
+def _default_retention_settings() -> dict:
+    return {
+        'audit_events_days': int(current_app.config.get('AUDIT_RETENTION_DAYS', 90)),
+        'notification_deliveries_days': int(current_app.config.get('NOTIFICATION_DELIVERY_RETENTION_DAYS', 60)),
+        'workflow_runs_days': int(current_app.config.get('WORKFLOW_RUN_RETENTION_DAYS', 60)),
+        'resolved_incidents_days': int(current_app.config.get('RESOLVED_INCIDENT_RETENTION_DAYS', 90)),
+        'log_entries_days': int(current_app.config.get('LOG_ENTRY_RETENTION_DAYS', 30)),
+    }
+
+
+def _get_or_create_tenant_settings(organization_id: int) -> TenantSetting:
+    settings = TenantSetting.query.filter_by(organization_id=organization_id).first()
+    if settings is None:
+        settings = TenantSetting(
+            organization_id=organization_id,
+            notification_settings={},
+            retention_settings=_default_retention_settings(),
+            branding_settings={},
+            auth_policy={},
+            feature_flags={},
+        )
+        db.session.add(settings)
+        db.session.commit()
+    return settings
+
+
+def _coerce_log_datetime(value: str | None) -> datetime | None:
+    """Normalize observed log timestamps to naive UTC datetimes when possible."""
+    text_value = str(value or '').strip()
+    if not text_value:
+        return None
+
+    if text_value.endswith('Z'):
+        text_value = f"{text_value[:-1]}+00:00"
+
+    try:
+        parsed = datetime.fromisoformat(text_value)
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+    return parsed
+
+
+def _get_or_create_log_source(organization_id: int, source_name: str, adapter: str) -> LogSource:
+    """Return a persistent log source row for the tenant/source pair."""
+    source = LogSource.query.filter_by(organization_id=organization_id, name=source_name).first()
+    if source is None:
+        source = LogSource(
+            organization_id=organization_id,
+            name=source_name,
+            adapter=adapter,
+        )
+        db.session.add(source)
+        db.session.flush()
+    else:
+        source.adapter = adapter
+
+    source.last_ingested_at = datetime.now(UTC).replace(tzinfo=None)
+    return source
+
+
+def _persist_log_entries(
+    organization_id: int,
+    source_name: str,
+    adapter: str,
+    entries: list,
+    capture_kind: str,
+) -> dict[str, int | None]:
+    """Persist raw/structured log entries for durable search and investigations."""
+    if not entries:
+        return {'persisted_count': 0, 'log_source_id': None}
+
+    log_source = _get_or_create_log_source(organization_id, source_name, adapter)
+    persisted_count = 0
+
+    for item in entries:
+        if isinstance(item, dict):
+            structured = dict(item)
+            raw_entry = str(structured.get('raw') or structured.get('message') or '').strip()
+            if not raw_entry:
+                raw_entry = str(item)
+        else:
+            raw_entry = str(item).strip()
+            structured = LogService._parse_single_entry(raw_entry)
+
+        raw_entry = raw_entry.strip()
+        if not raw_entry:
+            continue
+
+        message = str(structured.get('message') or raw_entry).strip()
+        observed_at = _coerce_log_datetime(structured.get('timestamp'))
+        severity = str(structured.get('severity') or '').strip().lower() or None
+        event_id = str(structured.get('event_id') or '').strip() or None
+
+        db.session.add(
+            LogEntry(
+                organization_id=organization_id,
+                log_source_id=log_source.id,
+                source_name=source_name,
+                adapter=adapter,
+                capture_kind=capture_kind,
+                observed_at=observed_at,
+                severity=severity,
+                event_id=event_id,
+                message=message[:4000],
+                raw_entry=raw_entry[:8000],
+                entry_metadata={
+                    'source': structured.get('source'),
+                    'capture_kind': capture_kind,
+                },
+            )
+        )
+        persisted_count += 1
+
+    db.session.commit()
+    return {'persisted_count': persisted_count, 'log_source_id': log_source.id}
+
+
+def _search_persisted_log_entries(
+    organization_id: int,
+    source_name: str,
+    query_text: str,
+    max_results: int,
+) -> dict:
+    """Search the durable log store for previously captured entries."""
+    if not query_text:
+        return {
+            'status': 'success',
+            'adapter': 'persistent_store',
+            'source_name': source_name,
+            'query_text': query_text,
+            'results': [],
+            'result_count': 0,
+            'index': {'document_count': 0, 'token_count': 0, 'tokens': []},
+        }
+
+    rows = (
+        LogEntry.query
+        .filter_by(organization_id=organization_id, source_name=source_name)
+        .filter(
+            or_(
+                LogEntry.message.ilike(f'%{query_text}%'),
+                LogEntry.raw_entry.ilike(f'%{query_text}%'),
+            )
+        )
+        .order_by(LogEntry.observed_at.desc(), LogEntry.id.desc())
+        .limit(max_results)
+        .all()
+    )
+
+    results = [
+        {
+            'timestamp': row.observed_at.isoformat() if row.observed_at else None,
+            'severity': row.severity or 'info',
+            'event_id': row.event_id or 'unknown',
+            'source': row.source_name,
+            'message': row.message,
+            'raw': row.raw_entry,
+            'capture_kind': row.capture_kind,
+            'entry_id': row.id,
+        }
+        for row in rows
+    ]
+
+    return {
+        'status': 'success',
+        'adapter': 'persistent_store',
+        'source_name': source_name,
+        'query_text': query_text,
+        'results': results,
+        'result_count': len(results),
+        'index': LogService._build_simple_inverted_index(results),
+    }
+
+
+def _persist_correlated_incidents(organization_id: int, correlated_alerts: list[dict]) -> dict[str, list[int] | int]:
+    """Upsert durable incident records for correlated alert groups."""
+    if not correlated_alerts:
+        return {'persisted_count': 0, 'incident_ids': []}
+
+    now = datetime.now(UTC).replace(tzinfo=None)
+    incident_ids: list[int] = []
+
+    for item in correlated_alerts:
+        metrics = sorted(str(metric) for metric in (item.get('metrics') or []) if metric)
+        fingerprint_seed = f"{item.get('system_id') or 'none'}|{item.get('hostname') or 'unknown'}|{','.join(metrics)}"
+        fingerprint = sha1(fingerprint_seed.encode('utf-8')).hexdigest()
+
+        incident = (
+            IncidentRecord.query
+            .filter_by(
+                organization_id=organization_id,
+                fingerprint=fingerprint,
+                status='open',
+            )
+            .first()
+        )
+
+        if incident is None:
+            incident = IncidentRecord(
+                organization_id=organization_id,
+                fingerprint=fingerprint,
+                system_id=item.get('system_id'),
+                hostname=item.get('hostname'),
+                severity=item.get('correlation_severity') or 'warning',
+                status='open',
+                title=f"Correlated incident on {item.get('hostname') or 'unknown host'}",
+                alert_count=int(item.get('alert_count') or 0),
+                metric_count=int(item.get('metric_count') or len(metrics)),
+                occurrence_count=1,
+                metrics=metrics,
+                sample_alerts=list(item.get('sample_alerts') or [])[:5],
+                first_seen_at=now,
+                last_seen_at=now,
+            )
+            db.session.add(incident)
+        else:
+            incident.severity = item.get('correlation_severity') or incident.severity
+            incident.alert_count = int(item.get('alert_count') or 0)
+            incident.metric_count = int(item.get('metric_count') or len(metrics))
+            incident.metrics = metrics
+            incident.sample_alerts = list(item.get('sample_alerts') or [])[:5]
+            incident.last_seen_at = now
+            incident.occurrence_count = int(incident.occurrence_count or 0) + 1
+
+        db.session.flush()
+        incident_ids.append(incident.id)
+
+    db.session.commit()
+    return {
+        'persisted_count': len(incident_ids),
+        'incident_ids': incident_ids,
+    }
 
 
 def _serialize_user(user: User) -> dict:
@@ -478,6 +746,176 @@ def list_tenants():
     }), 200
 
 
+@api_bp.route('/tenant-settings', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_tenant_settings_api():
+    """Return first-class tenant settings for the current tenant."""
+    settings = _get_or_create_tenant_settings(g.tenant.id)
+    return jsonify({'status': 'success', 'tenant_settings': settings.to_dict()}), 200
+
+
+@api_bp.route('/tenant-settings', methods=['PATCH'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def update_tenant_settings_api():
+    """Patch bounded groups of tenant settings."""
+    payload = request.get_json(silent=True) or {}
+    settings = _get_or_create_tenant_settings(g.tenant.id)
+    errors = {}
+
+    field_names = [
+        'notification_settings',
+        'retention_settings',
+        'branding_settings',
+        'auth_policy',
+        'feature_flags',
+    ]
+    touched = False
+    for field_name in field_names:
+        if field_name not in payload:
+            continue
+        value = payload.get(field_name)
+        if not isinstance(value, dict):
+            errors[field_name] = ['Must be an object.']
+            continue
+        setattr(settings, field_name, value)
+        touched = True
+
+    if errors:
+        log_audit_event('tenant.settings.update', outcome='failure', reason='validation_failed', details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+    if touched:
+        db.session.add(settings)
+        db.session.commit()
+        log_audit_event('tenant.settings.update', outcome='success', tenant_settings_id=settings.id)
+
+    return jsonify({'status': 'success', 'tenant_settings': settings.to_dict()}), 200
+
+
+@api_bp.route('/agents', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_agents_api():
+    """List tenant-scoped enrolled agents."""
+    agents = AgentIdentityService.list_agents(g.tenant.id)
+    return jsonify({'status': 'success', 'count': len(agents), 'agents': [agent.to_dict() for agent in agents]}), 200
+
+
+@api_bp.route('/agents/enrollment-tokens', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_api_key_or_permission('tenant.manage')
+def create_agent_enrollment_token_api():
+    """Create a short-lived agent enrollment token."""
+    payload = request.get_json(silent=True) or {}
+    ttl_hours = int(payload.get('ttl_hours') or current_app.config.get('AGENT_ENROLLMENT_TOKEN_TTL_HOURS', 24))
+    token, raw_token = AgentIdentityService.create_enrollment_token(
+        organization_id=g.tenant.id,
+        created_by_user_id=getattr(getattr(g, 'current_user', None), 'id', None),
+        intended_hostname_pattern=payload.get('intended_hostname_pattern'),
+        ttl_hours=ttl_hours,
+    )
+    log_audit_event(
+        'agent.enrollment_token.create',
+        outcome='success',
+        enrollment_token_id=token.id,
+        intended_hostname_pattern=token.intended_hostname_pattern,
+    )
+    return jsonify({
+        'status': 'success',
+        'enrollment_token': raw_token,
+        'token_metadata': token.to_dict(),
+    }), 201
+
+
+@api_bp.route('/agents/enroll', methods=['POST'])
+@limiter.limit("60 per hour")
+def enroll_agent_api():
+    """Enroll an agent using a one-time enrollment token and issue per-agent credential."""
+    payload = request.get_json(silent=True) or {}
+    result, errors = AgentIdentityService.enroll_agent(
+        payload,
+        remote_addr=request.remote_addr,
+        credential_ttl_days=int(current_app.config.get('AGENT_CREDENTIAL_TTL_DAYS', 365)),
+    )
+    if errors:
+        log_audit_event('agent.enroll', outcome='failure', reason='validation_failed', details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+    log_audit_event(
+        'agent.enroll',
+        outcome='success',
+        agent_id=result['agent']['id'],
+        agent_serial_number=result['agent']['serial_number'],
+    )
+    return jsonify({'status': 'success', **result}), 201
+
+
+@api_bp.route('/tenant-secrets', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_tenant_secrets_api():
+    """List tenant secret metadata without exposing plaintext secret material."""
+    secrets_payload = TenantSecretService.list_secrets(g.tenant.id)
+    return jsonify({
+        'status': 'success',
+        'count': len(secrets_payload),
+        'secrets': [item.to_dict() for item in secrets_payload],
+    }), 200
+
+
+@api_bp.route('/tenant-secrets', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def create_tenant_secret_api():
+    """Create an encrypted tenant-scoped secret."""
+    payload = request.get_json(silent=True) or {}
+    secret, errors = TenantSecretService.create_secret(
+        organization_id=g.tenant.id,
+        payload=payload,
+        config=current_app.config,
+        created_by_user_id=getattr(getattr(g, 'current_user', None), 'id', None),
+    )
+    if errors:
+        log_audit_event('tenant.secret.create', outcome='failure', reason='validation_failed', details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+    log_audit_event('tenant.secret.create', outcome='success', secret_id=secret.id, secret_type=secret.secret_type, secret_name=secret.name)
+    return jsonify({'status': 'success', 'secret': secret.to_dict()}), 201
+
+
+@api_bp.route('/tenant-secrets/<int:secret_id>/rotate', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def rotate_tenant_secret_api(secret_id):
+    """Rotate an encrypted tenant secret without exposing plaintext on read."""
+    payload = request.get_json(silent=True) or {}
+    secret, errors, not_found_reason = TenantSecretService.rotate_secret(
+        organization_id=g.tenant.id,
+        secret_id=secret_id,
+        payload=payload,
+        config=current_app.config,
+    )
+    if not_found_reason == 'not_found':
+        log_audit_event('tenant.secret.rotate', outcome='failure', reason='not_found', secret_id=secret_id)
+        return jsonify({'error': 'Tenant secret not found'}), 404
+    if errors:
+        log_audit_event('tenant.secret.rotate', outcome='failure', reason='validation_failed', secret_id=secret_id, details=errors)
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+    log_audit_event('tenant.secret.rotate', outcome='success', secret_id=secret.id, secret_type=secret.secret_type)
+    return jsonify({'status': 'success', 'secret': secret.to_dict()}), 200
+
+
+@api_bp.route('/tenant-secrets/<int:secret_id>/revoke', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def revoke_tenant_secret_api(secret_id):
+    """Revoke a tenant secret while keeping metadata for audit/history."""
+    revoked = TenantSecretService.revoke_secret(g.tenant.id, secret_id)
+    if not revoked:
+        log_audit_event('tenant.secret.revoke', outcome='failure', reason='not_found', secret_id=secret_id)
+        return jsonify({'error': 'Tenant secret not found'}), 404
+    log_audit_event('tenant.secret.revoke', outcome='success', secret_id=secret_id)
+    return jsonify({'status': 'success', 'revoked_id': secret_id}), 200
+
+
 @api_bp.route('/tenants', methods=['POST'])
 @limiter.limit("20 per hour")
 @require_api_key_or_permission('tenant.manage')
@@ -746,6 +1184,78 @@ def restore_backup_api(filename):
     return jsonify({'status': 'success', 'restore': result}), 200
 
 
+@api_bp.route('/backups/<path:filename>/verify', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_api_key_or_permission('backup.manage')
+def verify_backup_api(filename):
+    """Verify that a named backup is readable and restorable."""
+    safe_filename = secure_filename(filename)
+    if not safe_filename:
+        return jsonify({'error': 'Validation failed', 'details': {'filename': ['Invalid filename.']}}), 400
+
+    backup_path = os.path.join(BackupService.BACKUP_DIR, safe_filename)
+    result = BackupService.verify_backup(backup_path)
+    if not result.get('success'):
+        status = 404 if 'not found' in str(result.get('error', '')).lower() else 500
+        log_audit_event('backup.verify.api', outcome='failure', reason='service_failed', backup_filename=safe_filename, error=result.get('error'))
+        return jsonify({'error': 'Backup verification failed', 'details': result.get('error')}), status
+
+    log_audit_event('backup.verify.api', outcome='success', backup_filename=safe_filename)
+    return jsonify({'status': 'success', 'verification': result}), 200
+
+
+@api_bp.route('/backups/<path:filename>/restore-drill', methods=['POST'])
+@limiter.limit("20 per hour")
+@require_api_key_or_permission('backup.manage')
+def run_backup_restore_drill_api(filename):
+    """Run a lightweight non-destructive restore drill report for a named backup."""
+    safe_filename = secure_filename(filename)
+    if not safe_filename:
+        return jsonify({'error': 'Validation failed', 'details': {'filename': ['Invalid filename.']}}), 400
+
+    backup_path = os.path.join(BackupService.BACKUP_DIR, safe_filename)
+    result = BackupService.run_restore_drill(backup_path)
+    if not result.get('success'):
+        status = 404 if 'not found' in str((result.get('verification') or {}).get('error', '')).lower() else 500
+        log_audit_event('backup.restore_drill.api', outcome='failure', reason='service_failed', backup_filename=safe_filename)
+        return jsonify({'error': 'Restore drill failed', 'details': result}), status
+
+    log_audit_event('backup.restore_drill.api', outcome='success', backup_filename=safe_filename)
+    return jsonify({'status': 'success', 'restore_drill': result}), 200
+
+
+@api_bp.route('/supportability/policy', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_supportability_policy_api():
+    """Return current supportability retention defaults for operator visibility."""
+    retention = _default_retention_settings()
+    return jsonify({'status': 'success', 'retention_defaults': retention}), 200
+
+
+@api_bp.route('/supportability/metrics', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_supportability_metrics_api():
+    """Return lightweight platform-supportability metrics for the current tenant."""
+    queue_status = get_queue_status(current_app)
+    backup_stats = BackupService.get_backup_stats()
+    tenant_id = g.tenant.id
+    metrics = {
+        'tenant_id': tenant_id,
+        'queue': queue_status,
+        'retention_defaults': _default_retention_settings(),
+        'backups': backup_stats,
+        'counts': {
+            'workflow_runs': WorkflowRun.query.filter_by(organization_id=tenant_id).count(),
+            'notification_deliveries': NotificationDelivery.query.filter_by(organization_id=tenant_id).count(),
+            'incidents_total': IncidentRecord.query.filter_by(organization_id=tenant_id).count(),
+            'incidents_open': IncidentRecord.query.filter_by(organization_id=tenant_id, status='open').count(),
+            'incidents_resolved': IncidentRecord.query.filter_by(organization_id=tenant_id, status='resolved').count(),
+            'log_entries': LogEntry.query.filter_by(organization_id=tenant_id).count(),
+        },
+    }
+    return jsonify({'status': 'success', 'metrics': metrics}), 200
+
+
 @api_bp.route('/audit-events', methods=['GET'])
 @require_api_key_or_permission('tenant.manage')
 def list_audit_events_api():
@@ -782,6 +1292,79 @@ def list_audit_events_api():
         'total': pagination.total,
         'pages': pagination.pages,
         'events': items,
+    }), 200
+
+
+@api_bp.route('/automation/workflow-runs', methods=['GET'])
+@require_api_key_or_permission('automation.manage')
+def list_workflow_runs_api():
+    """List tenant-scoped workflow execution history."""
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    per_page = max(min(int(request.args.get('per_page', 25) or 25), 100), 1)
+    query = WorkflowRun.query.filter_by(organization_id=g.tenant.id)
+
+    workflow_id = request.args.get('workflow_id')
+    if workflow_id and str(workflow_id).isdigit():
+        query = query.filter_by(workflow_id=int(workflow_id))
+
+    status = str(request.args.get('status') or '').strip()
+    if status:
+        query = query.filter_by(status=status)
+
+    pagination = query.order_by(WorkflowRun.executed_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        'status': 'success',
+        'page': page,
+        'per_page': per_page,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'workflow_runs': [item.to_dict() for item in pagination.items],
+    }), 200
+
+
+@api_bp.route('/alerts/delivery-history', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_notification_delivery_history_api():
+    """List tenant-scoped notification delivery history."""
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    per_page = max(min(int(request.args.get('per_page', 25) or 25), 100), 1)
+    query = NotificationDelivery.query.filter_by(organization_id=g.tenant.id)
+
+    status = str(request.args.get('status') or '').strip()
+    if status:
+        query = query.filter_by(status=status)
+
+    pagination = query.order_by(NotificationDelivery.created_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        'status': 'success',
+        'page': page,
+        'per_page': per_page,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'deliveries': [item.to_dict() for item in pagination.items],
+    }), 200
+
+
+@api_bp.route('/incidents', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def list_incidents_api():
+    """List tenant-scoped durable incidents."""
+    page = max(int(request.args.get('page', 1) or 1), 1)
+    per_page = max(min(int(request.args.get('per_page', 25) or 25), 100), 1)
+    query = IncidentRecord.query.filter_by(organization_id=g.tenant.id)
+
+    status = str(request.args.get('status') or '').strip()
+    if status:
+        query = query.filter_by(status=status)
+
+    pagination = query.order_by(IncidentRecord.last_seen_at.desc()).paginate(page=page, per_page=per_page, error_out=False)
+    return jsonify({
+        'status': 'success',
+        'page': page,
+        'per_page': per_page,
+        'total': pagination.total,
+        'pages': pagination.pages,
+        'incidents': [item.to_dict() for item in pagination.items],
     }), 200
 
 
@@ -1014,6 +1597,7 @@ def evaluate_alert_rules():
         if include_correlation
         else []
     )
+    incident_persistence = _persist_correlated_incidents(g.tenant.id, correlated_alerts)
 
     log_audit_event(
         'alerts.evaluate',
@@ -1023,6 +1607,7 @@ def evaluate_alert_rules():
         pattern_count=len(pattern_alerts),
         silenced_count=len(silenced_alerts),
         correlated_count=len(correlated_alerts),
+        incident_count=incident_persistence.get('persisted_count', 0),
     )
 
     return jsonify({
@@ -1033,6 +1618,8 @@ def evaluate_alert_rules():
         'pattern_count': len(pattern_alerts),
         'silenced_count': len(silenced_alerts),
         'correlated_count': len(correlated_alerts),
+        'incident_count': incident_persistence.get('persisted_count', 0),
+        'incident_ids': incident_persistence.get('incident_ids', []),
         'alerts': all_alerts,
         'silenced_alerts': silenced_alerts,
         'correlated_alerts': correlated_alerts,
@@ -1122,17 +1709,6 @@ def dispatch_alert_notifications():
         task_name=result.get('task_name'),
         task_id=result.get('task_id'),
     )
-
-    inline_result = result.get('result') if result.get('inline') else None
-    if inline_result is not None:
-        delivery_outcome = 'failure' if inline_result.get('failure_count', 0) > 0 else 'success'
-        log_audit_event(
-            'alerts.dispatch.delivery',
-            outcome=delivery_outcome,
-            alerts_count=inline_result.get('alerts_count', 0),
-            delivered_channels=','.join(inline_result.get('delivered_channels', [])),
-            failure_count=inline_result.get('failure_count', 0),
-        )
 
     return jsonify({'status': 'accepted', 'job': result}), 202
 
@@ -1481,7 +2057,7 @@ def execute_automation_service_command():
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
 def ingest_logs_pipeline():
-    """Ingest logs using safe adapter boundary and deterministic test-doubles."""
+    """Ingest logs using safe adapter boundary and persist captured entries."""
     payload = request.get_json(silent=True) or {}
     source_name = str(payload.get('source_name') or '').strip()
     if not source_name:
@@ -1523,12 +2099,25 @@ def ingest_logs_pipeline():
             return jsonify({'error': 'Log ingestion command failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
 
+    persistence = {'persisted_count': 0, 'log_source_id': None}
+    if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
+        persistence = _persist_log_entries(
+            organization_id=g.tenant.id,
+            source_name=source_name,
+            adapter=str(result.get('adapter') or 'unknown'),
+            entries=result.get('entries') or [],
+            capture_kind='ingest',
+        )
+        result['persisted_count'] = persistence['persisted_count']
+        result['log_source_id'] = persistence['log_source_id']
+
     log_audit_event(
         'logs.ingest',
         outcome='success',
         source_name=source_name,
         adapter=result.get('adapter'),
         entry_count=result.get('entry_count', 0),
+        persisted_count=result.get('persisted_count', 0),
     )
     return jsonify({'status': 'success', 'logs': result}), 200
 
@@ -1537,7 +2126,7 @@ def ingest_logs_pipeline():
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
 def query_windows_event_entries():
-    """Query event entries via Windows wrapper adapter or Linux deterministic test-double."""
+    """Query event entries via adapter boundary and persist normalized event rows."""
     payload = request.get_json(silent=True) or {}
     source_name = str(payload.get('source_name') or '').strip()
     if not source_name:
@@ -1579,12 +2168,25 @@ def query_windows_event_entries():
             return jsonify({'error': 'Event query command failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
 
+    persistence = {'persisted_count': 0, 'log_source_id': None}
+    if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
+        persistence = _persist_log_entries(
+            organization_id=g.tenant.id,
+            source_name=source_name,
+            adapter=str(result.get('adapter') or 'unknown'),
+            entries=result.get('entries') or [],
+            capture_kind='event_query',
+        )
+        result['persisted_count'] = persistence['persisted_count']
+        result['log_source_id'] = persistence['log_source_id']
+
     log_audit_event(
         'logs.events_query',
         outcome='success',
         source_name=source_name,
         adapter=result.get('adapter'),
         entry_count=result.get('entry_count', 0),
+        persisted_count=result.get('persisted_count', 0),
     )
     return jsonify({'status': 'success', 'events': result}), 200
 
@@ -1609,11 +2211,31 @@ def parse_log_entries():
         log_audit_event('logs.parse', outcome='failure', reason=error)
         return jsonify({'error': 'Validation failed', 'details': result}), 400
 
+    persisted_total = 0
+    if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
+        grouped_events: dict[str, list[dict]] = {}
+        for event in result.get('events') or []:
+            source_name = str(event.get('source') or 'unknown').strip() or 'unknown'
+            grouped_events.setdefault(source_name, []).append(event)
+
+        for source_name, grouped in grouped_events.items():
+            persisted = _persist_log_entries(
+                organization_id=g.tenant.id,
+                source_name=source_name,
+                adapter='parsed_payload',
+                entries=grouped,
+                capture_kind='parse',
+            )
+            persisted_total += int(persisted.get('persisted_count') or 0)
+
+        result['persisted_count'] = persisted_total
+
     log_audit_event(
         'logs.parse',
         outcome='success',
         entry_count=result.get('entry_count', 0),
         structured_count=result.get('structured_count', 0),
+        persisted_count=result.get('persisted_count', 0),
     )
     return jsonify({'status': 'success', 'parsed': result}), 200
 
@@ -1820,7 +2442,7 @@ def stream_events():
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
 def search_logs():
-    """Search logs and return indexed results via adapter boundary."""
+    """Search logs from persistent storage first, then fall back to adapter boundary."""
     payload = request.get_json(silent=True) or {}
     source_name = str(payload.get('source_name') or '').strip()
     query_text = str(payload.get('query_text') or '').strip()
@@ -1853,26 +2475,41 @@ def search_logs():
         entries = [item.strip() for item in value.split('||') if item.strip()]
         linux_test_double_search_entries[key] = entries
 
-    runtime_config = {
-        'allowed_sources': allowed_sources,
-        'search_adapter': current_app.config.get('LOG_SEARCH_ADAPTER', 'linux_test_double'),
-        'linux_test_double_search_entries': linux_test_double_search_entries,
-        'max_results': int(current_app.config.get('LOG_SEARCH_MAX_RESULTS', 25)),
-        'command_timeout_seconds': int(current_app.config.get('AUTOMATION_COMMAND_TIMEOUT_SECONDS', 8)),
-    }
+    max_results = int(current_app.config.get('LOG_SEARCH_MAX_RESULTS', 25))
 
-    result, error = LogService.search_and_index_logs(source_name, query_text, runtime_config=runtime_config)
-    if error:
-        log_audit_event(
-            'logs.search',
-            outcome='failure',
-            reason=error,
+    result = None
+    error = None
+    if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
+        persistent_result = _search_persisted_log_entries(
+            organization_id=g.tenant.id,
             source_name=source_name,
-            query_text=query_text[:100],
+            query_text=query_text,
+            max_results=max_results,
         )
-        if error == 'command_failed':
-            return jsonify({'error': 'Log search command failed', 'details': result}), 503
-        return jsonify({'error': 'Validation failed', 'details': result}), 400
+        if persistent_result.get('result_count', 0) > 0:
+            result = persistent_result
+
+    if result is None:
+        runtime_config = {
+            'allowed_sources': allowed_sources,
+            'search_adapter': current_app.config.get('LOG_SEARCH_ADAPTER', 'linux_test_double'),
+            'linux_test_double_search_entries': linux_test_double_search_entries,
+            'max_results': max_results,
+            'command_timeout_seconds': int(current_app.config.get('AUTOMATION_COMMAND_TIMEOUT_SECONDS', 8)),
+        }
+
+        result, error = LogService.search_and_index_logs(source_name, query_text, runtime_config=runtime_config)
+        if error:
+            log_audit_event(
+                'logs.search',
+                outcome='failure',
+                reason=error,
+                source_name=source_name,
+                query_text=query_text[:100],
+            )
+            if error == 'command_failed':
+                return jsonify({'error': 'Log search command failed', 'details': result}), 503
+            return jsonify({'error': 'Validation failed', 'details': result}), 400
 
     log_audit_event(
         'logs.search',
@@ -1918,6 +2555,7 @@ def collect_reliability_history():
         linux_test_double_history[key] = entries
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'history_adapter': current_app.config.get('RELIABILITY_HISTORY_ADAPTER', 'linux_test_double'),
         'linux_test_double_history': linux_test_double_history,
@@ -1983,6 +2621,7 @@ def parse_crash_dump():
             linux_test_double_crash_dumps[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'allowed_dump_roots': allowed_dump_roots,
         'crash_dump_adapter': current_app.config.get('RELIABILITY_CRASH_DUMP_ADAPTER', 'linux_test_double'),
@@ -2056,6 +2695,7 @@ def identify_exception():
             linux_test_double_exceptions[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'allowed_dump_roots': allowed_dump_roots,
         'exception_identifier_adapter': current_app.config.get('RELIABILITY_EXCEPTION_IDENTIFIER_ADAPTER', 'linux_test_double'),
@@ -2131,6 +2771,7 @@ def analyze_stack_trace():
             linux_test_double_stack_traces[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'allowed_dump_roots': allowed_dump_roots,
         'stack_trace_adapter': current_app.config.get('RELIABILITY_STACK_TRACE_ADAPTER', 'linux_test_double'),
@@ -2196,6 +2837,7 @@ def score_reliability():
             linux_test_double_reliability_scores[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'reliability_scorer_adapter': current_app.config.get('RELIABILITY_SCORER_ADAPTER', 'linux_test_double'),
         'linux_test_double_reliability_scores': linux_test_double_reliability_scores,
@@ -2252,6 +2894,7 @@ def analyze_reliability_trend():
             linux_test_double_reliability_trends[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'trend_adapter': current_app.config.get('RELIABILITY_TREND_ADAPTER', 'linux_test_double'),
         'linux_test_double_reliability_trends': linux_test_double_reliability_trends,
@@ -2309,6 +2952,7 @@ def analyze_reliability_prediction():
             linux_test_double_reliability_predictions[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'prediction_adapter': current_app.config.get('RELIABILITY_PREDICTION_ADAPTER', 'linux_test_double'),
         'linux_test_double_reliability_predictions': linux_test_double_reliability_predictions,
@@ -2367,6 +3011,7 @@ def detect_reliability_patterns():
             linux_test_double_reliability_patterns[key] = value
 
     runtime_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': allowed_hosts,
         'pattern_adapter': current_app.config.get('RELIABILITY_PATTERN_ADAPTER', 'linux_test_double'),
         'linux_test_double_reliability_patterns': linux_test_double_reliability_patterns,
@@ -2393,6 +3038,50 @@ def detect_reliability_patterns():
     return jsonify({'status': 'success', 'patterns': result}), 200
 
 
+def _parse_csv_config_list(config_key: str) -> list[str]:
+    """Split a comma-separated config value into trimmed items."""
+    return [
+        item.strip()
+        for item in str(current_app.config.get(config_key, '')).split(',')
+        if item.strip()
+    ]
+
+
+def _parse_semicolon_kv_config(config_key: str) -> dict[str, str]:
+    """Parse `key=value;key=value` config values into a dict."""
+    parsed: dict[str, str] = {}
+    for pair in str(current_app.config.get(config_key, '')).split(';'):
+        pair = pair.strip()
+        if '=' not in pair:
+            continue
+        key, value = pair.split('=', 1)
+        key = key.strip()
+        value = value.strip()
+        if key:
+            parsed[key] = value
+    return parsed
+
+
+def _build_ollama_runtime_config(model_override: str = '', **extra):
+    """Build shared safe runtime config for AI/Ollama-backed routes."""
+    runtime_config = {
+        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
+        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
+        'allowed_hosts': _parse_csv_config_list('OLLAMA_ALLOWED_HOSTS'),
+        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
+        'allowed_models': _parse_csv_config_list('OLLAMA_ALLOWED_MODELS'),
+        'linux_test_double_responses': _parse_semicolon_kv_config('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES'),
+        'fallback_to_test_double_on_http_error': bool(
+            current_app.config.get('OLLAMA_HTTP_FALLBACK_TO_TEST_DOUBLE', False)
+        ),
+        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
+        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
+        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
+    }
+    runtime_config.update(extra)
+    return runtime_config
+
+
 @api_bp.route('/ai/ollama/infer', methods=['POST'])
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
@@ -2406,39 +3095,21 @@ def run_ollama_inference():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'linux_test_double_responses': linux_test_double_responses,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-    }
+    runtime_config = _build_ollama_runtime_config(model_override=model_override)
 
     result, error = AIService.run_ollama_inference(prompt_text, runtime_config=runtime_config)
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.ollama.inference', outcome='failure', reason=error, model=runtime_config['model'])
+        log_audit_event(
+            'ai.ollama.inference',
+            outcome='failure',
+            reason=error,
+            model=runtime_config['model'],
+            requested_adapter=runtime_config['adapter'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error == 'command_failed':
             return jsonify({'error': 'Ollama inference request failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
@@ -2450,6 +3121,8 @@ def run_ollama_inference():
         adapter=result.get('adapter'),
         model=result.get('model'),
         response_chars=inference.get('response_chars', 0),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'ollama': result}), 200
 
@@ -2475,44 +3148,28 @@ def analyze_root_cause():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'linux_test_double_responses': linux_test_double_responses,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'max_evidence_points': int(current_app.config.get('AI_ROOT_CAUSE_MAX_EVIDENCE_POINTS', 8)),
-    }
+    runtime_config = _build_ollama_runtime_config(
+        model_override=model_override,
+        max_evidence_points=int(current_app.config.get('AI_ROOT_CAUSE_MAX_EVIDENCE_POINTS', 8)),
+    )
 
     result, error = AIService.analyze_root_cause(
         symptom_summary,
         evidence_points=evidence_points,
         runtime_config=runtime_config,
     )
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.root_cause.analyze', outcome='failure', reason=error, model=runtime_config['model'])
+        log_audit_event(
+            'ai.root_cause.analyze',
+            outcome='failure',
+            reason=error,
+            model=runtime_config['model'],
+            requested_adapter=runtime_config['adapter'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error == 'command_failed':
             return jsonify({'error': 'Root cause analysis request failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
@@ -2524,6 +3181,8 @@ def analyze_root_cause():
         adapter=result.get('adapter'),
         model=result.get('model'),
         confidence=root_cause.get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'analysis': result}), 200
 
@@ -2554,37 +3213,11 @@ def generate_recommendations():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'linux_test_double_responses': linux_test_double_responses,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'max_evidence_points': int(current_app.config.get('AI_ROOT_CAUSE_MAX_EVIDENCE_POINTS', 8)),
-        'max_recommendations': int(current_app.config.get('AI_RECOMMENDATION_MAX_ITEMS', 3)),
-    }
+    runtime_config = _build_ollama_runtime_config(
+        model_override=model_override,
+        max_evidence_points=int(current_app.config.get('AI_ROOT_CAUSE_MAX_EVIDENCE_POINTS', 8)),
+        max_recommendations=int(current_app.config.get('AI_RECOMMENDATION_MAX_ITEMS', 3)),
+    )
 
     result, error = AIService.generate_recommendations(
         symptom_summary,
@@ -2592,8 +3225,18 @@ def generate_recommendations():
         evidence_points=evidence_points,
         runtime_config=runtime_config,
     )
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.recommendations.generate', outcome='failure', reason=error, model=runtime_config['model'])
+        log_audit_event(
+            'ai.recommendations.generate',
+            outcome='failure',
+            reason=error,
+            model=runtime_config['model'],
+            requested_adapter=runtime_config['adapter'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error == 'command_failed':
             return jsonify({'error': 'Recommendation engine request failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
@@ -2606,6 +3249,8 @@ def generate_recommendations():
         model=result.get('model'),
         recommendation_count=recommendations.get('count', 0),
         confidence=recommendations.get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'recommendations': result}), 200
 
@@ -2631,46 +3276,30 @@ def assist_troubleshooting():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'linux_test_double_responses': linux_test_double_responses,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'max_context_items': int(current_app.config.get('AI_TROUBLESHOOT_MAX_CONTEXT_ITEMS', 10)),
-        'max_steps': int(current_app.config.get('AI_TROUBLESHOOT_MAX_STEPS', 5)),
-        'max_question_chars': int(current_app.config.get('AI_TROUBLESHOOT_MAX_QUESTION_CHARS', 1200)),
-    }
+    runtime_config = _build_ollama_runtime_config(
+        model_override=model_override,
+        max_context_items=int(current_app.config.get('AI_TROUBLESHOOT_MAX_CONTEXT_ITEMS', 10)),
+        max_steps=int(current_app.config.get('AI_TROUBLESHOOT_MAX_STEPS', 5)),
+        max_question_chars=int(current_app.config.get('AI_TROUBLESHOOT_MAX_QUESTION_CHARS', 1200)),
+    )
 
     result, error = AIService.assist_troubleshooting(
         question,
         context_items=context_items,
         runtime_config=runtime_config,
     )
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.troubleshooting.assist', outcome='failure', reason=error, model=runtime_config['model'])
+        log_audit_event(
+            'ai.troubleshooting.assist',
+            outcome='failure',
+            reason=error,
+            model=runtime_config['model'],
+            requested_adapter=runtime_config['adapter'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error == 'command_failed':
             return jsonify({'error': 'Troubleshooting assistant request failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
@@ -2683,6 +3312,8 @@ def assist_troubleshooting():
         model=result.get('model'),
         step_count=guidance.get('step_count', 0),
         confidence=guidance.get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'assistant': result}), 200
 
@@ -2714,36 +3345,10 @@ def handle_learning_feedback():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        value = value.strip()
-        if key:
-            linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'linux_test_double_responses': linux_test_double_responses,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'max_tags': int(current_app.config.get('AI_LEARNING_MAX_TAGS', 8)),
-    }
+    runtime_config = _build_ollama_runtime_config(
+        model_override=model_override,
+        max_tags=int(current_app.config.get('AI_LEARNING_MAX_TAGS', 8)),
+    )
 
     result, error = AIService.learn_from_resolution(
         issue_summary,
@@ -2752,8 +3357,18 @@ def handle_learning_feedback():
         tags=tags,
         runtime_config=runtime_config,
     )
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.learning.feedback', outcome='failure', reason=error, model=runtime_config['model'])
+        log_audit_event(
+            'ai.learning.feedback',
+            outcome='failure',
+            reason=error,
+            model=runtime_config['model'],
+            requested_adapter=runtime_config['adapter'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error == 'command_failed':
             return jsonify({'error': 'Learning feedback request failed', 'details': result}), 503
         return jsonify({'error': 'Validation failed', 'details': result}), 400
@@ -2766,6 +3381,8 @@ def handle_learning_feedback():
         model=result.get('model'),
         outcome_label=result.get('outcome'),
         confidence=learning.get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'learning_feedback': result}), 200
 
@@ -2929,7 +3546,7 @@ def score_update_confidence():
 
 @api_bp.route('/dashboard/status', methods=['GET'])
 @limiter.limit("240 per hour")
-@require_api_key_or_permission('automation.manage')
+@require_api_key_or_permission('dashboard.view')
 def get_dashboard_aggregate_status():
     """Get unified dashboard status aggregating Week 15 + Week 16 outputs."""
     host_name = request.args.get('host_name', '').strip()
@@ -2966,6 +3583,7 @@ def get_dashboard_aggregate_status():
         linux_test_double_history[key] = entries
 
     reliability_config = {
+        'organization_id': g.tenant.id,
         'allowed_hosts': reliability_allowed_hosts or allowed_hosts,
         'history_adapter': current_app.config.get('RELIABILITY_HISTORY_ADAPTER', 'linux_test_double'),
         'reliability_scorer_adapter': current_app.config.get('RELIABILITY_SCORER_ADAPTER', 'linux_test_double'),
@@ -3092,40 +3710,24 @@ def analyze_ai_anomalies():
 
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [
-        item.strip()
-        for item in str(allowed_models_raw).split(',')
-        if item.strip()
-    ]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        if not key:
-            continue
-        linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'linux_test_double_responses': linux_test_double_responses,
-        'ai_anomaly_max_items': 10,
-    }
+    runtime_config = _build_ollama_runtime_config(
+        model_override=model_override,
+        ai_anomaly_max_items=10,
+    )
 
     result, error = AIService.analyze_anomalies(anomalies, runtime_config=runtime_config)
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.anomaly.analyze', outcome='failure', reason=error)
+        log_audit_event(
+            'ai.anomaly.analyze',
+            outcome='failure',
+            reason=error,
+            requested_adapter=runtime_config['adapter'],
+            model=runtime_config['model'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error in ('anomalies_missing_or_invalid', 'no_valid_anomalies'):
             return jsonify({'error': 'Validation failed', 'details': result}), 400
         return jsonify({'error': 'Anomaly analysis request failed', 'details': result}), 503
@@ -3137,6 +3739,8 @@ def analyze_ai_anomalies():
         model=result.get('model'),
         anomaly_count=result.get('anomaly_count', 0),
         confidence=result.get('analysis', {}).get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'anomaly_analysis': result}), 200
 
@@ -3161,31 +3765,7 @@ def explain_ai_incident():
     metrics_snapshot = payload.get('metrics_snapshot') or {}
     model_override = str(payload.get('model') or '').strip()
 
-    allowed_models_raw = current_app.config.get('OLLAMA_ALLOWED_MODELS', '')
-    allowed_models = [item.strip() for item in str(allowed_models_raw).split(',') if item.strip()]
-
-    responses_raw = current_app.config.get('OLLAMA_LINUX_TEST_DOUBLE_RESPONSES', '')
-    linux_test_double_responses: dict[str, str] = {}
-    for pair in str(responses_raw).split(';'):
-        pair = pair.strip()
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        key = key.strip()
-        if not key:
-            continue
-        linux_test_double_responses[key] = value
-
-    runtime_config = {
-        'adapter': current_app.config.get('OLLAMA_ADAPTER', 'linux_test_double'),
-        'endpoint': current_app.config.get('OLLAMA_ENDPOINT', 'http://localhost:11434/api/generate'),
-        'model': model_override or current_app.config.get('OLLAMA_DEFAULT_MODEL', 'llama3.2'),
-        'allowed_models': allowed_models,
-        'timeout_seconds': int(current_app.config.get('OLLAMA_TIMEOUT_SECONDS', 8)),
-        'prompt_max_chars': int(current_app.config.get('OLLAMA_PROMPT_MAX_CHARS', 4000)),
-        'response_max_chars': int(current_app.config.get('OLLAMA_RESPONSE_MAX_CHARS', 4000)),
-        'linux_test_double_responses': linux_test_double_responses,
-    }
+    runtime_config = _build_ollama_runtime_config(model_override=model_override)
 
     result, error = AIService.explain_incident(
         incident_title=incident_title,
@@ -3193,8 +3773,18 @@ def explain_ai_incident():
         metrics_snapshot=metrics_snapshot,
         runtime_config=runtime_config,
     )
+    observability = result.get('observability') or {}
     if error:
-        log_audit_event('ai.incident.explain', outcome='failure', reason=error)
+        log_audit_event(
+            'ai.incident.explain',
+            outcome='failure',
+            reason=error,
+            requested_adapter=runtime_config['adapter'],
+            model=runtime_config['model'],
+            duration_ms=observability.get('duration_ms'),
+            fallback_used=observability.get('fallback_used'),
+            primary_error_reason=observability.get('primary_error_reason'),
+        )
         if error in ('incident_title_missing', 'incident_title_too_long'):
             return jsonify({'error': 'Validation failed', 'details': result}), 400
         return jsonify({'error': 'Incident explanation request failed', 'details': result}), 503
@@ -3206,6 +3796,8 @@ def explain_ai_incident():
         model=result.get('model'),
         incident_title=incident_title[:120],
         confidence=result.get('explanation', {}).get('confidence'),
+        duration_ms=observability.get('duration_ms'),
+        fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'incident_explanation': result}), 200
 
@@ -3358,6 +3950,26 @@ def trigger_self_healing():
         'self_healing_max_depth': int(current_app.config.get('SELF_HEALING_MAX_DEPTH', 10)),
         'command_executor_adapter': current_app.config.get('AUTOMATION_EXECUTOR_ADAPTER', 'linux_test_double'),
         'linux_test_double_commands': {},
+        'allowed_services': [
+            item.strip()
+            for item in str(current_app.config.get('AUTOMATION_ALLOWED_SERVICES', '')).split(',')
+            if item.strip()
+        ],
+        'restart_binary': current_app.config.get('AUTOMATION_SERVICE_RESTART_BINARY', 'systemctl'),
+        'command_timeout_seconds': int(current_app.config.get('AUTOMATION_COMMAND_TIMEOUT_SECONDS', 8)),
+        'script_executor_adapter': current_app.config.get('AUTOMATION_SCRIPT_EXECUTOR_ADAPTER', 'subprocess'),
+        'allowed_script_roots': [
+            item.strip()
+            for item in str(current_app.config.get('AUTOMATION_ALLOWED_SCRIPT_ROOTS', '')).split(',')
+            if item.strip()
+        ],
+        'webhook_adapter': current_app.config.get('AUTOMATION_WEBHOOK_ADAPTER', 'urllib'),
+        'allowed_webhook_hosts': [
+            item.strip()
+            for item in str(current_app.config.get('AUTOMATION_ALLOWED_WEBHOOK_HOSTS', '')).split(',')
+            if item.strip()
+        ],
+        'webhook_timeout_seconds': int(current_app.config.get('AUTOMATION_WEBHOOK_TIMEOUT_SECONDS', 5)),
     }
 
     result = AutomationService.trigger_self_healing(

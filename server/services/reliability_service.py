@@ -5,6 +5,7 @@ from __future__ import annotations
 import ntpath
 import re
 import subprocess
+from pathlib import Path
 from typing import Any
 
 
@@ -14,7 +15,7 @@ class ReliabilityService:
     SAFE_HOST_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]{1,64}$')
     SAFE_DUMP_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]{1,128}\.(dmp|mdmp)$', re.IGNORECASE)
     SAFE_DUMP_ROOT_PATTERN = re.compile(r'^[a-zA-Z0-9_:\\/.\- ]{1,260}$')
-    ALLOWED_ADAPTERS = {'windows', 'linux_test_double'}
+    ALLOWED_ADAPTERS = {'windows', 'linux_test_double', 'local_database', 'local_filesystem'}
 
     EXCEPTION_SIGNATURES = {
         'access-violation': ('0xc0000005', 'access_violation'),
@@ -113,6 +114,9 @@ class ReliabilityService:
         if adapter == 'windows':
             return cls._analyze_windows_stack_trace(host_name, dump_name, dump_root, timeout_seconds)
 
+        if adapter == 'local_filesystem':
+            return cls._analyze_local_stack_trace(host_name, dump_name, dump_root)
+
         stack_map = runtime_config.get('linux_test_double_stack_traces') or {}
         return cls._analyze_linux_test_double_stack_trace(host_name, dump_name, dump_root, stack_map)
 
@@ -155,6 +159,12 @@ class ReliabilityService:
 
         if adapter == 'windows':
             return cls._score_windows_reliability(host_name, timeout_seconds)
+
+        if adapter == 'local_database':
+            return cls._score_local_reliability(
+                host_name,
+                organization_id=runtime_config.get('organization_id'),
+            )
 
         score_map = runtime_config.get('linux_test_double_reliability_scores') or {}
         return cls._score_linux_test_double_reliability(host_name, score_map)
@@ -205,6 +215,13 @@ class ReliabilityService:
 
         if adapter == 'windows':
             return cls._analyze_windows_reliability_trend(host_name, timeout_seconds, window_size)
+
+        if adapter == 'local_database':
+            return cls._analyze_local_reliability_trend(
+                host_name,
+                organization_id=runtime_config.get('organization_id'),
+                window_size=window_size,
+            )
 
         trend_map = runtime_config.get('linux_test_double_reliability_trends') or {}
         return cls._analyze_linux_test_double_reliability_trend(host_name, trend_map, window_size)
@@ -263,6 +280,14 @@ class ReliabilityService:
         if adapter == 'windows':
             return cls._predict_windows_reliability(host_name, timeout_seconds, window_size, prediction_horizon)
 
+        if adapter == 'local_database':
+            return cls._predict_local_reliability(
+                host_name,
+                organization_id=runtime_config.get('organization_id'),
+                window_size=window_size,
+                prediction_horizon=prediction_horizon,
+            )
+
         prediction_map = runtime_config.get('linux_test_double_reliability_predictions') or {}
         return cls._predict_linux_test_double_reliability(host_name, prediction_map, window_size, prediction_horizon)
 
@@ -312,6 +337,13 @@ class ReliabilityService:
 
         if adapter == 'windows':
             return cls._detect_windows_reliability_patterns(host_name, timeout_seconds, window_size)
+
+        if adapter == 'local_database':
+            return cls._detect_local_reliability_patterns(
+                host_name,
+                organization_id=runtime_config.get('organization_id'),
+                window_size=window_size,
+            )
 
         pattern_map = runtime_config.get('linux_test_double_reliability_patterns') or {}
         return cls._detect_linux_test_double_reliability_patterns(host_name, pattern_map, window_size)
@@ -378,6 +410,9 @@ class ReliabilityService:
         if adapter == 'windows':
             return cls._identify_windows_exception(host_name, dump_name, dump_root, timeout_seconds)
 
+        if adapter == 'local_filesystem':
+            return cls._identify_local_exception(host_name, dump_name, dump_root)
+
         exception_map = runtime_config.get('linux_test_double_exceptions') or {}
         return cls._identify_linux_test_double_exception(host_name, dump_name, dump_root, exception_map)
 
@@ -443,6 +478,9 @@ class ReliabilityService:
         if adapter == 'windows':
             return cls._parse_windows_crash_dump(host_name, dump_name, dump_root, timeout_seconds)
 
+        if adapter == 'local_filesystem':
+            return cls._parse_local_crash_dump(host_name, dump_name, dump_root)
+
         dump_map = runtime_config.get('linux_test_double_crash_dumps') or {}
         return cls._parse_linux_test_double_crash_dump(host_name, dump_name, dump_root, dump_map)
 
@@ -493,8 +531,212 @@ class ReliabilityService:
         if adapter == 'windows':
             return cls._collect_windows_reliability_history(host_name, timeout_seconds, max_records)
 
+        if adapter == 'local_database':
+            return cls._collect_local_reliability_history(
+                host_name,
+                organization_id=runtime_config.get('organization_id'),
+                max_records=max_records,
+            )
+
         history_map = runtime_config.get('linux_test_double_history') or {}
         return cls._collect_linux_test_double_reliability_history(host_name, history_map, max_records)
+
+    @staticmethod
+    def _resolve_local_dump_path(dump_root: str, dump_name: str) -> Path:
+        """Build a local dump path for allowlisted filesystem access."""
+        return (Path(dump_root) / dump_name).resolve(strict=False)
+
+    @classmethod
+    def _collect_local_reliability_history(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        max_records: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Collect reliability history from stored system telemetry rows."""
+        rows = cls._load_local_system_rows(host_name, organization_id=organization_id, limit=max_records)
+        records = [
+            {
+                'timestamp': row.get('observed_at'),
+                'source': 'system_data',
+                'product': row.get('hostname') or host_name,
+                'event_id': row.get('serial_number') or 'system_snapshot',
+                'message': (
+                    f"cpu={row.get('cpu_usage', 0.0)} ram={row.get('ram_usage', 0.0)} "
+                    f"storage={row.get('storage_usage', 0.0)} status={row.get('status', 'unknown')}"
+                ),
+            }
+            for row in rows
+        ]
+        return {
+            'status': 'success',
+            'adapter': 'local_database',
+            'host_name': host_name,
+            'record_count': len(records),
+            'records': records,
+        }, None
+
+    @classmethod
+    def _score_local_reliability(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Score reliability from the latest persisted telemetry row."""
+        points = cls._load_local_reliability_points(host_name, organization_id=organization_id, limit=1)
+        score = cls._parse_reliability_score_line(cls._serialize_point(points[0])) if points else cls._parse_reliability_score_line('')
+        return {
+            'status': 'success',
+            'adapter': 'local_database',
+            'host_name': host_name,
+            'reliability_score': score,
+        }, None
+
+    @classmethod
+    def _analyze_local_reliability_trend(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        window_size: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Analyze reliability trend from persisted telemetry rows."""
+        score_points = cls._load_local_reliability_points(host_name, organization_id=organization_id, limit=window_size)
+        trend = cls._compute_trend_summary(score_points)
+        return {
+            'status': 'success',
+            'adapter': 'local_database',
+            'host_name': host_name,
+            'window_size': window_size,
+            'trend': trend,
+        }, None
+
+    @classmethod
+    def _predict_local_reliability(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        window_size: int,
+        prediction_horizon: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Predict reliability from persisted telemetry rows."""
+        score_points = cls._load_local_reliability_points(host_name, organization_id=organization_id, limit=window_size)
+        prediction = cls._compute_prediction_summary(score_points, prediction_horizon)
+        return {
+            'status': 'success',
+            'adapter': 'local_database',
+            'host_name': host_name,
+            'window_size': window_size,
+            'prediction_horizon': prediction_horizon,
+            'prediction': prediction,
+        }, None
+
+    @classmethod
+    def _detect_local_reliability_patterns(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        window_size: int,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Detect reliability patterns from persisted telemetry rows."""
+        score_points = cls._load_local_reliability_points(host_name, organization_id=organization_id, limit=window_size)
+        patterns = cls._compute_pattern_summary(score_points)
+        return {
+            'status': 'success',
+            'adapter': 'local_database',
+            'host_name': host_name,
+            'window_size': window_size,
+            'patterns': patterns,
+        }, None
+
+    @classmethod
+    def _parse_local_crash_dump(
+        cls,
+        host_name: str,
+        dump_name: str,
+        dump_root: str,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Parse crash dump metadata from a local allowlisted filesystem path."""
+        dump_path = cls._resolve_local_dump_path(dump_root, dump_name)
+        if not dump_path.is_file():
+            return {
+                'status': 'validation_failed',
+                'adapter': 'local_filesystem',
+                'host_name': host_name,
+                'dump_name': dump_name,
+                'reason': 'dump_not_found',
+            }, 'dump_not_found'
+
+        stat_result = dump_path.stat()
+        metadata_line = '|'.join([
+            dump_path.name,
+            str(int(stat_result.st_size)),
+            '',
+            dump_path.suffix,
+            str(dump_path.parent),
+        ])
+        parsed_dump = cls._parse_dump_metadata_line(metadata_line, dump_name, str(dump_path.parent))
+        return {
+            'status': 'success',
+            'adapter': 'local_filesystem',
+            'host_name': host_name,
+            'dump_name': dump_name,
+            'dump_path': str(dump_path),
+            'parsed_dump': parsed_dump,
+        }, None
+
+    @classmethod
+    def _identify_local_exception(
+        cls,
+        host_name: str,
+        dump_name: str,
+        dump_root: str,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Identify exception signature from a local allowlisted dump file name."""
+        dump_path = cls._resolve_local_dump_path(dump_root, dump_name)
+        if not dump_path.is_file():
+            return {
+                'status': 'validation_failed',
+                'adapter': 'local_filesystem',
+                'host_name': host_name,
+                'dump_name': dump_name,
+                'reason': 'dump_not_found',
+            }, 'dump_not_found'
+
+        return {
+            'status': 'success',
+            'adapter': 'local_filesystem',
+            'host_name': host_name,
+            'dump_name': dump_name,
+            'dump_path': str(dump_path),
+            'identified_exception': cls._classify_exception_signature(dump_path.name),
+        }, None
+
+    @classmethod
+    def _analyze_local_stack_trace(
+        cls,
+        host_name: str,
+        dump_name: str,
+        dump_root: str,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Analyze stack trace from a local allowlisted dump file name."""
+        dump_path = cls._resolve_local_dump_path(dump_root, dump_name)
+        if not dump_path.is_file():
+            return {
+                'status': 'validation_failed',
+                'adapter': 'local_filesystem',
+                'host_name': host_name,
+                'dump_name': dump_name,
+                'reason': 'dump_not_found',
+            }, 'dump_not_found'
+
+        return {
+            'status': 'success',
+            'adapter': 'local_filesystem',
+            'host_name': host_name,
+            'dump_name': dump_name,
+            'dump_path': str(dump_path),
+            'stack_trace': cls._build_stack_trace_from_evidence(dump_path.name),
+        }, None
 
     @classmethod
     def _collect_windows_reliability_history(
@@ -1034,6 +1276,78 @@ class ReliabilityService:
             'observed_at': observed_at,
             'scorer_version': 'foundation-v1',
         }
+
+    @staticmethod
+    def _system_row_to_score_value(row: dict[str, Any]) -> float:
+        """Convert a telemetry row into a bounded reliability score."""
+        cpu_usage = float(row.get('cpu_usage') or 0.0)
+        ram_usage = float(row.get('ram_usage') or 0.0)
+        storage_usage = float(row.get('storage_usage') or 0.0)
+        status = str(row.get('status') or 'unknown').strip().lower()
+
+        penalty = (cpu_usage / 100.0) * 3.0
+        penalty += (ram_usage / 100.0) * 3.0
+        penalty += (storage_usage / 100.0) * 3.0
+        if status and status != 'active':
+            penalty += 1.5
+
+        return round(max(0.0, min(10.0, 10.0 - penalty)), 2)
+
+    @staticmethod
+    def _serialize_point(point: dict[str, Any]) -> str:
+        """Serialize reliability point to the same text format used by other adapters."""
+        return f"{point.get('observed_at', '')}|{point.get('score', 0.0)}"
+
+    @classmethod
+    def _load_local_system_rows(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Load recent telemetry rows for a host from persistent SystemData."""
+        from ..models import SystemData
+
+        query = SystemData.query.filter_by(hostname=host_name)
+        if organization_id is not None:
+            query = query.filter_by(organization_id=organization_id)
+
+        rows = (
+            query
+            .order_by(SystemData.last_update.desc(), SystemData.id.desc())
+            .limit(limit)
+            .all()
+        )
+
+        serialized = []
+        for row in reversed(rows):
+            serialized.append({
+                'observed_at': row.last_update.isoformat() if row.last_update else '',
+                'hostname': row.hostname,
+                'serial_number': row.serial_number,
+                'status': row.status,
+                'cpu_usage': float(row.cpu_usage or 0.0),
+                'ram_usage': float(row.ram_usage or 0.0),
+                'storage_usage': float(row.storage_usage or 0.0),
+            })
+        return serialized
+
+    @classmethod
+    def _load_local_reliability_points(
+        cls,
+        host_name: str,
+        organization_id: int | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        """Convert recent telemetry rows into ordered reliability score points."""
+        rows = cls._load_local_system_rows(host_name, organization_id=organization_id, limit=limit)
+        return [
+            {
+                'observed_at': row.get('observed_at') or '',
+                'score': cls._system_row_to_score_value(row),
+            }
+            for row in rows
+        ]
 
     @staticmethod
     def _health_band_for_score(score_value: float) -> str:

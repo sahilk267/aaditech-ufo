@@ -1,10 +1,12 @@
 """Tests for Phase 2 Week 11-12 automation workflow foundation."""
 
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from server.auth import get_api_key
 from server.extensions import db
-from server.models import AutomationWorkflow, Organization
+from server.models import AutomationWorkflow, Organization, WorkflowRun
 
 
 def _headers(tenant_slug=None):
@@ -158,6 +160,15 @@ def test_execute_automation_workflow_updates_last_triggered(client, app_fixture)
         workflow = db.session.get(AutomationWorkflow, workflow_id)
         assert workflow is not None
         assert workflow.last_triggered_at is not None
+        workflow_run = (
+            WorkflowRun.query
+            .filter_by(workflow_id=workflow_id)
+            .order_by(WorkflowRun.id.desc())
+            .first()
+        )
+        assert workflow_run is not None
+        assert workflow_run.status == 'executed'
+        assert workflow_run.trigger_source == 'manual'
 
 
 def test_execute_automation_workflow_blocks_service_outside_allowlist(client, app_fixture):
@@ -194,6 +205,182 @@ def test_execute_automation_workflow_blocks_service_outside_allowlist(client, ap
         workflow = db.session.get(AutomationWorkflow, workflow_id)
         assert workflow is not None
         assert workflow.last_triggered_at is None
+
+
+def test_execute_script_workflow_runs_allowlisted_script(client, app_fixture):
+    with TemporaryDirectory() as temp_dir:
+        script_path = Path(temp_dir) / 'cleanup.cmd'
+        script_path.write_text('@echo off\necho cleanup\n', encoding='utf-8')
+
+        app_fixture.config['AUTOMATION_SCRIPT_EXECUTOR_ADAPTER'] = 'subprocess'
+        app_fixture.config['AUTOMATION_ALLOWED_SCRIPT_ROOTS'] = temp_dir
+
+        create = client.post(
+            '/api/automation/workflows',
+            headers=_headers(),
+            json={
+                'name': 'Execute Cleanup Script',
+                'trigger_type': 'manual',
+                'trigger_conditions': {},
+                'action_type': 'script_execute',
+                'action_config': {
+                    'script_path': str(script_path),
+                    'args': ['--tenant', 'default'],
+                },
+            },
+        )
+        assert create.status_code == 201
+        workflow_id = create.get_json()['workflow']['id']
+
+        class _CompletedProcessDouble:
+            returncode = 0
+            stdout = 'cleanup complete'
+            stderr = ''
+
+        with patch(
+            'server.services.automation_service.AutomationService._run_script_command',
+            return_value=_CompletedProcessDouble(),
+        ) as runner_double:
+            execute = client.post(
+                f'/api/automation/workflows/{workflow_id}/execute',
+                headers=_headers(),
+                json={'dry_run': False},
+            )
+
+    assert execute.status_code == 202
+    assert runner_double.call_count == 1
+    command_args, command_kwargs = runner_double.call_args
+    assert command_args[0] == [str(script_path.resolve()), '--tenant', 'default']
+    assert command_args[1] == 8
+    assert command_kwargs == {}
+
+    payload = execute.get_json()['job']['result']
+    assert payload['status'] == 'success'
+    assert payload['result']['action_result']['status'] == 'success'
+    assert payload['result']['action_result']['adapter'] == 'subprocess'
+
+
+def test_execute_script_workflow_blocks_path_outside_allowlist(client, app_fixture):
+    with TemporaryDirectory() as allowed_dir, TemporaryDirectory() as blocked_dir:
+        script_path = Path(blocked_dir) / 'cleanup.cmd'
+        script_path.write_text('@echo off\necho cleanup\n', encoding='utf-8')
+
+        app_fixture.config['AUTOMATION_SCRIPT_EXECUTOR_ADAPTER'] = 'subprocess'
+        app_fixture.config['AUTOMATION_ALLOWED_SCRIPT_ROOTS'] = allowed_dir
+
+        create = client.post(
+            '/api/automation/workflows',
+            headers=_headers(),
+            json={
+                'name': 'Blocked Cleanup Script',
+                'trigger_type': 'manual',
+                'trigger_conditions': {},
+                'action_type': 'script_execute',
+                'action_config': {'script_path': str(script_path)},
+            },
+        )
+        assert create.status_code == 201
+        workflow_id = create.get_json()['workflow']['id']
+
+        with patch('server.services.automation_service.AutomationService._run_script_command') as runner_double:
+            execute = client.post(
+                f'/api/automation/workflows/{workflow_id}/execute',
+                headers=_headers(),
+                json={'dry_run': False},
+            )
+
+    assert execute.status_code == 202
+    assert runner_double.call_count == 0
+    payload = execute.get_json()['job']['result']
+    assert payload['status'] == 'failed'
+    assert payload['reason'] == 'execution_failed'
+    assert payload['result']['action_result']['reason'] == 'script_path_not_allowlisted'
+
+
+def test_execute_webhook_workflow_calls_allowlisted_host(client, app_fixture):
+    app_fixture.config['AUTOMATION_WEBHOOK_ADAPTER'] = 'urllib'
+    app_fixture.config['AUTOMATION_ALLOWED_WEBHOOK_HOSTS'] = 'hooks.example.com'
+
+    create = client.post(
+        '/api/automation/workflows',
+        headers=_headers(),
+        json={
+            'name': 'Notify Webhook',
+            'trigger_type': 'manual',
+            'trigger_conditions': {},
+            'action_type': 'webhook_call',
+            'action_config': {
+                'url': 'https://hooks.example.com/automation',
+                'method': 'POST',
+                'headers': {'X-Test': '1'},
+                'body': {'event': 'automation.executed'},
+            },
+        },
+    )
+    assert create.status_code == 201
+    workflow_id = create.get_json()['workflow']['id']
+
+    class _ResponseDouble:
+        status = 202
+
+        def read(self):
+            return b'accepted'
+
+    with patch(
+        'server.services.automation_service.AutomationService._perform_webhook_request',
+        return_value=_ResponseDouble(),
+    ) as request_double:
+        execute = client.post(
+            f'/api/automation/workflows/{workflow_id}/execute',
+            headers=_headers(),
+            json={'dry_run': False},
+        )
+
+    assert execute.status_code == 202
+    assert request_double.call_count == 1
+    request_args, request_kwargs = request_double.call_args
+    assert request_args[1] == 5
+    assert request_kwargs == {}
+    assert request_args[0].full_url == 'https://hooks.example.com/automation'
+    assert request_args[0].method == 'POST'
+
+    payload = execute.get_json()['job']['result']
+    assert payload['status'] == 'success'
+    assert payload['result']['action_result']['status'] == 'success'
+    assert payload['result']['action_result']['host'] == 'hooks.example.com'
+
+
+def test_execute_webhook_workflow_blocks_unallowlisted_host(client, app_fixture):
+    app_fixture.config['AUTOMATION_WEBHOOK_ADAPTER'] = 'urllib'
+    app_fixture.config['AUTOMATION_ALLOWED_WEBHOOK_HOSTS'] = 'hooks.example.com'
+
+    create = client.post(
+        '/api/automation/workflows',
+        headers=_headers(),
+        json={
+            'name': 'Blocked Webhook',
+            'trigger_type': 'manual',
+            'trigger_conditions': {},
+            'action_type': 'webhook_call',
+            'action_config': {'url': 'https://evil.example.net/automation'},
+        },
+    )
+    assert create.status_code == 201
+    workflow_id = create.get_json()['workflow']['id']
+
+    with patch('server.services.automation_service.AutomationService._perform_webhook_request') as request_double:
+        execute = client.post(
+            f'/api/automation/workflows/{workflow_id}/execute',
+            headers=_headers(),
+            json={'dry_run': False},
+        )
+
+    assert execute.status_code == 202
+    assert request_double.call_count == 0
+    payload = execute.get_json()['job']['result']
+    assert payload['status'] == 'failed'
+    assert payload['reason'] == 'execution_failed'
+    assert payload['result']['action_result']['reason'] == 'webhook_host_not_allowlisted'
 
 
 def test_get_service_status_uses_linux_test_double_path(client, app_fixture):

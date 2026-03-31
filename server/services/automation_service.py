@@ -4,11 +4,17 @@ from __future__ import annotations
 
 import re
 import subprocess
+from pathlib import Path
 from datetime import datetime, UTC
 from typing import Any
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
+import json
+
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from ..extensions import db
-from ..models import AutomationWorkflow, ScheduledJob
+from ..models import AutomationWorkflow, ScheduledJob, WorkflowRun
 
 
 class AutomationService:
@@ -19,6 +25,27 @@ class AutomationService:
     SAFE_SERVICE_NAME_PATTERN = re.compile(r'^[a-zA-Z0-9_.@-]{1,64}$')
     ALLOWED_RESTART_BINARIES = {'systemctl', 'service'}
     ALLOWED_STATUS_ADAPTERS = {'windows', 'linux_test_double'}
+    ALLOWED_SCRIPT_EXECUTOR_ADAPTERS = {'subprocess', 'linux_test_double'}
+    ALLOWED_WEBHOOK_ADAPTERS = {'urllib', 'linux_test_double'}
+    ALLOWED_WEBHOOK_METHODS = {'GET', 'POST', 'PUT', 'PATCH'}
+
+    @staticmethod
+    def _commit_with_rollback(
+        duplicate_field: str | None = None,
+        duplicate_message: str | None = None,
+        generic_message: str = 'Database operation failed.',
+    ) -> dict[str, list[str]]:
+        try:
+            db.session.commit()
+            return {}
+        except IntegrityError:
+            db.session.rollback()
+            if duplicate_field and duplicate_message:
+                return {duplicate_field: [duplicate_message]}
+            return {'database': ['Constraint violation.']}
+        except SQLAlchemyError:
+            db.session.rollback()
+            return {'database': [generic_message]}
 
     @staticmethod
     def list_workflows(organization_id: int) -> list[AutomationWorkflow]:
@@ -28,6 +55,41 @@ class AutomationService:
             .filter_by(organization_id=organization_id)
             .order_by(AutomationWorkflow.created_at.desc())
             .all()
+        )
+
+    @staticmethod
+    def _build_workflow_run(
+        organization_id: int,
+        workflow: AutomationWorkflow,
+        payload: dict[str, Any],
+        dry_run: bool,
+        executed_at: datetime,
+        status: str,
+        action_result: dict[str, Any],
+        error_reason: str | None = None,
+        execution_context: dict[str, Any] | None = None,
+    ) -> WorkflowRun:
+        execution_context = execution_context or {}
+        trigger_source = str(execution_context.get('trigger_source') or 'manual').strip() or 'manual'
+        task_id = execution_context.get('task_id')
+        scheduled_job_id = execution_context.get('scheduled_job_id')
+
+        return WorkflowRun(
+            organization_id=organization_id,
+            workflow_id=workflow.id,
+            scheduled_job_id=scheduled_job_id,
+            trigger_source=trigger_source,
+            task_id=str(task_id).strip() if task_id is not None else None,
+            dry_run=bool(dry_run),
+            status=status,
+            error_reason=error_reason,
+            input_payload=payload or {},
+            action_result=action_result or {},
+            execution_metadata={
+                'workflow_name': workflow.name,
+                'action_type': workflow.action_type,
+            },
+            executed_at=executed_at.replace(tzinfo=None),
         )
 
     @classmethod
@@ -52,7 +114,13 @@ class AutomationService:
         )
 
         db.session.add(workflow)
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(
+            duplicate_field='name',
+            duplicate_message='Workflow name already exists for this tenant.',
+            generic_message='Failed to persist workflow.',
+        )
+        if commit_errors:
+            return None, commit_errors
         return workflow, {}
 
     @classmethod
@@ -107,6 +175,7 @@ class AutomationService:
         payload: dict[str, Any] | None = None,
         dry_run: bool = True,
         runtime_config: dict[str, Any] | None = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any] | None, str | None]:
         """Execute workflow foundation with dry-run-safe behavior."""
         workflow = cls.get_workflow(organization_id, workflow_id)
@@ -125,6 +194,8 @@ class AutomationService:
             'details': {},
         }
 
+        workflow_run: WorkflowRun | None = None
+
         if not dry_run:
             action_result, action_error = cls._execute_action(
                 action_type=workflow.action_type,
@@ -132,6 +203,19 @@ class AutomationService:
                 runtime_config=runtime_config,
             )
             if action_error:
+                workflow_run = cls._build_workflow_run(
+                    organization_id=organization_id,
+                    workflow=workflow,
+                    payload=payload,
+                    dry_run=False,
+                    executed_at=executed_at,
+                    status='failed',
+                    action_result=action_result,
+                    error_reason=action_error,
+                    execution_context=execution_context,
+                )
+                db.session.add(workflow_run)
+                commit_errors = cls._commit_with_rollback(generic_message='Failed to persist workflow execution history.')
                 return {
                     'workflow_id': workflow.id,
                     'workflow_name': workflow.name,
@@ -142,11 +226,38 @@ class AutomationService:
                     'input_payload': payload,
                     'status': 'failed',
                     'action_result': action_result,
+                    'workflow_run_id': workflow_run.id if not commit_errors else None,
+                    'persistence_errors': commit_errors or None,
                 }, 'execution_failed'
+
+        workflow_run = cls._build_workflow_run(
+            organization_id=organization_id,
+            workflow=workflow,
+            payload=payload,
+            dry_run=bool(dry_run),
+            executed_at=executed_at,
+            status='simulated' if dry_run else 'executed',
+            action_result=action_result,
+            execution_context=execution_context,
+        )
+        db.session.add(workflow_run)
 
         if not dry_run:
             workflow.last_triggered_at = executed_at.replace(tzinfo=None)
-            db.session.commit()
+        commit_errors = cls._commit_with_rollback(generic_message='Failed to persist workflow execution state.')
+        if commit_errors:
+            return {
+                'workflow_id': workflow.id,
+                'workflow_name': workflow.name,
+                'action_type': workflow.action_type,
+                'dry_run': bool(dry_run),
+                'executed_at': executed_at.isoformat(),
+                'action_config': workflow.action_config or {},
+                'input_payload': payload,
+                'status': 'failed',
+                'action_result': action_result,
+                'persistence_errors': commit_errors,
+            }, 'persistence_failed'
 
         result = {
             'workflow_id': workflow.id,
@@ -158,6 +269,7 @@ class AutomationService:
             'input_payload': payload,
             'status': 'simulated' if dry_run else 'executed',
             'action_result': action_result,
+            'workflow_run_id': workflow_run.id if workflow_run is not None else None,
         }
         return result, None
 
@@ -173,16 +285,10 @@ class AutomationService:
             return cls._execute_service_restart(action_config, runtime_config)
 
         if action_type == 'script_execute':
-            return {
-                'status': 'not_implemented',
-                'message': 'Script executor backend pending implementation.',
-            }, 'not_implemented'
+            return cls._execute_script(action_config, runtime_config)
 
         if action_type == 'webhook_call':
-            return {
-                'status': 'not_implemented',
-                'message': 'Webhook action backend pending implementation.',
-            }, 'not_implemented'
+            return cls._execute_webhook(action_config, runtime_config)
 
         return {'status': 'unsupported_action'}, 'unsupported_action'
 
@@ -256,6 +362,221 @@ class AutomationService:
             timeout=timeout_seconds,
             shell=False,
         )
+
+    @staticmethod
+    def _coerce_timeout_seconds(value: Any, default: int = 8, minimum: int = 1, maximum: int = 30) -> int:
+        """Normalize timeout values to a bounded integer."""
+        try:
+            timeout_seconds = int(value)
+        except (TypeError, ValueError):
+            timeout_seconds = default
+        return max(minimum, min(timeout_seconds, maximum))
+
+    @staticmethod
+    def _coerce_string_list(value: Any) -> list[str]:
+        """Normalize comma-separated or list-like config values into a string list."""
+        if isinstance(value, list):
+            return [str(item).strip() for item in value if str(item).strip()]
+        return [item.strip() for item in str(value or '').split(',') if item.strip()]
+
+    @staticmethod
+    def _resolve_allowed_path(candidate_path: str, allowed_roots: list[str]) -> Path | None:
+        """Return resolved path when it stays under an allowed root."""
+        candidate = Path(candidate_path).expanduser().resolve(strict=False)
+        for root_text in allowed_roots:
+            root = Path(root_text).expanduser().resolve(strict=False)
+            try:
+                candidate.relative_to(root)
+                return candidate
+            except ValueError:
+                continue
+        return None
+
+    @staticmethod
+    def _coerce_script_args(value: Any) -> tuple[list[str], str | None]:
+        """Validate and normalize script arguments for shell-free execution."""
+        if value is None:
+            return [], None
+        if not isinstance(value, list):
+            return [], 'script_args_invalid'
+
+        args: list[str] = []
+        for item in value[:10]:
+            arg = str(item)
+            if len(arg) > 200 or any(ch in arg for ch in ['\x00', '\n', '\r']):
+                return [], 'script_args_invalid'
+            args.append(arg)
+        return args, None
+
+    @classmethod
+    def _execute_script(
+        cls,
+        action_config: dict[str, Any],
+        runtime_config: dict[str, Any],
+    ) -> tuple[dict[str, Any], str | None]:
+        """Execute an allowlisted script via subprocess or deterministic test double."""
+        script_path = str(action_config.get('script_path') or action_config.get('script') or '').strip()
+        if not script_path:
+            return {'status': 'validation_failed', 'reason': 'script_path_missing'}, 'script_path_missing'
+
+        script_args, args_error = cls._coerce_script_args(action_config.get('args'))
+        if args_error:
+            return {'status': 'validation_failed', 'reason': args_error}, args_error
+
+        adapter = str(runtime_config.get('script_executor_adapter') or 'subprocess').strip()
+        if adapter not in cls.ALLOWED_SCRIPT_EXECUTOR_ADAPTERS:
+            return {'status': 'policy_blocked', 'reason': 'adapter_not_allowed'}, 'adapter_not_allowed'
+
+        allowed_roots = cls._coerce_string_list(runtime_config.get('allowed_script_roots'))
+        if not allowed_roots:
+            return {'status': 'policy_blocked', 'reason': 'script_root_not_configured'}, 'script_root_not_configured'
+
+        resolved_script = cls._resolve_allowed_path(script_path, allowed_roots)
+        if resolved_script is None:
+            return {
+                'status': 'policy_blocked',
+                'reason': 'script_path_not_allowlisted',
+                'script_path': script_path,
+            }, 'script_path_not_allowlisted'
+
+        if not resolved_script.is_file():
+            return {'status': 'validation_failed', 'reason': 'script_not_found', 'script_path': str(resolved_script)}, 'script_not_found'
+
+        command = [str(resolved_script), *script_args]
+
+        if adapter == 'linux_test_double':
+            return {
+                'status': 'success',
+                'adapter': 'linux_test_double',
+                'script_path': str(resolved_script),
+                'command': command,
+                'stdout': 'configured_test_double',
+                'stderr': '',
+                'returncode': 0,
+            }, None
+
+        timeout_seconds = cls._coerce_timeout_seconds(
+            runtime_config.get('command_timeout_seconds'),
+            default=8,
+        )
+        completed = cls._run_script_command(command, timeout_seconds)
+        stdout_text = (completed.stdout or '').strip()
+        stderr_text = (completed.stderr or '').strip()
+        is_success = int(completed.returncode) == 0
+
+        result = {
+            'status': 'success' if is_success else 'command_failed',
+            'adapter': 'subprocess',
+            'script_path': str(resolved_script),
+            'command': command,
+            'stdout': stdout_text[:500],
+            'stderr': stderr_text[:500],
+            'returncode': int(completed.returncode),
+        }
+        return result, None if is_success else 'command_failed'
+
+    @staticmethod
+    def _run_script_command(command: list[str], timeout_seconds: int):
+        """Execute a script via subprocess with shell disabled."""
+        return subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            shell=False,
+        )
+
+    @classmethod
+    def _execute_webhook(
+        cls,
+        action_config: dict[str, Any],
+        runtime_config: dict[str, Any],
+    ) -> tuple[dict[str, Any], str | None]:
+        """Invoke an allowlisted webhook endpoint."""
+        url = str(action_config.get('url') or '').strip()
+        if not url:
+            return {'status': 'validation_failed', 'reason': 'url_missing'}, 'url_missing'
+
+        parsed = urllib_parse.urlparse(url)
+        if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
+            return {'status': 'validation_failed', 'reason': 'url_invalid'}, 'url_invalid'
+
+        allowed_hosts = {item.lower() for item in cls._coerce_string_list(runtime_config.get('allowed_webhook_hosts'))}
+        if not allowed_hosts:
+            return {'status': 'policy_blocked', 'reason': 'webhook_allowlist_not_configured'}, 'webhook_allowlist_not_configured'
+
+        hostname = (parsed.hostname or '').lower()
+        if hostname not in allowed_hosts:
+            return {
+                'status': 'policy_blocked',
+                'reason': 'webhook_host_not_allowlisted',
+                'host': hostname,
+            }, 'webhook_host_not_allowlisted'
+
+        method = str(action_config.get('method') or 'POST').upper()
+        if method not in cls.ALLOWED_WEBHOOK_METHODS:
+            return {'status': 'validation_failed', 'reason': 'webhook_method_invalid'}, 'webhook_method_invalid'
+
+        headers = action_config.get('headers') or {}
+        if not isinstance(headers, dict):
+            return {'status': 'validation_failed', 'reason': 'headers_invalid'}, 'headers_invalid'
+
+        adapter = str(runtime_config.get('webhook_adapter') or 'urllib').strip()
+        if adapter not in cls.ALLOWED_WEBHOOK_ADAPTERS:
+            return {'status': 'policy_blocked', 'reason': 'adapter_not_allowed'}, 'adapter_not_allowed'
+
+        body = action_config.get('body')
+        data = None
+        normalized_headers = {str(key): str(value) for key, value in headers.items()}
+        if body is not None:
+            if isinstance(body, (dict, list)):
+                data = json.dumps(body).encode('utf-8')
+                normalized_headers.setdefault('Content-Type', 'application/json')
+            else:
+                data = str(body).encode('utf-8')
+
+        if adapter == 'linux_test_double':
+            return {
+                'status': 'success',
+                'adapter': 'linux_test_double',
+                'url': url,
+                'method': method,
+                'host': hostname,
+                'status_code': 200,
+                'response_body': 'configured_test_double',
+            }, None
+
+        timeout_seconds = cls._coerce_timeout_seconds(
+            runtime_config.get('webhook_timeout_seconds'),
+            default=5,
+            maximum=20,
+        )
+        request_obj = urllib_request.Request(
+            url,
+            data=data,
+            headers=normalized_headers,
+            method=method,
+        )
+        response = cls._perform_webhook_request(request_obj, timeout_seconds)
+        response_body = response.read().decode('utf-8', errors='replace').strip()
+        status_code = int(getattr(response, 'status', 200))
+
+        result = {
+            'status': 'success' if 200 <= status_code < 300 else 'request_failed',
+            'adapter': 'urllib',
+            'url': url,
+            'method': method,
+            'host': hostname,
+            'status_code': status_code,
+            'response_body': response_body[:500],
+        }
+        return result, None if 200 <= status_code < 300 else 'request_failed'
+
+    @staticmethod
+    def _perform_webhook_request(request_obj, timeout_seconds: int):
+        """Perform the webhook HTTP request."""
+        return urllib_request.urlopen(request_obj, timeout=timeout_seconds)
 
     @classmethod
     def get_service_status(
@@ -642,6 +963,27 @@ class AutomationService:
         if 'action_config' in payload and not isinstance(payload.get('action_config'), dict):
             errors.setdefault('action_config', []).append('Must be an object.')
 
+        action_config = payload.get('action_config')
+        if isinstance(action_config, dict):
+            if action_type == 'script_execute':
+                script_path = str(action_config.get('script_path') or action_config.get('script') or '').strip()
+                if not script_path:
+                    errors.setdefault('action_config.script_path', []).append('Field required for script execution.')
+                script_args = action_config.get('args')
+                if script_args is not None and not isinstance(script_args, list):
+                    errors.setdefault('action_config.args', []).append('Must be a list.')
+
+            if action_type == 'webhook_call':
+                url = str(action_config.get('url') or '').strip()
+                if not url:
+                    errors.setdefault('action_config.url', []).append('Field required for webhook actions.')
+                method = action_config.get('method')
+                if method is not None and str(method).upper() not in cls.ALLOWED_WEBHOOK_METHODS:
+                    errors.setdefault('action_config.method', []).append('Unsupported webhook method.')
+                headers = action_config.get('headers')
+                if headers is not None and not isinstance(headers, dict):
+                    errors.setdefault('action_config.headers', []).append('Must be an object.')
+
         return errors
 
     @staticmethod
@@ -871,7 +1213,9 @@ class AutomationService:
             is_active=bool(payload.get('is_active', True)),
         )
         db.session.add(job)
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(generic_message='Failed to persist scheduled job.')
+        if commit_errors:
+            return None, commit_errors
         return job, {}
 
     @classmethod
@@ -910,7 +1254,15 @@ class AutomationService:
             ).first()
             exec_result = None
             if workflow:
-                exec_result, _ = cls.execute_workflow(organization_id, job.workflow_id, runtime_config=runtime_config)
+                exec_result, _ = cls.execute_workflow(
+                    organization_id,
+                    job.workflow_id,
+                    runtime_config=runtime_config,
+                    execution_context={
+                        'trigger_source': 'scheduled',
+                        'scheduled_job_id': job.id,
+                    },
+                )
             job.last_run_at = datetime.now(UTC)
             triggered.append({
                 'job_id': job.id,
@@ -918,7 +1270,17 @@ class AutomationService:
                 'cron_expression': job.cron_expression,
                 'executed': exec_result is not None,
             })
-        db.session.commit()
+        commit_errors = cls._commit_with_rollback(generic_message='Failed to persist scheduled job execution state.')
+        if commit_errors:
+            return {
+                'status': 'failed',
+                'organization_id': organization_id,
+                'adapter': scheduler_adapter,
+                'total_active_jobs': len(jobs),
+                'due_jobs_count': len(due_jobs),
+                'triggered': triggered,
+                'errors': commit_errors,
+            }
 
         return {
             'status': 'success',
@@ -974,7 +1336,10 @@ class AutomationService:
                 skipped.append({'workflow_id': workflow_id, 'reason': 'dry_run'})
             else:
                 result, err = cls.execute_workflow(
-                    organization_id, workflow_id, runtime_config=runtime_config
+                    organization_id,
+                    workflow_id,
+                    runtime_config=runtime_config,
+                    execution_context={'trigger_source': 'self_heal'},
                 )
                 triggered.append({
                     'workflow_id': workflow_id,

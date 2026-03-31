@@ -12,6 +12,8 @@ from unittest.mock import patch
 import pytest
 
 from server.auth import get_api_key
+from server.extensions import db
+from server.models import Organization
 from server.services.ai_service import AIService
 from server.services.alert_service import AlertService
 from server.services.automation_service import AutomationService
@@ -354,6 +356,48 @@ class TestScheduledAutomationJobs:
                 payload={'workflow_id': 1, 'cron_expression': 'bad-cron!!'},
             )
             assert 'cron_expression' in errors
+
+    def test_create_workflow_duplicate_rolls_back_and_allows_followup_write(self, app_fixture):
+        with app_fixture.app_context():
+            org = Organization(name='Automation Tenant', slug='automation-tenant', is_active=True)
+            db.session.add(org)
+            db.session.commit()
+
+            workflow, errors = AutomationService.create_workflow(
+                org.id,
+                {
+                    'name': 'Restart API',
+                    'trigger_type': 'manual',
+                    'action_type': 'service_restart',
+                    'action_config': {'service_name': 'api'},
+                },
+            )
+            assert workflow is not None
+            assert errors == {}
+
+            duplicate_workflow, duplicate_errors = AutomationService.create_workflow(
+                org.id,
+                {
+                    'name': 'Restart API',
+                    'trigger_type': 'manual',
+                    'action_type': 'service_restart',
+                    'action_config': {'service_name': 'api'},
+                },
+            )
+            assert duplicate_workflow is None
+            assert 'name' in duplicate_errors
+
+            followup_workflow, followup_errors = AutomationService.create_workflow(
+                org.id,
+                {
+                    'name': 'Restart Worker',
+                    'trigger_type': 'manual',
+                    'action_type': 'service_restart',
+                    'action_config': {'service_name': 'worker'},
+                },
+            )
+            assert followup_workflow is not None
+            assert followup_errors == {}
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
