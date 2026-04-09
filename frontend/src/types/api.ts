@@ -68,6 +68,152 @@ export type TenantMutationResponse = {
   tenant: Tenant;
 };
 
+export type TenantControlsResponse = {
+  status: string;
+  tenant_controls: {
+    defaults: Record<string, unknown>;
+    effective: {
+      entitlements: Record<string, { enabled: boolean; limit_value?: number | null; metadata?: Record<string, unknown> }>;
+      feature_flags: Record<string, { enabled: boolean; description?: string | null }>;
+    };
+    entitlement_rows: Record<string, unknown>[];
+    feature_flag_rows: Record<string, unknown>[];
+  };
+};
+
+export type TenantQuotasResponse = {
+  status: string;
+  tenant_quotas: {
+    defaults: Record<string, { limit_value?: number | null; is_enforced: boolean; metadata?: Record<string, unknown> }>;
+    effective: Record<string, { limit_value?: number | null; is_enforced: boolean; metadata?: Record<string, unknown> }>;
+    quota_rows: Record<string, unknown>[];
+  };
+};
+
+export type TenantUsageResponse = {
+  status: string;
+  tenant_usage: {
+    measured_at: string;
+    metrics: Array<{
+      id: number;
+      metric_key: string;
+      current_value: number;
+      metadata?: Record<string, unknown>;
+      measured_at?: string | null;
+    }>;
+    current: Record<string, { current_value: number; metadata?: Record<string, unknown> }>;
+  };
+};
+
+export type TenantCommercialResponse = {
+  status: string;
+  tenant_commercial: {
+    plan: {
+      plan_key: string;
+      display_name: string;
+      status: string;
+      billing_cycle?: string | null;
+      external_customer_ref?: string | null;
+      external_subscription_ref?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+    billing_profile: {
+      billing_email?: string | null;
+      billing_name?: string | null;
+      contact_email?: string | null;
+      country_code?: string | null;
+      provider_name?: string | null;
+      provider_customer_ref?: string | null;
+      tax_id_hint?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+    license: {
+      license_status: string;
+      license_key_hint?: string | null;
+      seat_limit?: number | null;
+      enforcement_mode: string;
+      expires_at?: string | null;
+      metadata?: Record<string, unknown>;
+    };
+    contract_boundaries: Record<string, string>;
+  };
+};
+
+export type TenantSettingsResponse = {
+  status: string;
+  tenant_settings: {
+    notification_settings: Record<string, unknown>;
+    retention_settings: Record<string, unknown>;
+    branding_settings: Record<string, unknown>;
+    auth_policy: {
+      min_password_length: number;
+      require_uppercase: boolean;
+      require_lowercase: boolean;
+      require_number: boolean;
+      require_symbol: boolean;
+      lockout_threshold: number;
+      lockout_minutes: number;
+      session_max_age_minutes: number;
+      totp_mfa_enabled: boolean;
+      oidc_enabled: boolean;
+      local_admin_fallback_enabled: boolean;
+      [key: string]: unknown;
+    };
+    feature_flags: Record<string, unknown>;
+  };
+};
+
+export type OidcProvider = {
+  id: number;
+  organization_id: number;
+  name: string;
+  issuer: string;
+  client_id: string;
+  authorization_endpoint: string;
+  token_endpoint?: string | null;
+  userinfo_endpoint?: string | null;
+  scopes: string[];
+  claim_mappings: Record<string, unknown>;
+  role_mappings: Record<string, unknown>;
+  test_mode: boolean;
+  test_claim_codes: string[];
+  is_enabled: boolean;
+  is_default: boolean;
+  has_client_secret: boolean;
+  client_secret_secret_name?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type OidcProvidersResponse = {
+  status: string;
+  count: number;
+  providers: OidcProvider[];
+};
+
+export type OidcProviderMutationResponse = {
+  status: string;
+  provider: OidcProvider;
+};
+
+export type TotpFactorStatusResponse = {
+  status: string;
+  totp: {
+    enabled: boolean;
+    status: string;
+    factor?: {
+      id: number;
+      status: string;
+      enrolled_at?: string | null;
+      verified_at?: string | null;
+      last_used_at?: string | null;
+      disabled_at?: string | null;
+    } | null;
+    secret?: string;
+    provisioning_uri?: string;
+  };
+};
+
 export type AgentRelease = {
   version: string;
   filename: string;
@@ -190,6 +336,31 @@ export type AlertPrioritizationResponse = {
   [key: string]: unknown;
 };
 
+export type AlertDeliveryRecord = {
+  id: number;
+  status: string;
+  delivery_scope?: string;
+  channels_requested?: string[];
+  delivered_channels?: string[];
+  failure_count?: number;
+  created_at?: string | null;
+  [key: string]: unknown;
+};
+
+export type AlertDeliveryHistoryResponse = {
+  status: string;
+  deliveries: AlertDeliveryRecord[];
+  total: number;
+  pages: number;
+  page: number;
+  per_page: number;
+};
+
+export type AlertDeliveryDetailResponse = {
+  status: string;
+  delivery: AlertDeliveryRecord;
+};
+
 // Automation types
 export type AutomationWorkflow = {
   id: number;
@@ -208,6 +379,31 @@ export type AutomationWorkflowExecutionResponse = {
   status: string;
   result?: Record<string, unknown>;
   [key: string]: unknown;
+};
+
+export type WorkflowRunRecord = {
+  id: number;
+  workflow_id: number;
+  status: string;
+  trigger_source?: string;
+  dry_run?: boolean;
+  executed_at?: string | null;
+  error_reason?: string | null;
+  [key: string]: unknown;
+};
+
+export type WorkflowRunsResponse = {
+  status: string;
+  workflow_runs: WorkflowRunRecord[];
+  total: number;
+  pages: number;
+  page: number;
+  per_page: number;
+};
+
+export type WorkflowRunDetailResponse = {
+  status: string;
+  workflow_run: WorkflowRunRecord;
 };
 
 export type ScheduledJob = {
@@ -286,10 +482,71 @@ export type LogsSearchResponse = {
   [key: string]: unknown;
 };
 
+export type LogSourceRecord = {
+  id: number;
+  organization_id: number;
+  name: string;
+  adapter: string;
+  description?: string | null;
+  host_name?: string | null;
+  is_active: boolean;
+  source_metadata?: Record<string, unknown>;
+  last_ingested_at?: string | null;
+  last_entry_at?: string | null;
+  latest_message?: string | null;
+  entry_count?: number;
+  severity_breakdown?: Record<string, number>;
+  capture_kinds?: Record<string, number>;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type LogEntryRecord = {
+  id: number;
+  organization_id: number;
+  log_source_id?: number | null;
+  source_name: string;
+  adapter: string;
+  capture_kind: string;
+  observed_at?: string | null;
+  severity?: string | null;
+  event_id?: string | null;
+  message: string;
+  raw_entry: string;
+  entry_metadata?: Record<string, unknown>;
+  created_at?: string | null;
+};
+
+export type LogSourcesResponse = {
+  status: string;
+  count: number;
+  sources: LogSourceRecord[];
+};
+
+export type LogSourceDetailResponse = {
+  status: string;
+  log_source: LogSourceRecord;
+  recent_entries?: LogEntryRecord[];
+};
+
+export type LogEntriesResponse = {
+  status: string;
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+  entries: LogEntryRecord[];
+};
+
+export type LogEntryDetailResponse = {
+  status: string;
+  entry: LogEntryRecord;
+};
+
 // Reliability types
 export type ReliabilityHistoryResponse = {
   status: string;
-  history?: Record<string, unknown>[];
+  history?: Record<string, unknown>;
   [key: string]: unknown;
 };
 
@@ -313,8 +570,37 @@ export type StackTraceAnalysisResponse = {
 
 export type ReliabilityScoreResponse = {
   status: string;
-  score?: number;
+  reliability?: Record<string, unknown>;
   [key: string]: unknown;
+};
+
+export type ReliabilityRunRecord = {
+  id: number;
+  organization_id: number;
+  diagnostic_type: string;
+  host_name: string;
+  dump_name?: string | null;
+  adapter?: string | null;
+  status: string;
+  error_reason?: string | null;
+  request_payload?: Record<string, unknown>;
+  result_payload?: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  created_at?: string | null;
+};
+
+export type ReliabilityRunsResponse = {
+  status: string;
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+  reliability_runs: ReliabilityRunRecord[];
+};
+
+export type ReliabilityRunDetailResponse = {
+  status: string;
+  reliability_run: ReliabilityRunRecord;
 };
 
 export type TrendAnalysisResponse = {
@@ -368,7 +654,8 @@ export type IncidentExplanationResponse = {
 
 export type ConfidenceScoreResponse = {
   status: string;
-  score?: number;
+  confidence?: Record<string, unknown>;
+  update_run_id?: number | null;
   [key: string]: unknown;
 };
 
@@ -396,6 +683,36 @@ export type UpdatesMonitorResponse = {
   status: string;
   updates?: Record<string, unknown>;
   [key: string]: unknown;
+};
+
+export type UpdateRunRecord = {
+  id: number;
+  organization_id: number;
+  host_name: string;
+  adapter?: string | null;
+  status: string;
+  error_reason?: string | null;
+  update_count: number;
+  latest_installed_on?: string | null;
+  updates_payload?: Record<string, unknown>;
+  summary?: Record<string, unknown>;
+  confidence_score?: number | null;
+  confidence_payload?: Record<string, unknown>;
+  created_at?: string | null;
+};
+
+export type UpdateRunsResponse = {
+  status: string;
+  page: number;
+  per_page: number;
+  total: number;
+  pages: number;
+  update_runs: UpdateRunRecord[];
+};
+
+export type UpdateRunDetailResponse = {
+  status: string;
+  update_run: UpdateRunRecord;
 };
 
 // Remote types
@@ -440,6 +757,77 @@ export type AuditEventsResponse = {
   events?: AuditEvent[];
   total?: number;
   [key: string]: unknown;
+};
+
+export type IncidentRecordSummary = {
+  id: number;
+  title: string;
+  status: string;
+  severity: string;
+  hostname?: string | null;
+  assigned_to_user_id?: number | null;
+  resolution_summary?: string | null;
+  last_seen_at?: string | null;
+  [key: string]: unknown;
+};
+
+export type IncidentsResponse = {
+  status: string;
+  incidents: IncidentRecordSummary[];
+  total: number;
+  pages: number;
+  page: number;
+  per_page: number;
+};
+
+export type IncidentDetailResponse = {
+  status: string;
+  incident: IncidentRecordSummary;
+};
+
+export type IncidentCaseComment = {
+  id: number;
+  incident_id: number;
+  author_user_id?: number | null;
+  comment_type: string;
+  body: string;
+  created_at?: string | null;
+};
+
+export type IncidentCommentsResponse = {
+  status: string;
+  count: number;
+  comments: IncidentCaseComment[];
+};
+
+export type OperationsTimelineResponse = {
+  status: string;
+  count: number;
+  timeline: {
+    kind: string;
+    id: number;
+    timestamp?: string | null;
+    title: string;
+    status: string;
+    details?: Record<string, unknown>;
+  }[];
+};
+
+export type AlertsStreamSnapshot = {
+  generated_at?: string;
+  deliveries: AlertDeliveryRecord[];
+  incidents: IncidentRecordSummary[];
+  counts?: {
+    deliveries: number;
+    incidents_total: number;
+    incidents_open: number;
+  };
+};
+
+export type OperationsTimelineStreamSnapshot = {
+  generated_at?: string;
+  count: number;
+  timeline: OperationsTimelineResponse["timeline"];
 };
 
 // User types

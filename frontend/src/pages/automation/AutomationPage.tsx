@@ -16,9 +16,12 @@ import {
   executeAutomationWorkflow,
   getAutomationServiceStatus,
   getAutomationWorkflows,
+  getWorkflowRun,
+  getWorkflowRuns,
   getScheduledJobs,
   triggerSelfHealing,
 } from "../../lib/api";
+import { queryKeys } from "../../lib/queryKeys";
 import { createAutomationWorkflowSchema, type CreateAutomationWorkflowInput } from "../../lib/schemas";
 
 export function AutomationPage() {
@@ -51,6 +54,26 @@ export function AutomationPage() {
     queryKey: ["automation", "scheduled-jobs"],
     queryFn: getScheduledJobs,
     staleTime: 60_000,
+  });
+
+  const workflowRunsQuery = useQuery({
+    queryKey: queryKeys.workflowRuns,
+    queryFn: () => getWorkflowRuns(),
+    staleTime: 30_000,
+  });
+
+  const selectedWorkflowRunQuery = useQuery({
+    queryKey: [...queryKeys.workflowRuns, selectedWorkflowId, "latest-run"],
+    queryFn: async () => {
+      const runs = await getWorkflowRuns(selectedWorkflowId ? { workflowId: selectedWorkflowId } : undefined);
+      const latestRun = Array.isArray(runs.workflow_runs) ? runs.workflow_runs[0] : undefined;
+      if (!latestRun?.id) {
+        return null;
+      }
+      const detail = await getWorkflowRun(Number(latestRun.id));
+      return detail.workflow_run;
+    },
+    enabled: selectedWorkflowId != null,
   });
 
   useEffect(() => {
@@ -111,6 +134,7 @@ export function AutomationPage() {
   const scheduledJobs = Array.isArray(scheduledJobsQuery.data?.scheduled_jobs)
     ? scheduledJobsQuery.data.scheduled_jobs
     : [];
+  const workflowRuns = Array.isArray(workflowRunsQuery.data?.workflow_runs) ? workflowRunsQuery.data.workflow_runs : [];
 
   return (
     <ModulePage
@@ -120,6 +144,7 @@ export function AutomationPage() {
       <div className="module-grid">
         <StatCard label="Workflows" value={workflows.length} detail="Tenant automation definitions" />
         <StatCard label="Scheduled Jobs" value={scheduledJobs.length} detail="Recurring workflow executions" />
+        <StatCard label="Workflow Runs" value={workflowRuns.length} detail="Durable workflow execution history" />
       </div>
 
       {workflowsQuery.isLoading || scheduledJobsQuery.isLoading ? (
@@ -184,6 +209,19 @@ export function AutomationPage() {
           <JsonViewer data={latestResult} title="Last response" />
         ) : (
           <div className="module-status loading">Run a workflow, service check, or self-heal dry run to inspect the latest response.</div>
+        )}
+      </ActionPanel>
+
+      <ActionPanel title="Workflow Run History">
+        {workflowRuns.length ? (
+          <JsonViewer data={workflowRuns.slice(0, 10)} title="Recent workflow runs" maxHeight={240} />
+        ) : (
+          <div className="module-status loading">No workflow runs yet. Execute a workflow to build operator history.</div>
+        )}
+        {selectedWorkflowRunQuery.data ? (
+          <JsonViewer data={selectedWorkflowRunQuery.data} title="Selected workflow latest run detail" maxHeight={260} />
+        ) : (
+          <div className="module-status loading">Select a workflow to inspect its most recent run detail.</div>
         )}
       </ActionPanel>
     </ModulePage>

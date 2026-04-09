@@ -261,12 +261,12 @@ Capture the important features that are likely needed but not yet fully planned.
 - [x] Decide agent enrollment and provisioning lifecycle.
 - [x] Decide API key rotation and tenant secret management model.
 - [x] Decide whether tenant settings should be a first-class model/API.
-- [ ] Plan workflow execution history and audit timeline UX.
-- [ ] Plan notification delivery history and retry visibility.
-- [ ] Plan incident/case management layer if operators need investigation workflows.
-- [ ] Decide whether real-time streaming should use polling, SSE, or WebSocket.
-- [ ] Decide enterprise auth roadmap: MFA, SSO, OIDC, SAML, session policy.
-- [ ] Decide commercial/platform roadmap: quotas, billing, licensing, feature flags.
+- [x] Plan workflow execution history and audit timeline UX.
+- [x] Plan notification delivery history and retry visibility.
+- [x] Plan incident/case management layer if operators need investigation workflows.
+- [x] Decide whether real-time streaming should use polling, SSE, or WebSocket.
+- [x] Decide enterprise auth roadmap: MFA, SSO, OIDC, SAML, session policy.
+- [x] Decide commercial/platform roadmap: quotas, billing, licensing, feature flags.
 - [x] Define supportability basics: backup/restore verification, retention policies, observability of the platform itself.
 
 Review artifact:
@@ -278,6 +278,9 @@ P0 decision pack:
 - `AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md`
 - `TENANT_SECRET_MANAGEMENT_DECISION.md`
 - `PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md`
+- `REALTIME_TRANSPORT_DECISION.md`
+- `ENTERPRISE_AUTH_ROADMAP_DECISION.md`
+- `COMMERCIAL_PLATFORM_ROADMAP_DECISION.md`
 
 Initial implementation slice:
 
@@ -289,17 +292,25 @@ Current implementation slice:
 - `migrations/versions/012_tenant_settings.py`
 - `tests/test_phase5_product_surfaces.py`
 - `RESTORE_DRILL_CHECKLIST.md`
+- `migrations/versions/013_incident_operator_fields.py`
+- `tests/test_phase5_operator_surfaces.py`
+- `migrations/versions/014_incident_case_comments.py`
+- `tests/test_phase5_incident_case_management.py`
 
 Implementation notes:
 
 - Tenant settings now exist as a first-class model/API with tenant-scoped `GET/PATCH /api/tenant-settings`.
-- Durable read APIs now exist for workflow runs, notification delivery history, and incidents, but the broader operator UX/timeline/case-management planning items remain open.
+- Workflow history now has both read APIs and frontend operator visibility, and audit now includes a merged operations timeline.
+- Notification delivery history now has detail + re-delivery support in both API and frontend operator flows.
+- Incident case-management v1 now includes assignment/status/resolution plus tenant-scoped incident comments/notes.
 - Supportability now includes a metrics surface and an automated restore-drill endpoint, with a matching operator checklist document.
+- Realtime, enterprise-auth, and commercial/platform roadmap decisions are now documented as separate Phase 5 decision files.
 
 ### Exit Criteria
 
 - Overlooked platform capabilities are converted into backlog items with ownership.
 - Product direction is clearer before large-scale new implementation begins.
+- The next execution cycle has a practical P0/P1/P2 backlog file.
 
 ### Primary Inputs
 
@@ -307,6 +318,7 @@ Implementation notes:
 - `README.md`
 - `FEATURE_COVERAGE_MAP.md`
 - `PROGRESS_TRACKER.md`
+- `PHASE6_EXECUTION_BACKLOG.md`
 
 ---
 
@@ -363,3 +375,31 @@ Start here first:
 - [x] Add feature-level acceptance criteria for alerts, automation, logs, reliability, AI, updates, and releases.
 
 This is the highest-value Phase 3 slice because it converts foundations into operator-visible product behavior and keeps the docs honest about what is truly durable versus still adapter-only.
+
+---
+
+## Phase 6 Kickoff Status
+
+Phase 5 is now materially complete enough to hand off into the Phase 6 execution backlog in `PHASE6_EXECUTION_BACKLOG.md`.
+
+Current Phase 6 reality:
+
+- [x] `P0-A1: Tenant Feature Flags And Entitlements V1` is implemented and validated.
+- [x] `P0-B1: Realtime SSE v1 for alerts + operations timeline` is implemented and validated.
+- [x] `P0-C1: Enterprise Auth V1 local hardening kickoff` is implemented and validated.
+- [x] `P0-C2: Optional TOTP MFA foundation + auth admin surface` is implemented and validated.
+- [x] Durable `TenantEntitlement` and `TenantFeatureFlag` models exist.
+- [x] Tenant-scoped `GET /api/tenant-controls` and `PATCH /api/tenant-controls` are implemented.
+- [x] One real backend/frontend-gated capability now exists for `incident_case_management_v1`.
+- [x] Tenant-scoped SSE endpoints now exist for alerts and operations timeline, with frontend consumers and polling fallback.
+- [x] Tenant auth-policy defaults, password policy enforcement, lockout baseline, and session revocation foundation now exist.
+- [x] Optional TOTP MFA enrollment, activation, login verification, and tenant/admin visibility now exist.
+- [x] The TOTP MFA slice was revalidated on April 7, 2026 with targeted backend auth tests plus a fresh frontend production build.
+- [x] OIDC foundation now exists with tenant-scoped provider admin APIs, bounded tenant auth-policy toggles, deterministic test-mode login/callback flow, tenant-secret-backed client secret storage, and RBAC claim mapping.
+- [x] Quotas and usage metrics now exist with durable quota/usage models, tenant-admin `tenant-quotas` and `tenant-usage` APIs, enforced limits for monitored systems/tenant secrets/automation workflows, and basic SPA admin visibility.
+- [x] Billing/licensing preparation now exists with durable `TenantPlan`, `TenantBillingProfile`, and `TenantLicense` models, tenant-admin `tenant-commercial` APIs, explicit contract boundaries between entitlements/quotas/billing/license state, and basic SPA admin visibility.
+- [x] Targeted pytest coverage, frontend build validation, and fresh migration upgrade validation are on record.
+
+Current recommended next slice:
+
+- `P0-B: Logs Investigation V2` from `PHASE7_EXECUTION_BACKLOG.md`

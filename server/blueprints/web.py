@@ -14,8 +14,11 @@ from werkzeug.utils import secure_filename
 from ..auth import (
     clear_web_session,
     hash_password,
+    is_user_locked_out,
+    record_failed_login,
     require_api_key_or_permission,
     require_web_permission,
+    reset_login_state,
     start_web_session,
     verify_password,
 )
@@ -138,11 +141,23 @@ def login():
             return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
 
         user = User.query.filter_by(organization_id=tenant.id, email=email).first()
-        if user is None or not user.is_active or not verify_password(password, user.password_hash):
+        if user is None or not user.is_active:
             log_audit_event('web.login', outcome='failure', reason='invalid_credentials', email=email, tenant_slug=tenant_slug)
             flash('Invalid credentials.', 'danger')
             return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
 
+        if is_user_locked_out(user):
+            log_audit_event('web.login', outcome='failure', reason='lockout_active', email=email, tenant_slug=tenant_slug, user_id=user.id)
+            flash('Account temporarily locked.', 'danger')
+            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+
+        if not verify_password(password, user.password_hash):
+            record_failed_login(user)
+            log_audit_event('web.login', outcome='failure', reason='invalid_credentials', email=email, tenant_slug=tenant_slug)
+            flash('Invalid credentials.', 'danger')
+            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+
+        reset_login_state(user)
         start_web_session(user)
         log_audit_event('web.login', outcome='success', user_id=user.id, user_email=user.email, tenant_slug=tenant_slug)
         flash('Logged in successfully.', 'success')

@@ -20,6 +20,7 @@ from .performance_service import PerformanceService
 from .agent_release_service import AgentReleaseService
 from .agent_identity_service import AgentIdentityService
 from .tenant_secret_service import TenantSecretService
+from .mfa_service import MfaService
 
 __all__ = [
 	'SystemService',
@@ -36,6 +37,7 @@ __all__ = [
 	'RemoteExecutorService',
 	'PerformanceService',
 	'AgentReleaseService',
-	'AgentIdentityService',
-	'TenantSecretService',
+    'AgentIdentityService',
+    'TenantSecretService',
+    'MfaService',
 ]

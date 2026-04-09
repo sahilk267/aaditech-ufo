@@ -6,6 +6,11 @@ Updated: March 31, 2026
 
 This report reviews the unchecked Phase 5 items against the current codebase and documentation.
 
+Implementation note:
+
+- Later on March 31, 2026, tenant settings, supportability surfaces, workflow-run reads, delivery-history reads/redelivery, merged operations timeline, and lightweight incident operator actions were implemented.
+- On April 1, 2026, realtime transport, enterprise auth, and commercial roadmap decisions were documented, and incident case-management v1 gained incident comments/notes.
+
 It answers four questions for each item:
 
 - what already exists

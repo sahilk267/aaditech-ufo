@@ -123,6 +123,7 @@ What this verification confirms:
 - Redis health checks authenticate with the same passworded URL the app uses
 - health checks, startup order, volumes, and gateway/app service wiring render cleanly
 - the deployed SPA is expected to be served by the app/gateway path, not a separate production frontend container
+- current SSE routes (`/api/alerts/stream`, `/api/operations/timeline/stream`) have gateway buffering disabled
 
 For the first real deployment pass, use `STAGING_VERIFICATION_CHECKLIST.md` after compose validation succeeds.
 

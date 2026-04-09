@@ -26,7 +26,12 @@
 | **Decide agent enrollment model** | [AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md](AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md) | 8 min |
 | **Decide tenant secret model** | [TENANT_SECRET_MANAGEMENT_DECISION.md](TENANT_SECRET_MANAGEMENT_DECISION.md) | 8 min |
 | **Read supportability policy draft** | [PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md](PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md) | 8 min |
+| **Choose realtime transport** | [REALTIME_TRANSPORT_DECISION.md](REALTIME_TRANSPORT_DECISION.md) | 6 min |
+| **Review enterprise auth roadmap** | [ENTERPRISE_AUTH_ROADMAP_DECISION.md](ENTERPRISE_AUTH_ROADMAP_DECISION.md) | 7 min |
+| **Review commercial roadmap** | [COMMERCIAL_PLATFORM_ROADMAP_DECISION.md](COMMERCIAL_PLATFORM_ROADMAP_DECISION.md) | 7 min |
 | **Run restore-drill ops checklist** | [RESTORE_DRILL_CHECKLIST.md](RESTORE_DRILL_CHECKLIST.md) | 6 min |
+| **Read full repo rebaseline** | [FULL_REPO_REBASELINE_REPORT_2026_04_09.md](FULL_REPO_REBASELINE_REPORT_2026_04_09.md) | 8 min |
+| **Read Phase 7 backlog** | [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md) | 8 min |
 | **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
 | **See feature details** | [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) | 20 min |
 | **Map all 157 features** | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) | 10 min |
@@ -38,7 +43,7 @@
 
 ## 🎯 FOR IMPLEMENTATION (THE ESSENTIALS)
 
-**During actual development, use these 16 files:**
+**During actual development, use these 21 files:**
 
 Status vocabulary source of truth:
 - `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
@@ -59,7 +64,12 @@ Status vocabulary source of truth:
 | **AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md** | Agent lifecycle and enrollment decision | During agent platform planning and rollout preparation | When agent identity decisions change |
 | **TENANT_SECRET_MANAGEMENT_DECISION.md** | Tenant secret ownership, storage, and rotation decision | During tenant integration/security planning | When tenant secret design changes |
 | **PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md** | Supportability baseline for backup, retention, and platform observability | During operations/readiness planning | When supportability policy changes |
+| **REALTIME_TRANSPORT_DECISION.md** | Realtime transport decision across polling, SSE, and WebSocket | During live-feed planning and future frontend/backend refresh design | When transport strategy changes |
+| **ENTERPRISE_AUTH_ROADMAP_DECISION.md** | Enterprise auth staging plan for MFA, OIDC, and SAML | During auth roadmap and tenant-identity planning | When identity roadmap changes |
+| **COMMERCIAL_PLATFORM_ROADMAP_DECISION.md** | Commercial controls roadmap for entitlements, quotas, and billing | During packaging, licensing, and platform-controls planning | When commercial roadmap changes |
 | **RESTORE_DRILL_CHECKLIST.md** | Restore-drill execution and evidence checklist | During backup verification and operational drills | When restore-drill flow changes |
+| **FULL_REPO_REBASELINE_REPORT_2026_04_09.md** | Fresh repo-wide status rebaseline and next-step summary | At phase transitions or before choosing the next execution track | When a new repo-wide rebaseline is created |
+| **PHASE7_EXECUTION_BACKLOG.md** | Practical P0/P1/P2 backlog for the next execution cycle | When choosing the next implementation track after rebaseline | When the next-cycle backlog changes |
 | **SPA_WAVE_ROLLBACK_CHECKLIST.md** | SPA redirect rollback checklist | Before/after SPA wave activation | When redirect scope or rollout flow changes |
 | **UPDATED_ARCHITECTURE.md** | 🏗️ System design reference | When coding | Rarely |
 | **README.md** | 📚 Feature specifications | When figuring out what a feature does | Rarely |

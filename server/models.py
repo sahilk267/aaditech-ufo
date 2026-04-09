@@ -68,6 +68,10 @@ class User(db.Model):
     full_name = db.Column(db.String(255), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, nullable=False, default=True)
+    failed_login_attempts = db.Column(db.Integer, nullable=False, default=0)
+    locked_until = db.Column(db.DateTime, nullable=True, index=True)
+    last_login_at = db.Column(db.DateTime, nullable=True, index=True)
+    auth_token_version = db.Column(db.Integer, nullable=False, default=1)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -79,6 +83,38 @@ class User(db.Model):
 
     def __repr__(self):
         return f"<User(id={self.id}, email='{self.email}', organization_id={self.organization_id})>"
+
+
+class UserTotpFactor(db.Model):
+    """Encrypted TOTP MFA factor for a tenant-scoped user."""
+
+    __tablename__ = 'user_totp_factors'
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, unique=True, index=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    secret_ciphertext = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    enrolled_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    verified_at = db.Column(db.DateTime, nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    disabled_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    user = db.relationship('User', backref=db.backref('totp_factor', uselist=False))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'user_id': self.user_id,
+            'organization_id': self.organization_id,
+            'status': self.status,
+            'enrolled_at': self.enrolled_at.isoformat() if self.enrolled_at else None,
+            'verified_at': self.verified_at.isoformat() if self.verified_at else None,
+            'last_used_at': self.last_used_at.isoformat() if self.last_used_at else None,
+            'disabled_at': self.disabled_at.isoformat() if self.disabled_at else None,
+        }
 
 
 class Role(db.Model):
@@ -330,6 +366,10 @@ class LogSource(db.Model):
     organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
     name = db.Column(db.String(128), nullable=False)
     adapter = db.Column(db.String(32), nullable=False, default='linux_test_double')
+    description = db.Column(db.String(255), nullable=True)
+    host_name = db.Column(db.String(255), nullable=True, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    source_metadata = db.Column(db.JSON, nullable=True)
     last_ingested_at = db.Column(db.DateTime, nullable=True, index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -345,6 +385,10 @@ class LogSource(db.Model):
             'organization_id': self.organization_id,
             'name': self.name,
             'adapter': self.adapter,
+            'description': self.description,
+            'host_name': self.host_name,
+            'is_active': self.is_active,
+            'source_metadata': self.source_metadata or {},
             'last_ingested_at': self.last_ingested_at.isoformat() if self.last_ingested_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
@@ -407,6 +451,9 @@ class IncidentRecord(db.Model):
     alert_count = db.Column(db.Integer, nullable=False, default=0)
     metric_count = db.Column(db.Integer, nullable=False, default=0)
     occurrence_count = db.Column(db.Integer, nullable=False, default=1)
+    assigned_to_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    acknowledged_at = db.Column(db.DateTime, nullable=True)
+    resolution_summary = db.Column(db.String(1000), nullable=True)
     metrics = db.Column(db.JSON, nullable=False, default=list)
     sample_alerts = db.Column(db.JSON, nullable=False, default=list)
     first_seen_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
@@ -429,6 +476,9 @@ class IncidentRecord(db.Model):
             'alert_count': self.alert_count,
             'metric_count': self.metric_count,
             'occurrence_count': self.occurrence_count,
+            'assigned_to_user_id': self.assigned_to_user_id,
+            'acknowledged_at': self.acknowledged_at.isoformat() if self.acknowledged_at else None,
+            'resolution_summary': self.resolution_summary,
             'metrics': self.metrics or [],
             'sample_alerts': self.sample_alerts or [],
             'first_seen_at': self.first_seen_at.isoformat() if self.first_seen_at else None,
@@ -436,6 +486,33 @@ class IncidentRecord(db.Model):
             'resolved_at': self.resolved_at.isoformat() if self.resolved_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class IncidentCaseComment(db.Model):
+    """Tenant-scoped incident investigation note/comment."""
+
+    __tablename__ = 'incident_case_comments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    incident_id = db.Column(db.Integer, db.ForeignKey('incident_records.id'), nullable=False, index=True)
+    author_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    comment_type = db.Column(db.String(32), nullable=False, default='note', index=True)
+    body = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    incident = db.relationship('IncidentRecord', backref=db.backref('case_comments', lazy=True, order_by='IncidentCaseComment.created_at.desc()'))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'incident_id': self.incident_id,
+            'author_user_id': self.author_user_id,
+            'comment_type': self.comment_type,
+            'body': self.body,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
 
@@ -520,6 +597,78 @@ class NotificationDelivery(db.Model):
             'failure_count': self.failure_count,
             'failures': self.failures or [],
             'alert_snapshot': self.alert_snapshot or [],
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class ReliabilityRun(db.Model):
+    """Tenant-scoped durable reliability diagnostic execution history."""
+
+    __tablename__ = 'reliability_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    diagnostic_type = db.Column(db.String(64), nullable=False, index=True)
+    host_name = db.Column(db.String(255), nullable=False, index=True)
+    dump_name = db.Column(db.String(255), nullable=True, index=True)
+    adapter = db.Column(db.String(32), nullable=True, index=True)
+    status = db.Column(db.String(32), nullable=False, index=True)
+    error_reason = db.Column(db.String(64), nullable=True, index=True)
+    request_payload = db.Column(db.JSON, nullable=False, default=dict)
+    result_payload = db.Column(db.JSON, nullable=True)
+    summary = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'diagnostic_type': self.diagnostic_type,
+            'host_name': self.host_name,
+            'dump_name': self.dump_name,
+            'adapter': self.adapter,
+            'status': self.status,
+            'error_reason': self.error_reason,
+            'request_payload': self.request_payload or {},
+            'result_payload': self.result_payload or {},
+            'summary': self.summary or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+
+class UpdateRun(db.Model):
+    """Tenant-scoped durable update monitoring execution history."""
+
+    __tablename__ = 'update_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    host_name = db.Column(db.String(255), nullable=False, index=True)
+    adapter = db.Column(db.String(32), nullable=True, index=True)
+    status = db.Column(db.String(32), nullable=False, index=True)
+    error_reason = db.Column(db.String(64), nullable=True, index=True)
+    update_count = db.Column(db.Integer, nullable=False, default=0)
+    latest_installed_on = db.Column(db.String(32), nullable=True)
+    updates_payload = db.Column(db.JSON, nullable=True)
+    summary = db.Column(db.JSON, nullable=True)
+    confidence_score = db.Column(db.Float, nullable=True)
+    confidence_payload = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'host_name': self.host_name,
+            'adapter': self.adapter,
+            'status': self.status,
+            'error_reason': self.error_reason,
+            'update_count': self.update_count,
+            'latest_installed_on': self.latest_installed_on,
+            'updates_payload': self.updates_payload or {},
+            'summary': self.summary or {},
+            'confidence_score': self.confidence_score,
+            'confidence_payload': self.confidence_payload or {},
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
@@ -691,6 +840,281 @@ class TenantSetting(db.Model):
             'branding_settings': self.branding_settings or {},
             'auth_policy': self.auth_policy or {},
             'feature_flags': self.feature_flags or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantOidcProvider(db.Model):
+    """Tenant-scoped OIDC provider configuration."""
+
+    __tablename__ = 'tenant_oidc_providers'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    issuer = db.Column(db.String(255), nullable=False)
+    client_id = db.Column(db.String(255), nullable=False)
+    client_secret_secret_name = db.Column(db.String(255), nullable=True)
+    authorization_endpoint = db.Column(db.String(500), nullable=False)
+    token_endpoint = db.Column(db.String(500), nullable=True)
+    userinfo_endpoint = db.Column(db.String(500), nullable=True)
+    scopes = db.Column(db.JSON, nullable=False, default=list)
+    claim_mappings = db.Column(db.JSON, nullable=False, default=dict)
+    role_mappings = db.Column(db.JSON, nullable=False, default=dict)
+    test_mode = db.Column(db.Boolean, nullable=False, default=False)
+    test_claims = db.Column(db.JSON, nullable=False, default=dict)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    is_default = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'name', name='uq_tenant_oidc_providers_org_name'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'name': self.name,
+            'issuer': self.issuer,
+            'client_id': self.client_id,
+            'authorization_endpoint': self.authorization_endpoint,
+            'token_endpoint': self.token_endpoint,
+            'userinfo_endpoint': self.userinfo_endpoint,
+            'scopes': self.scopes or [],
+            'claim_mappings': self.claim_mappings or {},
+            'role_mappings': self.role_mappings or {},
+            'test_mode': self.test_mode,
+            'test_claim_codes': sorted((self.test_claims or {}).keys()),
+            'is_enabled': self.is_enabled,
+            'is_default': self.is_default,
+            'has_client_secret': bool(self.client_secret_secret_name),
+            'client_secret_secret_name': self.client_secret_secret_name,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantEntitlement(db.Model):
+    """Tenant-scoped entitlement/plan control for commercial and platform gating."""
+
+    __tablename__ = 'tenant_entitlements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    entitlement_key = db.Column(db.String(64), nullable=False, index=True)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    limit_value = db.Column(db.Integer, nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'entitlement_key', name='uq_tenant_entitlements_org_key'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'entitlement_key': self.entitlement_key,
+            'is_enabled': self.is_enabled,
+            'limit_value': self.limit_value,
+            'metadata': self.metadata_json or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantFeatureFlag(db.Model):
+    """Tenant-scoped feature flag for controlled rollout of product capabilities."""
+
+    __tablename__ = 'tenant_feature_flags'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    flag_key = db.Column(db.String(64), nullable=False, index=True)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    description = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'flag_key', name='uq_tenant_feature_flags_org_key'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'flag_key': self.flag_key,
+            'is_enabled': self.is_enabled,
+            'description': self.description,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantQuotaPolicy(db.Model):
+    """Tenant-scoped quota policy for enforceable resource boundaries."""
+
+    __tablename__ = 'tenant_quota_policies'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    quota_key = db.Column(db.String(64), nullable=False, index=True)
+    limit_value = db.Column(db.Integer, nullable=True)
+    is_enforced = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'quota_key', name='uq_tenant_quota_policies_org_key'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'quota_key': self.quota_key,
+            'limit_value': self.limit_value,
+            'is_enforced': self.is_enforced,
+            'metadata': self.metadata_json or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantUsageMetric(db.Model):
+    """Tenant-scoped current usage snapshot for quota reporting."""
+
+    __tablename__ = 'tenant_usage_metrics'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    metric_key = db.Column(db.String(64), nullable=False, index=True)
+    current_value = db.Column(db.Integer, nullable=False, default=0)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    measured_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'metric_key', name='uq_tenant_usage_metrics_org_key'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'metric_key': self.metric_key,
+            'current_value': self.current_value,
+            'metadata': self.metadata_json or {},
+            'measured_at': self.measured_at.isoformat() if self.measured_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantPlan(db.Model):
+    """Tenant-scoped commercial plan record decoupled from entitlements and quotas."""
+
+    __tablename__ = 'tenant_plans'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, unique=True, index=True)
+    plan_key = db.Column(db.String(64), nullable=False, default='starter')
+    display_name = db.Column(db.String(120), nullable=False, default='Starter')
+    status = db.Column(db.String(32), nullable=False, default='active', index=True)
+    billing_cycle = db.Column(db.String(32), nullable=True)
+    effective_from = db.Column(db.DateTime, nullable=True)
+    external_customer_ref = db.Column(db.String(128), nullable=True, index=True)
+    external_subscription_ref = db.Column(db.String(128), nullable=True, index=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'plan_key': self.plan_key,
+            'display_name': self.display_name,
+            'status': self.status,
+            'billing_cycle': self.billing_cycle,
+            'effective_from': self.effective_from.isoformat() if self.effective_from else None,
+            'external_customer_ref': self.external_customer_ref,
+            'external_subscription_ref': self.external_subscription_ref,
+            'metadata': self.metadata_json or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantBillingProfile(db.Model):
+    """Tenant-scoped billing contact and provider-boundary metadata."""
+
+    __tablename__ = 'tenant_billing_profiles'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, unique=True, index=True)
+    billing_email = db.Column(db.String(255), nullable=True)
+    billing_name = db.Column(db.String(255), nullable=True)
+    contact_email = db.Column(db.String(255), nullable=True)
+    country_code = db.Column(db.String(8), nullable=True)
+    provider_name = db.Column(db.String(64), nullable=True)
+    provider_customer_ref = db.Column(db.String(128), nullable=True, index=True)
+    tax_id_hint = db.Column(db.String(32), nullable=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'billing_email': self.billing_email,
+            'billing_name': self.billing_name,
+            'contact_email': self.contact_email,
+            'country_code': self.country_code,
+            'provider_name': self.provider_name,
+            'provider_customer_ref': self.provider_customer_ref,
+            'tax_id_hint': self.tax_id_hint,
+            'metadata': self.metadata_json or {},
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
+class TenantLicense(db.Model):
+    """Tenant-scoped licensing snapshot kept separate from entitlements/quota policy."""
+
+    __tablename__ = 'tenant_licenses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, unique=True, index=True)
+    license_status = db.Column(db.String(32), nullable=False, default='draft', index=True)
+    license_key_hint = db.Column(db.String(32), nullable=True)
+    seat_limit = db.Column(db.Integer, nullable=True)
+    enforcement_mode = db.Column(db.String(32), nullable=False, default='advisory')
+    expires_at = db.Column(db.DateTime, nullable=True, index=True)
+    metadata_json = db.Column(db.JSON, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'license_status': self.license_status,
+            'license_key_hint': self.license_key_hint,
+            'seat_limit': self.seat_limit,
+            'enforcement_mode': self.enforcement_mode,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+            'metadata': self.metadata_json or {},
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

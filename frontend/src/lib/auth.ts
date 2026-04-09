@@ -9,7 +9,14 @@ type LoginPayload = {
 
 type LoginResponse = {
   status: string;
-  tokens: AuthTokens;
+  tokens?: AuthTokens;
+  challenge?: {
+    challenge_token: string;
+    token_type: string;
+    expires_in: number;
+  };
+  challenge_type?: "totp";
+  mfa_required?: boolean;
   user: Omit<AuthUser, "permissions">;
 };
 
@@ -26,6 +33,14 @@ export async function login(payload: LoginPayload): Promise<LoginResponse> {
     headers: {
       "X-Tenant-Slug": payload.tenantSlug,
     },
+  });
+  return response.data;
+}
+
+export async function verifyTotpLogin(challengeToken: string, code: string): Promise<LoginResponse> {
+  const response = await apiClient.post<LoginResponse>("/api/auth/mfa/totp/verify-login", {
+    challenge_token: challengeToken,
+    code,
   });
   return response.data;
 }

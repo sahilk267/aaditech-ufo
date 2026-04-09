@@ -3,6 +3,8 @@ import type {
   AgentBuildResponse,
   AgentBuildStatusResponse,
   AgentReleasesResponse,
+  AlertDeliveryDetailResponse,
+  AlertDeliveryHistoryResponse,
   AlertDispatchResponse,
   AlertEvaluationResponse,
   AlertPrioritizationResponse,
@@ -20,21 +22,34 @@ import type {
   CrashDumpAnalysisResponse,
   DatabaseOptimizeResponse,
   DashboardAggregateResponse,
+  ConfidenceScoreResponse,
   DriverErrorsResponse,
   DriverMonitorResponse,
   ExceptionIdentificationResponse,
+  IncidentDetailResponse,
   IncidentExplanationResponse,
+  IncidentCommentsResponse,
+  IncidentsResponse,
   LogsCorrelateResponse,
   LogsIngestResponse,
+  LogEntriesResponse,
+  LogEntryDetailResponse,
+  LogSourceDetailResponse,
+  LogSourcesResponse,
   LogsParseResponse,
   LogsQueryResponse,
   LogsStreamResponse,
   LogsSearchResponse,
   ManualSubmitResponse,
   MaintenanceJobsResponse,
+  OperationsTimelineResponse,
+  OidcProviderMutationResponse,
+  OidcProvidersResponse,
   OllamaInferenceResponse,
   PatternDetectionResponse,
   PredictionAnalysisResponse,
+  ReliabilityRunDetailResponse,
+  ReliabilityRunsResponse,
   RecommendationsGenerationResponse,
   ReliabilityHistoryResponse,
   ReliabilityScoreResponse,
@@ -49,10 +64,20 @@ import type {
   SystemDetailResponse,
   SystemsResponse,
   TenantMutationResponse,
+  TenantControlsResponse,
+  TenantCommercialResponse,
+  TenantQuotasResponse,
+  TenantSettingsResponse,
+  TenantUsageResponse,
   TenantsResponse,
+  TotpFactorStatusResponse,
   TrendAnalysisResponse,
   UpdatesMonitorResponse,
+  UpdateRunDetailResponse,
+  UpdateRunsResponse,
   UserRegistrationResponse,
+  WorkflowRunDetailResponse,
+  WorkflowRunsResponse,
   ApiStatusResponse,
 } from "../types/api";
 
@@ -100,6 +125,88 @@ export async function updateTenantStatus(tenantId: number, isActive: boolean) {
 
 export async function setTenantStatus(tenantId: number, isActive: boolean) {
   return updateTenantStatus(tenantId, isActive);
+}
+
+export async function getTenantControls() {
+  const { data } = await apiClient.get<TenantControlsResponse>("/api/tenant-controls");
+  return data;
+}
+
+export async function updateTenantControls(payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<TenantControlsResponse>("/api/tenant-controls", payload);
+  return data;
+}
+
+export async function getTenantQuotas() {
+  const { data } = await apiClient.get<TenantQuotasResponse>("/api/tenant-quotas");
+  return data;
+}
+
+export async function updateTenantQuotas(payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<TenantQuotasResponse>("/api/tenant-quotas", payload);
+  return data;
+}
+
+export async function getTenantUsage() {
+  const { data } = await apiClient.get<TenantUsageResponse>("/api/tenant-usage");
+  return data;
+}
+
+export async function getTenantCommercial() {
+  const { data } = await apiClient.get<TenantCommercialResponse>("/api/tenant-commercial");
+  return data;
+}
+
+export async function updateTenantCommercial(payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<TenantCommercialResponse>("/api/tenant-commercial", payload);
+  return data;
+}
+
+export async function getTenantSettings() {
+  const { data } = await apiClient.get<TenantSettingsResponse>("/api/tenant-settings");
+  return data;
+}
+
+export async function updateTenantSettings(payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<TenantSettingsResponse>("/api/tenant-settings", payload);
+  return data;
+}
+
+export async function getOidcProviders() {
+  const { data } = await apiClient.get<OidcProvidersResponse>("/api/auth/oidc/providers");
+  return data;
+}
+
+export async function createOidcProvider(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<OidcProviderMutationResponse>("/api/auth/oidc/providers", payload);
+  return data;
+}
+
+export async function updateOidcProvider(providerId: number, payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<OidcProviderMutationResponse>(`/api/auth/oidc/providers/${providerId}`, payload);
+  return data;
+}
+
+export async function getTotpStatus() {
+  const { data } = await apiClient.get<TotpFactorStatusResponse>("/api/auth/mfa/totp");
+  return data;
+}
+
+export async function enrollTotp() {
+  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/enroll");
+  return data;
+}
+
+export async function activateTotp(code: string) {
+  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/activate", { code });
+  return data;
+}
+
+export async function disableTotp(currentPassword: string) {
+  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/disable", {
+    current_password: currentPassword,
+  });
+  return data;
 }
 
 export async function registerUser(payload: { email: string; full_name: string; password: string }) {
@@ -195,6 +302,23 @@ export async function prioritizeAlerts(payload: { alerts: AlertRule[]; top_n?: n
   return data;
 }
 
+export async function getAlertDeliveryHistory(status?: string) {
+  const { data } = await apiClient.get<AlertDeliveryHistoryResponse>("/api/alerts/delivery-history", {
+    params: status ? { status } : {},
+  });
+  return data;
+}
+
+export async function getAlertDelivery(deliveryId: number) {
+  const { data } = await apiClient.get<AlertDeliveryDetailResponse>(`/api/alerts/delivery-history/${deliveryId}`);
+  return data;
+}
+
+export async function redeliverAlertDelivery(deliveryId: number) {
+  const { data } = await apiClient.post<AlertDispatchResponse>(`/api/alerts/delivery-history/${deliveryId}/redeliver`);
+  return data;
+}
+
 // Automation APIs
 export async function getAutomationWorkflows() {
   const { data } = await apiClient.get<AutomationWorkflowsResponse>("/api/automation/workflows");
@@ -208,6 +332,21 @@ export async function createAutomationWorkflow(payload: Record<string, unknown>)
 
 export async function executeAutomationWorkflow(workflowId: number, payload: Record<string, unknown>) {
   const { data } = await apiClient.post<AutomationWorkflowExecutionResponse>(`/api/automation/workflows/${workflowId}/execute`, payload);
+  return data;
+}
+
+export async function getWorkflowRuns(params?: { workflowId?: number; status?: string }) {
+  const { data } = await apiClient.get<WorkflowRunsResponse>("/api/automation/workflow-runs", {
+    params: {
+      workflow_id: params?.workflowId,
+      status: params?.status,
+    },
+  });
+  return data;
+}
+
+export async function getWorkflowRun(runId: number) {
+  const { data } = await apiClient.get<WorkflowRunDetailResponse>(`/api/automation/workflow-runs/${runId}`);
   return data;
 }
 
@@ -229,6 +368,66 @@ export async function triggerSelfHealing(payload: { alerts: AlertRule[]; dry_run
 // Logs APIs
 export async function ingestLogs(sourceName: string) {
   const { data } = await apiClient.post<LogsIngestResponse>("/api/logs/ingest", { source_name: sourceName });
+  return data;
+}
+
+export async function getLogSources(params?: { isActive?: boolean; searchText?: string }) {
+  const { data } = await apiClient.get<LogSourcesResponse>("/api/logs/sources", {
+    params: {
+      is_active: params?.isActive,
+      search_text: params?.searchText,
+    },
+  });
+  return data;
+}
+
+export async function getLogSource(sourceId: number, recentLimit = 10) {
+  const { data } = await apiClient.get<LogSourceDetailResponse>(`/api/logs/sources/${sourceId}`, {
+    params: { recent_limit: recentLimit },
+  });
+  return data;
+}
+
+export async function updateLogSource(
+  sourceId: number,
+  payload: {
+    description?: string;
+    host_name?: string;
+    is_active?: boolean;
+    source_metadata?: Record<string, unknown>;
+  }
+) {
+  const { data } = await apiClient.patch<LogSourceDetailResponse>(`/api/logs/sources/${sourceId}`, payload);
+  return data;
+}
+
+export async function getLogEntries(params?: {
+  sourceId?: number;
+  sourceName?: string;
+  severity?: string;
+  captureKind?: string;
+  eventId?: string;
+  queryText?: string;
+  page?: number;
+  perPage?: number;
+}) {
+  const { data } = await apiClient.get<LogEntriesResponse>("/api/logs/entries", {
+    params: {
+      source_id: params?.sourceId,
+      source_name: params?.sourceName,
+      severity: params?.severity,
+      capture_kind: params?.captureKind,
+      event_id: params?.eventId,
+      query_text: params?.queryText,
+      page: params?.page,
+      per_page: params?.perPage,
+    },
+  });
+  return data;
+}
+
+export async function getLogEntry(entryId: number) {
+  const { data } = await apiClient.get<LogEntryDetailResponse>(`/api/logs/entries/${entryId}`);
   return data;
 }
 
@@ -283,6 +482,22 @@ export async function collectReliabilityHistory(hostName: string) {
   return data;
 }
 
+export async function getReliabilityRuns(params?: { hostName?: string; diagnosticType?: string; status?: string }) {
+  const { data } = await apiClient.get<ReliabilityRunsResponse>("/api/reliability/runs", {
+    params: {
+      host_name: params?.hostName,
+      diagnostic_type: params?.diagnosticType,
+      status: params?.status,
+    },
+  });
+  return data;
+}
+
+export async function getReliabilityRun(runId: number) {
+  const { data } = await apiClient.get<ReliabilityRunDetailResponse>(`/api/reliability/runs/${runId}`);
+  return data;
+}
+
 export async function scoreReliability(hostName: string) {
   const { data } = await apiClient.post<ReliabilityScoreResponse>("/api/reliability/score", { host_name: hostName });
   return data;
@@ -298,18 +513,27 @@ export async function predictReliability(hostName: string) {
   return data;
 }
 
-export async function parseCrashDumps(hostName: string) {
-  const { data } = await apiClient.post<CrashDumpAnalysisResponse>("/api/reliability/crash-dumps/parse", { host_name: hostName });
+export async function parseCrashDumps(hostName: string, dumpName: string) {
+  const { data } = await apiClient.post<CrashDumpAnalysisResponse>("/api/reliability/crash-dumps/parse", {
+    host_name: hostName,
+    dump_name: dumpName,
+  });
   return data;
 }
 
-export async function identifyExceptions(hostName: string) {
-  const { data } = await apiClient.post<ExceptionIdentificationResponse>("/api/reliability/exceptions/identify", { host_name: hostName });
+export async function identifyExceptions(hostName: string, dumpName: string) {
+  const { data } = await apiClient.post<ExceptionIdentificationResponse>("/api/reliability/exceptions/identify", {
+    host_name: hostName,
+    dump_name: dumpName,
+  });
   return data;
 }
 
-export async function analyzeStackTraces(hostName: string) {
-  const { data } = await apiClient.post<StackTraceAnalysisResponse>("/api/reliability/stack-traces/analyze", { host_name: hostName });
+export async function analyzeStackTraces(hostName: string, dumpName: string) {
+  const { data } = await apiClient.post<StackTraceAnalysisResponse>("/api/reliability/stack-traces/analyze", {
+    host_name: hostName,
+    dump_name: dumpName,
+  });
   return data;
 }
 
@@ -357,8 +581,33 @@ export async function monitorUpdates(hostName: string) {
   return data;
 }
 
-export async function scoreUpdateConfidence(hostName: string, updates: Record<string, unknown>[], reliabilityScore: number) {
-  const { data } = await apiClient.post("/api/ai/confidence/score", { host_name: hostName, updates, reliability_score: reliabilityScore });
+export async function getUpdateRuns(params?: { hostName?: string; status?: string }) {
+  const { data } = await apiClient.get<UpdateRunsResponse>("/api/updates/runs", {
+    params: {
+      host_name: params?.hostName,
+      status: params?.status,
+    },
+  });
+  return data;
+}
+
+export async function getUpdateRun(runId: number) {
+  const { data } = await apiClient.get<UpdateRunDetailResponse>(`/api/updates/runs/${runId}`);
+  return data;
+}
+
+export async function scoreUpdateConfidence(
+  hostName: string,
+  updates: Record<string, unknown>[],
+  reliabilityScore: number,
+  updateRunId?: number | null
+) {
+  const { data } = await apiClient.post<ConfidenceScoreResponse>("/api/ai/confidence/score", {
+    host_name: hostName,
+    updates,
+    reliability_score: reliabilityScore,
+    update_run_id: updateRunId,
+  });
   return data;
 }
 
@@ -421,5 +670,68 @@ export async function getAuditEvents(filters?: {
       date_to: filters?.dateTo,
     },
   });
+  return data;
+}
+
+export async function getOperationsTimeline(limit = 25) {
+  const { data } = await apiClient.get<OperationsTimelineResponse>("/api/operations/timeline", {
+    params: { limit },
+  });
+  return data;
+}
+
+export function openEventStream<T>(
+  path: string,
+  handlers: {
+    event: string;
+    onMessage: (payload: T) => void;
+    onOpen?: () => void;
+    onError?: () => void;
+  },
+) {
+  const stream = new EventSource(path, { withCredentials: true });
+  stream.addEventListener(handlers.event, (event) => {
+    const payload = JSON.parse((event as MessageEvent<string>).data) as T;
+    handlers.onMessage(payload);
+  });
+  if (handlers.onOpen) {
+    stream.onopen = handlers.onOpen;
+  }
+  if (handlers.onError) {
+    stream.onerror = handlers.onError;
+  }
+  return stream;
+}
+
+export async function getIncidents(status?: string) {
+  const { data } = await apiClient.get<IncidentsResponse>("/api/incidents", {
+    params: status ? { status } : {},
+  });
+  return data;
+}
+
+export async function getIncident(incidentId: number) {
+  const { data } = await apiClient.get<IncidentDetailResponse>(`/api/incidents/${incidentId}`);
+  return data;
+}
+
+export async function updateIncident(
+  incidentId: number,
+  payload: { status?: "open" | "acknowledged" | "resolved"; assigned_to_user_id?: number | null; resolution_summary?: string }
+) {
+  const { data } = await apiClient.patch<IncidentDetailResponse>(`/api/incidents/${incidentId}`, payload);
+  return data;
+}
+
+export async function getIncidentComments(incidentId: number) {
+  const { data } = await apiClient.get<IncidentCommentsResponse>(`/api/incidents/${incidentId}/comments`);
+  return data;
+}
+
+export async function createIncidentComment(
+  incidentId: number,
+  payload: { body: string; comment_type?: "note" | "update" | "resolution" | "handoff" }
+) {
+  const { data } = await apiClient.post<IncidentCommentsResponse>(`/api/incidents/${incidentId}/comments`, payload);
   return data;
 }

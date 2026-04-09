@@ -77,10 +77,11 @@ Acceptance criteria for `IMPLEMENTED`:
 Current blockers:
 - source coverage is still narrow
 - application/security/container/database log product slices are still missing
-- richer investigation and retention workflows are still missing
+- saved investigations and broader retention workflows are still missing
 
 Primary evidence:
 - `tests/test_logs_api.py`
+- `tests/test_phase6_logs_investigation.py`
 - `tests/test_frontend_operational_flows.py`
 
 ---
@@ -97,12 +98,13 @@ Acceptance criteria for `IMPLEMENTED`:
 - Reliability outputs are usable in dashboard/operator flows, not just as isolated service adapters.
 
 Current blockers:
-- durable operator-facing reliability history/workflows are still thin
+- broader operator investigation workflows beyond the current persisted run history are still incomplete
 - broader crash/failure coverage is incomplete
-- product-level investigation UX is still incomplete
+- deeper product-level investigation UX is still incomplete
 
 Primary evidence:
 - `tests/test_reliability_api.py`
+- `tests/test_phase6_reliability_operator.py`
 - `server/services/reliability_service.py`
 
 ---
@@ -145,13 +147,14 @@ Acceptance criteria for `IMPLEMENTED`:
 
 Current blockers:
 - still adapter-driven and `foundation-v1`
-- no durable update history/workflow yet
 - no broader remediation or policy workflow yet
+- rollout/remediation policy workflow is still incomplete
 
 Primary evidence:
 - `server/services/update_service.py`
 - `server/blueprints/api.py`
 - `tests/test_update_monitor_api.py`
+- `tests/test_phase6_updates_productization.py`
 
 ---
 

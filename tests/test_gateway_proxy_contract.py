@@ -23,6 +23,9 @@ class TestGatewayProxyContract:
         assert "proxy_set_header X-Forwarded-Host $host;" in config
         assert "proxy_set_header X-Forwarded-Port $server_port;" in config
         assert "proxy_set_header X-Request-ID $request_id_upstream;" in config
+        assert "location ~ ^/api/(alerts/stream|operations/timeline/stream)$ {" in config
+        assert "proxy_buffering off;" in config
+        assert "proxy_cache off;" in config
 
     def test_api_health_is_gateway_ready_and_preserves_request_id(self, client):
         response = client.get(

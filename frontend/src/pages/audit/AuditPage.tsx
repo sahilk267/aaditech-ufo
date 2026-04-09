@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { ActionPanel } from "../../components/common/ActionPanel";
 import { JsonViewer } from "../../components/common/JsonViewer";
@@ -10,12 +10,21 @@ import {
   FormInput,
   FormSubmitButton,
 } from "../../components/forms/FormComponents";
-import { getAuditEvents } from "../../lib/api";
+import { getAuditEvents, getOperationsTimeline, openEventStream } from "../../lib/api";
+import { queryKeys } from "../../lib/queryKeys";
 import { auditFilterSchema, type AuditFilterInput } from "../../lib/schemas";
+import type { OperationsTimelineStreamSnapshot } from "../../types/api";
 
 export function AuditPage() {
+  const queryClient = useQueryClient();
   const [latestResult, setLatestResult] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
+  const [streamStatus, setStreamStatus] = useState<"connecting" | "connected" | "reconnecting" | "unsupported">("connecting");
+  const timelineQuery = useQuery({
+    queryKey: queryKeys.operationsTimeline,
+    queryFn: () => getOperationsTimeline(25),
+    staleTime: 30_000,
+  });
 
   const form = useForm<AuditFilterInput>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -53,6 +62,31 @@ export function AuditPage() {
   const onSubmit = (data: AuditFilterInput) => {
     auditQueryMutation.mutate(data);
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.EventSource === "undefined") {
+      setStreamStatus("unsupported");
+      return undefined;
+    }
+
+    const stream = openEventStream<OperationsTimelineStreamSnapshot>("/api/operations/timeline/stream?limit=25", {
+      event: "operations.timeline.snapshot",
+      onOpen: () => setStreamStatus("connected"),
+      onError: () => setStreamStatus("reconnecting"),
+      onMessage: (payload) => {
+        setStreamStatus("connected");
+        queryClient.setQueryData(queryKeys.operationsTimeline, {
+          status: "success",
+          count: payload.count,
+          timeline: payload.timeline,
+        });
+      },
+    });
+
+    return () => {
+      stream.close();
+    };
+  }, [queryClient]);
 
   return (
     <ModulePage
@@ -124,6 +158,17 @@ export function AuditPage() {
           <JsonViewer data={latestResult} title="/api/audit-events response" />
         ) : (
           <div className="module-status loading">Run an audit query to load matching events here.</div>
+        )}
+      </ActionPanel>
+
+      <ActionPanel title="Operations Timeline" style={{ marginTop: 12 }}>
+        <div className="module-status loading" style={{ marginBottom: 12 }}>
+          Live feed status: {streamStatus === "unsupported" ? "polling fallback only" : streamStatus}
+        </div>
+        {timelineQuery.data?.timeline?.length ? (
+          <JsonViewer data={timelineQuery.data.timeline} title="/api/operations/timeline response" />
+        ) : (
+          <div className="module-status loading">Merged audit, workflow, delivery, and incident timeline will appear here.</div>
         )}
       </ActionPanel>
     </ModulePage>

@@ -8,6 +8,9 @@ type AuthUser = {
   organization_id: number;
   roles: string[];
   permissions: string[];
+  mfa?: {
+    totp_enabled?: boolean;
+  };
 };
 
 type AuthTokens = {

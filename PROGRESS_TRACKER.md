@@ -19,8 +19,8 @@ Use these labels consistently across planning and tracking files:
 
 | Metric | Status | Details |
 |--------|--------|---------|
-| **Current Phase** | Phase 5 Product Surfaces Active | Phase 0 stabilization, Phase 2 SPA parity, Phase 3 productization, and Phase 4 remediation are validated, and the current focus has shifted to turning Phase 5 decisions into durable operator-facing platform surfaces |
-| **Current Week** | Phase 5 Product Surface Implementation Slice | Tenant settings are now first-class, durable history read APIs are landed for workflow runs/delivery history/incidents, and supportability now includes metrics plus restore-drill automation |
+| **Current Phase** | Phase 6 P1 Active | Phase 6 is now productizing deeper operator workflows, with logs, reliability, and updates slices implemented and validated |
+| **Current Week** | Phase 6 P1-C Updates Productization | Update monitoring now persists tenant-scoped run history with read/detail APIs and confidence attachment, and the SPA has a real history/drill-down workflow instead of a one-shot snapshot panel |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
 | **Overall Progress** | Foundations delivered, stabilization and Phase 4 runtime remediation validated | Major backend/frontend foundations exist, the backend test baseline is green, and the reviewed Phase 4 deployment/runtime gaps have been corrected and revalidated |
@@ -36,6 +36,35 @@ Use these labels consistently across planning and tracking files:
 | **Latest Validation** | PASS | `pytest tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `11 passed` on March 31, 2026 |
 | **Latest Validation** | PASS | `pytest tests/test_frontend_operational_flows.py::test_backup_releases_and_audit_operational_flow -q` -> `1 passed` on March 31, 2026 |
 | **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase5_product_surfaces_validation.db` -> PASS on March 31, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `14 passed` on March 31, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on March 31, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase5_operator_surfaces_validation_v2.db` -> PASS on March 31, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase5_incident_case_management.py tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `15 passed` on April 1, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 1, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase5_case_management_validation.db` -> PASS on April 1, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_tenant_controls.py tests/test_phase5_incident_case_management.py tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py -q` -> `10 passed` on April 2, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 2, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_tenant_controls_validation.db` -> PASS on April 2, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_realtime_sse.py tests/test_gateway_proxy_contract.py tests/test_phase6_tenant_controls.py tests/test_phase5_operator_surfaces.py -q` -> `10 passed` on April 2, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 2, 2026 (`P0-B1`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_sse_validation.db` -> PASS on April 2, 2026 |
+| **Latest Validation** | PASS | `docker run --rm --add-host app:127.0.0.1 -v \"${PWD}/gateway/nginx.conf:/etc/nginx/nginx.conf:ro\" nginx:1.27-alpine nginx -t` -> PASS on April 2, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py tests/test_phase5_product_surfaces.py -q` -> `24 passed` on April 2, 2026 |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_auth_hardening_validation_fresh.db` -> PASS on April 2, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_totp_mfa.py tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py -q` -> `22 passed` on April 7, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 7, 2026 (`P0-C2` revalidation) |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_logs_investigation.py tests/test_logs_api.py tests/test_frontend_operational_flows.py::test_alerts_automation_logs_and_audit_operational_flow tests/test_frontend_page_api_contracts.py::test_alerts_automation_and_logs_page_contracts -q` -> `20 passed` on April 7, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 7, 2026 (`P1-A`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_logs_investigation_validation.db` -> PASS on April 7, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_reliability_operator.py tests/test_reliability_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `21 passed` on April 8, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 8, 2026 (`P1-B`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_reliability_validation.db` -> PASS on April 8, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_updates_productization.py tests/test_update_monitor_api.py tests/test_confidence_dashboard_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `14 passed` on April 8, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 8, 2026 (`P1-C`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_updates_validation.db` -> PASS on April 8, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_totp_mfa.py tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py -q` -> `22 passed` on April 2, 2026 |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 2, 2026 (`P0-C2`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_totp_validation_fresh.db` -> PASS on April 2, 2026 |
 
 ---
 
@@ -205,6 +234,318 @@ The remaining work in this area is first real staging deployment execution and p
 ### Scope note
 - Tenant settings are now implemented as a first-class model/API.
 - Workflow run, delivery-history, and incident read APIs are now implemented, but the broader UX/timeline/case-management planning items remain open in Phase 5.
+
+## Phase 5 Operator History Update (2026-03-31)
+
+### Completed now
+- Added migration `013_incident_operator_fields` so incidents can store assignee, acknowledgement time, and resolution summary.
+- Added merged operator timeline API at `GET /api/operations/timeline`.
+- Added workflow-run detail API at `GET /api/automation/workflow-runs/<id>`.
+- Added delivery-history detail and redelivery APIs:
+  - `GET /api/alerts/delivery-history/<id>`
+  - `POST /api/alerts/delivery-history/<id>/redeliver`
+- Added incident detail/update APIs:
+  - `GET /api/incidents/<id>`
+  - `PATCH /api/incidents/<id>`
+- Added frontend operator surfaces:
+  - Alerts page now shows delivery history, redelivery, and incident action controls.
+  - Automation page now shows durable workflow-run history and selected-run detail.
+  - Audit page now shows the merged operations timeline.
+
+### Validation completed
+- `pytest tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `14 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase5_operator_surfaces_validation_v2.db` -> PASS
+
+### Scope note
+- Workflow execution history and notification delivery retry visibility now have real backend/frontend operator surfaces.
+- Incident handling now has a lightweight operator action layer, but full case-management workflows remain open in Phase 5.
+
+## Phase 5 Decision Pack + Case Management Update (2026-04-01)
+
+### Completed now
+- Added `REALTIME_TRANSPORT_DECISION.md` to define the recommended polling-first + selective SSE strategy, with WebSocket deferred until a strong bidirectional use case exists.
+- Added `ENTERPRISE_AUTH_ROADMAP_DECISION.md` to define the staged auth plan: local hardening, then OIDC, then SAML only if needed.
+- Added `COMMERCIAL_PLATFORM_ROADMAP_DECISION.md` to define the staged commercial controls model: entitlements/feature flags first, quotas next, billing later.
+- Added incident case-management v1 via `IncidentCaseComment` plus migration `014_incident_case_comments`.
+- Added incident comment APIs:
+  - `GET /api/incidents/<id>/comments`
+  - `POST /api/incidents/<id>/comments`
+- Extended the alerts page so operators can add incident case notes directly from the existing incident-action surface.
+
+### Validation completed
+- `pytest tests/test_phase5_incident_case_management.py tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py tests/test_phase5_p0_foundations.py tests/test_async_maintenance_jobs.py -q` -> `15 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase5_case_management_validation.db` -> PASS
+
+### Scope note
+- Phase 5 now has decision coverage for realtime, enterprise auth, and commercial controls.
+- Incident case-management is now present as a v1 investigation-notes workflow, though a larger multi-step case domain could still be added later if product needs expand.
+
+## Full Repo Rebaseline Update (2026-04-01)
+
+### Completed now
+- Added `FULL_REPO_REBASELINE_REPORT_2026_04_01.md` as the fresh repo-wide status snapshot after Phases 0 through 5 work.
+- Captured the current delivery state, validated areas, remaining product/platform gaps, and recommended next execution tracks in one place.
+- Linked the rebaseline report from the documentation index so it can serve as the current high-level handoff/reference document.
+
+### Scope note
+- This rebaseline is a reporting/handoff artifact, not a new feature slice.
+- It should be treated as the current repo-wide summary until the next major implementation cycle materially changes project status.
+
+## Phase 6 Backlog Update (2026-04-02)
+
+### Completed now
+- Added `PHASE6_EXECUTION_BACKLOG.md` to convert the Phase 5 decision pack and April 1 rebaseline into a practical execution backlog.
+- Defined `P0`, `P1`, and `P2` lanes instead of leaving the next cycle as an open-ended choice.
+- Recommended the next starting slice as `P0-A1: Tenant Feature Flags And Entitlements V1`.
+
+### Scope note
+- This is a planning/execution artifact, not an implemented feature slice yet.
+- It should be used to choose the next active implementation track and then update the current-phase plan accordingly.
+
+## Phase 6 P0-A1 Update (2026-04-02)
+
+### Completed now
+- Added durable `TenantEntitlement` and `TenantFeatureFlag` models plus migration `015_tenant_controls`.
+- Added auth helpers for effective tenant entitlement and feature-flag checks.
+- Added tenant-scoped `GET /api/tenant-controls` and `PATCH /api/tenant-controls` APIs.
+- Wired one real end-to-end gated capability: `incident_case_management_v1`.
+- Backend incident comment APIs now enforce both entitlement and feature-flag state.
+- Frontend alerts page now reads tenant controls and hides/disables case notes when that tenant capability is turned off.
+
+### Validation completed
+- `pytest tests/test_phase6_tenant_controls.py tests/test_phase5_incident_case_management.py tests/test_phase5_operator_surfaces.py tests/test_phase5_product_surfaces.py -q` -> `10 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_tenant_controls_validation.db` -> PASS
+
+### Next recommended slice
+- `P0-B1: Realtime SSE v1 for alerts + operations timeline`
+
+### Documentation alignment
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now explicitly records the Phase 6 kickoff state and points at `PHASE6_EXECUTION_BACKLOG.md` as the active next-cycle backlog source.
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P0-A1` as completed and validated instead of leaving it as only a suggested starting slice.
+
+## Phase 6 P0-B1 Update (2026-04-02)
+
+### Completed now
+- Added tenant-scoped SSE feeds at `GET /api/alerts/stream` and `GET /api/operations/timeline/stream`.
+- Added compact SSE stream helpers with event IDs, retry hints, no-buffering headers, and short-lived keep-alive behavior.
+- Updated the Alerts page to consume the alerts SSE feed and hydrate delivery/incidents query data while keeping existing polling as fallback.
+- Updated the Audit page to consume the operations timeline SSE feed and hydrate the timeline query cache while keeping existing polling as fallback.
+- Updated gateway config so the SSE routes disable proxy buffering and cache for deployment-like behavior.
+
+### Validation completed
+- `pytest tests/test_phase6_realtime_sse.py tests/test_gateway_proxy_contract.py tests/test_phase6_tenant_controls.py tests/test_phase5_operator_surfaces.py -q` -> `10 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_sse_validation.db` -> PASS
+- `docker run --rm --add-host app:127.0.0.1 -v "${PWD}/gateway/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.27-alpine nginx -t` -> PASS
+
+### Next recommended slice
+- `P0-C1: Enterprise Auth V1 local hardening kickoff`
+
+## Phase 6 P0-C1 Update (2026-04-02)
+
+### Completed now
+- Added user auth-state fields plus migration `016_auth_hardening_user_state` for failed login tracking, lockout windows, last-login time, and auth token versioning.
+- Tenant settings now expose effective auth-policy defaults and validate bounded auth-policy updates.
+- Password policy enforcement now uses tenant auth policy during registration.
+- Login lockout baseline now applies to both `/api/auth/login` and browser `/login`.
+- Added admin session invalidation at `POST /api/users/<id>/revoke-sessions`.
+- JWT access/refresh tokens and browser sessions now respect auth token version revocation, and browser sessions also respect tenant session max-age policy.
+
+### Validation completed
+- `pytest tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py tests/test_phase5_product_surfaces.py -q` -> `24 passed`
+- `flask --app server.app db upgrade` against fresh `phase6_auth_hardening_validation_fresh.db` -> PASS
+
+### Next recommended slice
+- `P0-C2: Optional TOTP MFA foundation + auth admin surface`
+
+## Phase 6 P0-C2 Update (2026-04-02)
+
+### Completed now
+- Added durable `UserTotpFactor` plus migration `017_user_totp_factors`.
+- Added encrypted TOTP MFA enrollment, activation, disable, and status APIs for the current user.
+- Added TOTP MFA login challenge flow at `/api/auth/mfa/totp/verify-login`.
+- Updated `/api/auth/login` so TOTP-enabled users can complete login through an MFA challenge instead of immediately receiving tokens.
+- Added SPA support for MFA login verification and a tenant/admin auth surface showing current auth policy plus current-user MFA setup state.
+
+### Validation completed
+- `pytest tests/test_phase6_totp_mfa.py tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py -q` -> `22 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_totp_validation_fresh.db` -> PASS
+
+### Revalidated
+- Revalidated on April 7, 2026 with the same TOTP MFA/API/session regression slice and a fresh frontend production build.
+
+### Next recommended slice
+- `P1-A: Logs Investigation Productization`
+
+## Phase 6 P1-A Update (2026-04-07)
+
+### Completed now
+- Added operator-maintained log-source metadata fields (`description`, `host_name`, `is_active`, `source_metadata`) plus migration `018_logs_investigation_productization`.
+- Added persisted investigation APIs at `GET /api/logs/sources`, `GET/PATCH /api/logs/sources/<id>`, `GET /api/logs/entries`, and `GET /api/logs/entries/<id>`.
+- Upgraded the SPA Logs page from a single action/result console into a stored-history workflow with source selection, metadata editing, filtered persisted entries, and entry drill-down.
+- Existing ingest, event-query, parse, and search paths now refresh the stored investigation views instead of leaving logs as only transient action responses.
+
+### Validation completed
+- `pytest tests/test_phase6_logs_investigation.py tests/test_logs_api.py tests/test_frontend_operational_flows.py::test_alerts_automation_logs_and_audit_operational_flow tests/test_frontend_page_api_contracts.py::test_alerts_automation_and_logs_page_contracts -q` -> `20 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_logs_investigation_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P1-A` complete and sets `P1-B` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points at `P1-B: Reliability Operator Productization` as the next active slice.
+- `FEATURE_ACCEPTANCE_CRITERIA.md` now reflects that richer log investigation exists, while saved investigations and broader retention workflows remain open.
+
+### Next recommended slice
+- `P1-B: Reliability Operator Productization`
+
+## Phase 6 P1-B Update (2026-04-08)
+
+### Completed now
+- Added durable `ReliabilityRun` history plus migration `019_reliability_runs`.
+- Added `GET /api/reliability/runs` and `GET /api/reliability/runs/<id>` so reliability diagnostics now have tenant-scoped list/detail read APIs.
+- Persisted run history for reliability history, score, trend, prediction, patterns, crash-dump parse, exception identification, and stack-trace analysis.
+- Upgraded the SPA Reliability page from a single latest-response panel into an operator workflow with run counts, persisted history filters, dump-driven actions, and selected-run drill-down detail.
+
+### Validation completed
+- `pytest tests/test_phase6_reliability_operator.py tests/test_reliability_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `21 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_reliability_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P1-B` complete and sets `P1-C` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points at `P1-C: Updates Productization` as the next active slice.
+- `FEATURE_ACCEPTANCE_CRITERIA.md` and `FEATURE_COVERAGE_MAP.md` now reflect the new persisted reliability run history and remaining product-depth gaps.
+
+### Next recommended slice
+- `P1-C: Updates Productization`
+
+## Phase 6 P1-C Update (2026-04-08)
+
+### Completed now
+- Added durable `UpdateRun` history plus migration `020_update_runs`.
+- Added `GET /api/updates/runs` and `GET /api/updates/runs/<id>` so update monitoring now has tenant-scoped list/detail read APIs.
+- Update monitoring now persists bounded update snapshots, and confidence scoring can attach analysis back onto a selected update run.
+- Upgraded the SPA Updates page from a latest-response-only panel into a monitor-plus-history workflow with persisted run selection and confidence drill-down.
+
+### Validation completed
+- `pytest tests/test_phase6_updates_productization.py tests/test_update_monitor_api.py tests/test_confidence_dashboard_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `14 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_updates_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P1-C` complete and points to `P2-A` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points at `P2-A: OIDC Foundation` as the next active slice.
+- `FEATURE_ACCEPTANCE_CRITERIA.md` and `FEATURE_COVERAGE_MAP.md` now reflect the new durable update history and remaining rollout/policy gaps.
+
+### Next recommended slice
+- `P2-A: OIDC Foundation`
+
+## Phase 6 P2-A Update (2026-04-09)
+
+### Completed now
+- Wired the existing `TenantOidcProvider` model/migration into real tenant-admin APIs: `GET /api/auth/oidc/providers`, `POST /api/auth/oidc/providers`, and `PATCH /api/auth/oidc/providers/<id>`.
+- Expanded tenant auth-policy validation to support bounded `oidc_enabled` and `local_admin_fallback_enabled` controls on `tenant-settings`.
+- Added `POST /api/auth/oidc/login` and `GET /api/auth/oidc/callback` as the first working Stage 2 OIDC flow.
+- Added deterministic test-mode provider support so the repo can validate login/callback behavior without external IdP dependencies.
+- Added claim mapping into tenant user creation/update and RBAC role assignment, with default-admin fallback when no explicit role map matches.
+- Stored OIDC client secrets through the tenant secret service rather than returning plaintext secrets.
+- Extended the SPA Tenants page with basic OIDC policy visibility plus provider create/enable/default controls.
+
+### Validation completed
+- `pytest tests/test_phase6_oidc_foundation.py tests/test_phase6_auth_hardening.py tests/test_phase6_totp_mfa.py -q` -> `10 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_oidc_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P2-A` complete and points to `P2-B` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now records OIDC foundation as complete and points at `P2-B: Quotas And Usage Metrics`.
+- `ENTERPRISE_AUTH_ROADMAP_DECISION.md` now records Stage 2 foundation as partially implemented and clarifies that external token exchange remains open.
+
+### Next recommended slice
+- `P2-B: Quotas And Usage Metrics`
+
+## Phase 6 P2-B Update (2026-04-09)
+
+### Completed now
+- Added durable `TenantQuotaPolicy` and `TenantUsageMetric` models plus migration `022_tenant_quotas_and_usage_metrics`.
+- Added tenant-admin quota and usage APIs: `GET /api/tenant-quotas`, `PATCH /api/tenant-quotas`, and `GET /api/tenant-usage`.
+- Added current usage snapshot syncing for `monitored_systems`, `automation_workflows`, `tenant_secrets`, and `enrolled_agents`.
+- Added real quota enforcement for new monitored-system submissions, tenant secret creation, and automation workflow creation.
+- Extended the SPA Tenants page with quota usage visibility and basic enforce/clear controls so the feature is not backend-only.
+
+### Validation completed
+- `pytest tests/test_phase6_quotas_usage.py tests/test_phase6_tenant_controls.py tests/test_automation_api.py tests/test_api_endpoints.py -q` -> `35 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_quotas_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P2-B` complete and points to `P2-C` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now records quotas and usage metrics as complete and points at `P2-C: Billing / Licensing Preparation`.
+- `COMMERCIAL_PLATFORM_ROADMAP_DECISION.md` now records Phase B as partially implemented and clarifies what remains before billing/provider work.
+
+### Next recommended slice
+- `P2-C: Billing / Licensing Preparation`
+
+## Phase 6 P2-C Update (2026-04-09)
+
+### Completed now
+- Added durable draft commercial models: `TenantPlan`, `TenantBillingProfile`, and `TenantLicense` plus migration `023_tenant_commercial_models`.
+- Added `GET /api/tenant-commercial` and `PATCH /api/tenant-commercial` so tenant admins can view and update plan, billing-profile, and license draft state.
+- Added explicit contract-boundary serialization to keep entitlements, quotas, billing profile, and license state as separate sources of truth.
+- Extended the SPA Tenants page with a commercial draft admin section for plan, billing provider/contact, and license metadata.
+
+### Validation completed
+- `pytest tests/test_phase6_commercial_preparation.py tests/test_phase6_quotas_usage.py tests/test_phase6_tenant_controls.py -q` -> `7 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase6_commercial_validation.db` -> PASS
+
+### Documentation alignment
+- `PHASE6_EXECUTION_BACKLOG.md` now marks `P2-C` complete and points to a full repo rebaseline / next-cycle backlog refresh as the next recommended step.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now records billing/licensing preparation as complete and points at the same repo-wide refresh step.
+- `COMMERCIAL_PLATFORM_ROADMAP_DECISION.md` now records Phase C foundations as present while clarifying that external billing-provider integration and hard enforcement remain open.
+
+### Next recommended slice
+- Full repo rebaseline / next-cycle backlog refresh
+
+## Repo Rebaseline + Phase 7 Refresh (2026-04-09)
+
+### Completed now
+- Added `FULL_REPO_REBASELINE_REPORT_2026_04_09.md` as the fresh repo-wide status snapshot after the full Phase 6 backlog landed.
+- Added `PHASE7_EXECUTION_BACKLOG.md` to convert the current repo state into a practical next-cycle execution plan.
+- Repointed the active recommendation away from the finished Phase 6 backlog and toward the new Phase 7 source of truth.
+
+### Documentation alignment
+- `DOCUMENTATION_INDEX.md` now points to the April 9 rebaseline and the new Phase 7 backlog.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points to `P0-A: Full Validation Rebaseline` from `PHASE7_EXECUTION_BACKLOG.md`.
+
+### Next recommended slice
+- `P0-A: Full Validation Rebaseline`
+
+## Phase 7 P0-A Update (2026-04-10)
+
+### Completed now
+- Fresh repo-wide validation rebaseline recorded against the current backend/frontend state.
+- `pytest -q` collected `354` items and reached `89%` with no failures before the 10-minute timeout window.
+- The remaining backend tail subset was completed separately and passed cleanly.
+- Frontend production build and Vitest validation were rerun successfully.
+
+### Validation completed
+- `pytest tests/test_tenant_admin_api.py tests/test_tenant_context.py tests/test_update_monitor_api.py tests/test_web_management_rbac.py tests/test_web_session_auth.py -q` -> `37 passed`
+- Effective backend rebaseline indicates the current `354`-item suite is passing, based on the no-failure full-suite run up to the tail boundary plus the separately completed tail subset
+- `npm.cmd run build` in `frontend/` -> PASS
+- `npx.cmd vitest run --pool threads --maxWorkers 1` in `frontend/` -> `5 files, 85 passed`
+
+### Documentation alignment
+- `FULL_REPO_REBASELINE_REPORT_2026_04_09.md` now records the fresh validation snapshot.
+- `PHASE7_EXECUTION_BACKLOG.md` now marks `P0-A` complete and points at `P0-B` as the next recommended slice.
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points to `P0-B: Logs Investigation V2`.
+
+### Next recommended slice
+- `P0-B: Logs Investigation V2`
 
 
 ### What happened
