@@ -164,6 +164,17 @@ def test_dashboard_inventory_users_and_tenants_page_contracts(client, app_fixtur
     assert tenants_payload["count"] >= 1
     assert {"id", "name", "slug", "is_active"} <= set(tenants_payload["tenants"][0].keys())
 
+    quotas_response = client.get("/api/tenant-quotas", headers={"Authorization": f"Bearer {tenant_admin_token}"})
+    assert quotas_response.status_code == 200
+    usage_report_response = client.get(
+        "/api/tenant-usage/report",
+        headers={"Authorization": f"Bearer {tenant_admin_token}"},
+    )
+    assert usage_report_response.status_code == 200
+    usage_report_payload = usage_report_response.get_json()["tenant_usage_report"]
+    assert "summary" in usage_report_payload
+    assert "quotas" in usage_report_payload
+
     create_tenant_response = client.post(
         "/api/tenants",
         headers={"Authorization": f"Bearer {tenant_admin_token}"},
@@ -533,6 +544,13 @@ def test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contra
     )
     assert recommendations.status_code == 200
     assert recommendations.get_json()["recommendations"]["recommendations"]["count"] == 1
+
+    ai_report = client.get("/api/ai/operations/report", headers=_headers(), query_string={"limit": 5})
+    assert ai_report.status_code == 200
+    ai_report_payload = ai_report.get_json()
+    assert ai_report_payload["status"] == "success"
+    assert "summary" in ai_report_payload["report"]
+    assert "recent_operations" in ai_report_payload["report"]
 
     updates = client.post("/api/updates/monitor", headers=_headers(), json={"host_name": "localhost"})
     assert updates.status_code == 200

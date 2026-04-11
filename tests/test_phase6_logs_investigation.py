@@ -1,8 +1,8 @@
-"""Phase 6 P1-A logs investigation productization coverage."""
+"""Logs investigation productization coverage."""
 
 from server.auth import get_api_key
 from server.extensions import db
-from server.models import LogEntry, LogSource, Organization
+from server.models import LogEntry, LogInvestigation, LogSource, Organization
 
 
 def _headers(tenant_slug: str = "default") -> dict[str, str]:
@@ -125,3 +125,61 @@ def test_log_entries_filters_detail_and_tenant_isolation(client, app_fixture):
     with app_fixture.app_context():
         all_entries = LogEntry.query.filter_by(source_name="system").all()
         assert len(all_entries) == 4
+
+
+def test_saved_log_investigations_persist_filter_context(client, app_fixture):
+    _ensure_tenant(app_fixture)
+    app_fixture.config["LOG_PERSISTENT_STORE_ENABLED"] = True
+    app_fixture.config["LOG_EVENT_QUERY_ADAPTER"] = "linux_test_double"
+    app_fixture.config["LOG_LINUX_EVENT_QUERY_TEST_DOUBLE"] = (
+        "system=2026-04-10T12:00:00Z|Error|2001|system|Disk failure"
+        "||2026-04-10T12:01:00Z|Warning|2002|system|Retry started"
+    )
+
+    query_response = client.post("/api/logs/events/query", headers=_headers(), json={"source_name": "system"})
+    assert query_response.status_code == 200
+
+    create_response = client.post(
+        "/api/logs/investigations",
+        headers=_headers(),
+        json={
+            "name": "Disk failure follow-up",
+            "notes": "Track repeated disk issues on prod host.",
+            "source_name": "system",
+            "filter_snapshot": {
+                "source_name": "system",
+                "severity": "error",
+                "capture_kind": "event_query",
+                "query_text": "Disk",
+            },
+        },
+    )
+    assert create_response.status_code == 201
+    investigation = create_response.get_json()["investigation"]
+    assert investigation["last_result_count"] == 1
+
+    list_response = client.get("/api/logs/investigations", headers=_headers())
+    assert list_response.status_code == 200
+    assert list_response.get_json()["count"] == 1
+
+    update_response = client.patch(
+        f"/api/logs/investigations/{investigation['id']}",
+        headers=_headers(),
+        json={
+            "notes": "Updated after re-check.",
+            "filter_snapshot": {
+                "source_name": "system",
+                "capture_kind": "event_query",
+            },
+        },
+    )
+    assert update_response.status_code == 200
+    updated = update_response.get_json()["investigation"]
+    assert updated["last_result_count"] == 2
+    assert updated["notes"] == "Updated after re-check."
+
+    with app_fixture.app_context():
+        stored = db.session.get(LogInvestigation, investigation["id"])
+        assert stored is not None
+        assert stored.name == "Disk failure follow-up"
+        assert stored.last_result_count == 2

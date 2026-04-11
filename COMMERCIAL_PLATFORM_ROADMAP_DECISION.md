@@ -61,10 +61,15 @@ Implemented as of April 9, 2026:
 - working admin APIs now exist for quota reads/updates and current usage visibility
 - real quota enforcement now exists for monitored systems, tenant secrets, and automation workflow creation
 
+Expanded as of April 11, 2026:
+
+- quota coverage now also includes `alert_rules` and `oidc_providers`
+- tenant admins now have a dedicated quota-health report surface with percentage used, near-limit/over-limit visibility, and recent enforcement-event visibility
+- the tenant admin SPA now exposes quota summary cards plus recent enforcement history instead of only the basic usage table
+
 Still open in Phase B:
 
-- broader quota coverage for additional domains if product pressure justifies it
-- operator/reporting UX beyond the current tenant admin surface
+- additional quota domains such as release storage, retention, or execution volume if product pressure justifies them
 - any billing/provider integration work from Phase C
 
 Phase C status as of April 9, 2026:

@@ -1,6 +1,6 @@
 # Enterprise Auth Roadmap Decision
 
-Updated: April 2, 2026
+Updated: April 10, 2026
 
 ## Purpose
 
@@ -66,8 +66,15 @@ Still open in Stage 1:
 
 - fuller auth admin UX around policy/session visibility
 
-Stage 2 status as of April 9, 2026:
+Stage 2 status as of April 10, 2026:
 
 - working foundation is now present for tenant-scoped OIDC provider configuration
 - the repo can validate login/callback behavior without an external IdP by using test-mode providers
-- external token exchange/discovery automation is still not implemented in this foundation slice
+- provider metadata discovery now exists with persisted discovery status/error visibility
+- bounded external authorization-code exchange plus userinfo-backed claim retrieval now exist for allowlisted provider hosts
+- the SPA tenant admin surface now supports discovery-aware provider setup and metadata refresh actions
+
+Still open in Stage 2:
+
+- richer login-page/operator guidance for end-user SSO initiation
+- stricter token or ID-token verification semantics if future production requirements demand them

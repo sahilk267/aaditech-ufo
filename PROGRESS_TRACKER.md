@@ -19,8 +19,8 @@ Use these labels consistently across planning and tracking files:
 
 | Metric | Status | Details |
 |--------|--------|---------|
-| **Current Phase** | Phase 6 P1 Active | Phase 6 is now productizing deeper operator workflows, with logs, reliability, and updates slices implemented and validated |
-| **Current Week** | Phase 6 P1-C Updates Productization | Update monitoring now persists tenant-scoped run history with read/detail APIs and confidence attachment, and the SPA has a real history/drill-down workflow instead of a one-shot snapshot panel |
+| **Current Phase** | Phase 7 P1 Active | Phase 7 is now deepening operator productization work after completing the rebaseline and remaining P0 maturity slices |
+| **Current Week** | Phase 7 P1-C Quota Expansion And Reporting | Quotas now cover additional live domains and expose tenant-scoped health reporting, near-limit visibility, and recent enforcement diagnostics |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
 | **Overall Progress** | Foundations delivered, stabilization and Phase 4 runtime remediation validated | Major backend/frontend foundations exist, the backend test baseline is green, and the reviewed Phase 4 deployment/runtime gaps have been corrected and revalidated |
@@ -62,6 +62,15 @@ Use these labels consistently across planning and tracking files:
 | **Latest Validation** | PASS | `pytest tests/test_phase6_updates_productization.py tests/test_update_monitor_api.py tests/test_confidence_dashboard_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `14 passed` on April 8, 2026 |
 | **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 8, 2026 (`P1-C`) |
 | **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_updates_validation.db` -> PASS on April 8, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase6_logs_investigation.py tests/test_logs_api.py tests/test_frontend_operational_flows.py::test_alerts_automation_logs_and_audit_operational_flow tests/test_frontend_page_api_contracts.py::test_alerts_automation_and_logs_page_contracts -q` -> `21 passed` on April 10, 2026 (`P0-B`) |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 10, 2026 (`P0-B`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase7_logs_v2_validation.db` -> PASS on April 10, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase7_oidc_external_maturity.py tests/test_phase6_oidc_foundation.py tests/test_phase6_auth_hardening.py tests/test_phase6_totp_mfa.py -q` -> `13 passed` on April 10, 2026 (`P0-C`) |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 10, 2026 (`P0-C`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase7_oidc_external_maturity_validation.db` -> PASS on April 10, 2026 |
+| **Latest Validation** | PASS | `pytest tests/test_phase7_reliability_operator_v2.py tests/test_phase6_reliability_operator.py tests/test_reliability_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `23 passed` on April 10, 2026 (`P1-A`) |
+| **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 10, 2026 (`P1-A`) |
+| **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase7_reliability_v2_validation.db` -> PASS on April 10, 2026 |
 | **Latest Validation** | PASS | `pytest tests/test_phase6_totp_mfa.py tests/test_phase6_auth_hardening.py tests/test_auth_jwt_rbac.py tests/test_web_session_auth.py -q` -> `22 passed` on April 2, 2026 |
 | **Latest Validation** | PASS | `npm.cmd run build` in `frontend/` -> PASS on April 2, 2026 (`P0-C2`) |
 | **Latest Validation** | PASS | `flask --app server.app db upgrade` against fresh `phase6_totp_validation_fresh.db` -> PASS on April 2, 2026 |
@@ -69,6 +78,45 @@ Use these labels consistently across planning and tracking files:
 ---
 
 ## 🧾 LATEST AUDIT UPDATE (2026-03-24)
+
+## Phase 7 P0-B Update (2026-04-10)
+
+### Completed now
+- Added durable `LogInvestigation` storage so tenant-scoped saved investigations persist filter snapshots, pinned source/entry context, notes, and result counters.
+- Added live API support for listing, creating, and updating saved log investigations.
+- Extended the SPA logs page with save, restore, and update investigation workflows against the live API.
+- Tightened the logs productization proof so the saved-investigation path is covered alongside existing stored-entry and operator-flow coverage.
+
+### Validation completed
+- `pytest tests/test_phase6_logs_investigation.py tests/test_logs_api.py tests/test_frontend_operational_flows.py::test_alerts_automation_logs_and_audit_operational_flow tests/test_frontend_page_api_contracts.py::test_alerts_automation_and_logs_page_contracts -q` -> `21 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase7_logs_v2_validation.db` -> PASS
+
+## Phase 7 P0-C Update (2026-04-10)
+
+### Completed now
+- Extended tenant-scoped OIDC providers with discovery metadata fields plus persisted discovery/auth status visibility.
+- Added provider metadata discovery and refresh support against OpenID configuration documents.
+- Added a bounded external authorization-code exchange path with allowlisted hosts, tenant-secret-backed client secret use, and userinfo-backed claim retrieval.
+- Extended the tenant admin SPA with discovery-aware provider setup, metadata refresh, and admin-visible discovery/auth status surfaces.
+
+### Validation completed
+- `pytest tests/test_phase7_oidc_external_maturity.py tests/test_phase6_oidc_foundation.py tests/test_phase6_auth_hardening.py tests/test_phase6_totp_mfa.py -q` -> `13 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase7_oidc_external_maturity_validation.db` -> PASS
+
+## Phase 7 P1-A Update (2026-04-10)
+
+### Completed now
+- Added richer reliability-run filtering for dump name, error reason, and latest-per-type reporting.
+- Added operator-facing reliability aggregate reporting with latest score/trend/prediction summaries, recent failures, and crash investigation timelines.
+- Extended reliability run detail to include related runs for the same host and dump investigation context.
+- Updated the SPA reliability page to surface operator summary panels, recent failures, related-run drill-down, and crash investigation timelines instead of only raw run history plus JSON output.
+
+### Validation completed
+- `pytest tests/test_phase7_reliability_operator_v2.py tests/test_phase6_reliability_operator.py tests/test_reliability_api.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `23 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase7_reliability_v2_validation.db` -> PASS
 
 ## Phase 0 Stabilization Update (2026-03-26)
 
@@ -140,6 +188,31 @@ Use these labels consistently across planning and tracking files:
 - `pytest tests/test_spa_serving_and_wave1_redirects.py tests/test_gateway_proxy_contract.py tests/test_app_bootstrap.py -q` -> `39 passed`
 - `pytest tests/test_gateway_proxy_contract.py tests/test_spa_serving_and_wave1_redirects.py tests/test_app_bootstrap.py -q` -> `37 passed`
 - `docker run --rm -v "${PWD}/gateway/nginx.conf:/etc/nginx/nginx.conf:ro" nginx:1.27-alpine nginx -t` -> PASS
+
+## Phase 7 P1-B Update (2026-04-10)
+
+### Completed now
+- Added tenant-scoped `GET /api/ai/operations/report` so operators can inspect AI activity from live audit history instead of only the last in-memory response.
+- Aggregated AI action counts, adapter usage, fallback counts, average duration, recent operations, and recent failure reasons without introducing a new persistence model.
+- Updated the SPA AI page to show operator summary cards, provider/fallback diagnostics, recent AI operations, and recent failure visibility alongside the action forms.
+
+### Validation
+- `pytest tests/test_phase7_ai_operational_maturity.py tests/test_ollama_api.py tests/test_ai_assistant_learning_api.py -q` -> `20 passed`
+- `pytest tests/test_alert_suppression_pattern_ai_anomaly.py tests/test_phase2_remaining_features.py tests/test_frontend_page_api_contracts.py::test_history_reliability_ai_updates_remote_and_platform_adjacent_page_contracts -q` -> `54 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- `flask --app server.app db upgrade` against fresh `phase7_ai_operational_maturity_validation.db` -> PASS
+
+## Phase 7 P1-C Update (2026-04-11)
+
+### Completed now
+- Expanded quota coverage beyond the original foundation keys by adding live quota domains for `alert_rules` and `oidc_providers`.
+- Added `GET /api/tenant-usage/report` so tenant admins can inspect quota health, usage percentages, near-limit/over-limit status, and recent quota enforcement failures.
+- Updated the SPA tenant admin view to show quota summary cards and recent quota-enforcement events alongside the existing usage table and enforce/clear actions.
+
+### Validation
+- `pytest tests/test_phase7_quota_reporting.py tests/test_phase6_quotas_usage.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `8 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- No new migration was required for this slice because it expanded behavior on the existing `TenantQuotaPolicy` / `TenantUsageMetric` foundation.
 - `pytest -q` -> `294 passed`
 - Backend startup runbook created and linked from `DOCUMENTATION_INDEX.md` -> PASS
 - `pytest tests/test_app_bootstrap.py -q` -> `6 passed`
@@ -397,7 +470,7 @@ The remaining work in this area is first real staging deployment execution and p
 ### Documentation alignment
 - `PHASE6_EXECUTION_BACKLOG.md` now marks `P1-A` complete and sets `P1-B` as the next recommended slice.
 - `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` now points at `P1-B: Reliability Operator Productization` as the next active slice.
-- `FEATURE_ACCEPTANCE_CRITERIA.md` now reflects that richer log investigation exists, while saved investigations and broader retention workflows remain open.
+- `FEATURE_ACCEPTANCE_CRITERIA.md` now reflects that richer log investigation exists, while broader retention workflows remain open.
 
 ### Next recommended slice
 - `P1-B: Reliability Operator Productization`
@@ -1443,18 +1516,18 @@ PHASE 3 (Weeks 17-20):    in progress 🟡
 PHASE 4 (Weeks 21-25):    complete ✅
 
 TARGET COMPLETION: 25 Weeks
-CURRENT STATUS: Phase 3 productization review active; Phase 4 deployment/runtime remediation closed on March 31, 2026; Kubernetes remains intentionally deferred as final deployment phase
-LATEST VALIDATION: `pytest -q` -> `294 passed`; frontend Vitest/build passing; Phase 4 remediation regression/config validation passing on March 31, 2026
+CURRENT STATUS: Phase 7 backlog execution active; the P0 rebaseline, Logs Investigation V2, OIDC External Maturity, Reliability Operator V2, AI / Ollama Operational Maturity, and Quota Expansion And Reporting slices are now implemented and validated, and the next recommended work is billing provider boundary prep
+LATEST VALIDATION: `pytest tests/test_phase7_quota_reporting.py tests/test_phase6_quotas_usage.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `8 passed`; frontend build passing on April 11, 2026
 ```
 
 ---
 
 ## ✉️ LAST UPDATED
 
-- **Date**: March 31, 2026
-- **By**: Current implementation sync + Phase 4 remediation review closure
-- **Next Update**: Start Phase 3 Week 19-20 Kubernetes deployment (kept last by plan)
-- **Status**: 🟡 PHASE 3 IN PROGRESS (Kubernetes pending only)
+- **Date**: April 10, 2026
+- **By**: Phase 7 P1-C Quota Expansion And Reporting implementation sync
+- **Next Update**: Start `P2-A: Billing Provider Boundary Prep` from `PHASE7_EXECUTION_BACKLOG.md`
+- **Status**: 🟡 PHASE 7 P1 ACTIVE
 
 
 

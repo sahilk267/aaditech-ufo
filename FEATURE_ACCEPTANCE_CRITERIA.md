@@ -1,6 +1,6 @@
 # Feature Acceptance Criteria
 
-Updated: March 31, 2026
+Updated: April 10, 2026
 
 ## Purpose
 
@@ -77,7 +77,7 @@ Acceptance criteria for `IMPLEMENTED`:
 Current blockers:
 - source coverage is still narrow
 - application/security/container/database log product slices are still missing
-- saved investigations and broader retention workflows are still missing
+- broader retention workflows are still missing
 
 Primary evidence:
 - `tests/test_logs_api.py`
@@ -98,13 +98,14 @@ Acceptance criteria for `IMPLEMENTED`:
 - Reliability outputs are usable in dashboard/operator flows, not just as isolated service adapters.
 
 Current blockers:
-- broader operator investigation workflows beyond the current persisted run history are still incomplete
+- broader operator investigation workflows beyond the current persisted run history are still incomplete, but aggregate reporting, recent-failure visibility, and related crash-run drill-down now exist
 - broader crash/failure coverage is incomplete
-- deeper product-level investigation UX is still incomplete
+- deeper product-level investigation UX is improved but still incomplete
 
 Primary evidence:
 - `tests/test_reliability_api.py`
 - `tests/test_phase6_reliability_operator.py`
+- `tests/test_phase7_reliability_operator_v2.py`
 - `server/services/reliability_service.py`
 
 ---
@@ -122,15 +123,17 @@ Acceptance criteria for `IMPLEMENTED`:
 - Operator-facing regression coverage exists for both success and failure/fallback paths.
 
 Current blockers:
-- still wrapper-based rather than a fully productionized model-serving platform
-- no richer prompt/version governance or production telemetry pipeline yet
-- no persisted AI decision history beyond current request/response use
+  - still wrapper-based rather than a fully productionized model-serving platform
+  - no richer prompt/version governance or production telemetry pipeline yet
+  - no persisted AI decision history beyond current request/response use, though operator-facing audit-derived diagnostics now exist
+  - no deeper chat/copilot-style operator workflow yet beyond the current task-oriented routes and diagnostics page
 
 Primary evidence:
-- `tests/test_ollama_api.py`
-- `tests/test_ai_assistant_learning_api.py`
-- `tests/test_alert_suppression_pattern_ai_anomaly.py`
-- `tests/test_phase2_remaining_features.py`
+  - `tests/test_ollama_api.py`
+  - `tests/test_ai_assistant_learning_api.py`
+  - `tests/test_alert_suppression_pattern_ai_anomaly.py`
+  - `tests/test_phase2_remaining_features.py`
+  - `tests/test_phase7_ai_operational_maturity.py`
 
 ---
 
@@ -175,6 +178,28 @@ Still needed before calling it fully mature:
 Primary evidence:
 - `tests/test_agent_release_api.py`
 - `tests/test_agent_release_service.py`
+
+---
+
+## Commercial Controls / Quotas
+
+Current status: `PARTIAL`
+
+Acceptance criteria for `IMPLEMENTED`:
+- Tenant admins can read effective quota policies, current usage, and an operator-usable quota health report.
+- Quota reporting exposes percentage-used style visibility plus recent enforcement failures.
+- Quota enforcement exists on the main resource-creation paths that materially affect plan boundaries.
+- The SPA admin surface exposes both quota controls and current quota health, not only raw backend APIs.
+- Regression coverage proves both enforcement and reporting behavior.
+
+Current blockers:
+- broader quota domains such as retention/storage or execution-volume boundaries are still open
+- quotas are not yet tied into a real billing-provider lifecycle or contract enforcement path
+
+Primary evidence:
+- `tests/test_phase6_quotas_usage.py`
+- `tests/test_phase7_quota_reporting.py`
+- `frontend/src/pages/tenants/TenantsPage.tsx`
 
 ---
 

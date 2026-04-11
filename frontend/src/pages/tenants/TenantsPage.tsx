@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
+import { StatCard } from "../../components/common/StatCard";
 import {
   FormInput,
   FormSubmitButton,
@@ -13,6 +14,7 @@ import {
   activateTotp,
   createOidcProvider,
   createTenant,
+  discoverOidcProvider,
   disableTotp,
   enrollTotp,
   getTenantCommercial,
@@ -22,6 +24,7 @@ import {
   getTenants,
   getTotpStatus,
   getTenantUsage,
+  getTenantUsageReport,
   setTenantStatus,
   updateOidcProvider,
   updateTenantCommercial,
@@ -41,9 +44,13 @@ export function TenantsPage() {
   const [oidcName, setOidcName] = useState("");
   const [oidcIssuer, setOidcIssuer] = useState("");
   const [oidcClientId, setOidcClientId] = useState("");
+  const [oidcDiscoveryEndpoint, setOidcDiscoveryEndpoint] = useState("");
   const [oidcAuthEndpoint, setOidcAuthEndpoint] = useState("");
+  const [oidcTokenEndpoint, setOidcTokenEndpoint] = useState("");
+  const [oidcUserinfoEndpoint, setOidcUserinfoEndpoint] = useState("");
   const [oidcClientSecret, setOidcClientSecret] = useState("");
   const [oidcTestEmail, setOidcTestEmail] = useState("");
+  const [oidcTestMode, setOidcTestMode] = useState(true);
   const [planKey, setPlanKey] = useState("");
   const [planDisplayName, setPlanDisplayName] = useState("");
   const [billingEmail, setBillingEmail] = useState("");
@@ -95,6 +102,12 @@ export function TenantsPage() {
     queryKey: queryKeys.tenantCommercial,
     queryFn: getTenantCommercial,
     staleTime: 60_000,
+  });
+
+  const tenantUsageReportQuery = useQuery({
+    queryKey: queryKeys.tenantUsageReport,
+    queryFn: () => getTenantUsageReport(8),
+    staleTime: 30_000,
   });
 
   const totpQuery = useQuery({
@@ -199,7 +212,10 @@ export function TenantsPage() {
         name: oidcName,
         issuer: oidcIssuer,
         client_id: oidcClientId,
-        authorization_endpoint: oidcAuthEndpoint,
+        discovery_endpoint: oidcDiscoveryEndpoint || undefined,
+        authorization_endpoint: oidcAuthEndpoint || undefined,
+        token_endpoint: oidcTokenEndpoint || undefined,
+        userinfo_endpoint: oidcUserinfoEndpoint || undefined,
         client_secret: oidcClientSecret || undefined,
         scopes: ["openid", "profile", "email"],
         claim_mappings: {
@@ -210,7 +226,7 @@ export function TenantsPage() {
         role_mappings: {
           admins: ["admin"],
         },
-        test_mode: true,
+        test_mode: oidcTestMode,
         test_claims: {
           default: {
             email: oidcTestEmail || "oidc-user@example.com",
@@ -226,9 +242,13 @@ export function TenantsPage() {
       setOidcName("");
       setOidcIssuer("");
       setOidcClientId("");
+      setOidcDiscoveryEndpoint("");
       setOidcAuthEndpoint("");
+      setOidcTokenEndpoint("");
+      setOidcUserinfoEndpoint("");
       setOidcClientSecret("");
       setOidcTestEmail("");
+      setOidcTestMode(true);
       void queryClient.invalidateQueries({ queryKey: queryKeys.oidcProviders });
     },
     onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
@@ -239,6 +259,15 @@ export function TenantsPage() {
       updateOidcProvider(providerId, payload),
     onSuccess: () => {
       setFeedback("OIDC provider updated.");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.oidcProviders });
+    },
+    onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
+  });
+
+  const discoverOidcProviderMutation = useMutation({
+    mutationFn: (providerId: number) => discoverOidcProvider(providerId),
+    onSuccess: () => {
+      setFeedback("OIDC provider metadata refreshed.");
       void queryClient.invalidateQueries({ queryKey: queryKeys.oidcProviders });
     },
     onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
@@ -258,6 +287,7 @@ export function TenantsPage() {
       setFeedback("Tenant quota updated.");
       void queryClient.invalidateQueries({ queryKey: queryKeys.tenantQuotas });
       void queryClient.invalidateQueries({ queryKey: queryKeys.tenantUsage });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tenantUsageReport });
     },
     onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
   });
@@ -472,9 +502,16 @@ export function TenantsPage() {
                 <input value={oidcName} onChange={(e) => setOidcName(e.target.value)} placeholder="Provider name" />
                 <input value={oidcIssuer} onChange={(e) => setOidcIssuer(e.target.value)} placeholder="https://issuer.example.com" />
                 <input value={oidcClientId} onChange={(e) => setOidcClientId(e.target.value)} placeholder="Client ID" />
-                <input value={oidcAuthEndpoint} onChange={(e) => setOidcAuthEndpoint(e.target.value)} placeholder="https://issuer.example.com/oauth2/authorize" />
+                <input value={oidcDiscoveryEndpoint} onChange={(e) => setOidcDiscoveryEndpoint(e.target.value)} placeholder="Discovery endpoint (optional)" />
+                <input value={oidcAuthEndpoint} onChange={(e) => setOidcAuthEndpoint(e.target.value)} placeholder="Authorization endpoint (or use discovery)" />
+                <input value={oidcTokenEndpoint} onChange={(e) => setOidcTokenEndpoint(e.target.value)} placeholder="Token endpoint (optional if discovery used)" />
+                <input value={oidcUserinfoEndpoint} onChange={(e) => setOidcUserinfoEndpoint(e.target.value)} placeholder="Userinfo endpoint (optional if discovery used)" />
                 <input value={oidcClientSecret} onChange={(e) => setOidcClientSecret(e.target.value)} placeholder="Client secret (optional)" type="password" />
                 <input value={oidcTestEmail} onChange={(e) => setOidcTestEmail(e.target.value)} placeholder="Test-mode user email" />
+                <label className="row-between" style={{ alignItems: "center" }}>
+                  <span>Use deterministic test mode</span>
+                  <input type="checkbox" checked={oidcTestMode} onChange={(e) => setOidcTestMode(e.target.checked)} />
+                </label>
                 <button
                   type="button"
                   onClick={() => createOidcProviderMutation.mutate()}
@@ -483,10 +520,10 @@ export function TenantsPage() {
                     !oidcName.trim() ||
                     !oidcIssuer.trim() ||
                     !oidcClientId.trim() ||
-                    !oidcAuthEndpoint.trim()
+                    (!oidcAuthEndpoint.trim() && !oidcDiscoveryEndpoint.trim())
                   }
                 >
-                  Add Test Provider
+                  Add Provider
                 </button>
               </div>
               {oidcProvidersQuery.data?.providers?.length ? (
@@ -497,6 +534,8 @@ export function TenantsPage() {
                       <th>Mode</th>
                       <th>Status</th>
                       <th>Default</th>
+                      <th>Discovery</th>
+                      <th>Last Auth</th>
                       <th>Action</th>
                     </tr>
                   </thead>
@@ -507,12 +546,14 @@ export function TenantsPage() {
                         <td>{provider.test_mode ? "Test" : "External"}</td>
                         <td>{provider.is_enabled ? "Enabled" : "Disabled"}</td>
                         <td>{provider.is_default ? "Yes" : "No"}</td>
+                        <td>{provider.last_discovery_status ?? "Not run"}</td>
+                        <td>{provider.last_auth_status ?? "Not run"}</td>
                         <td>
-                          <div className="row-between">
+                          <div className="stack-sm">
                             <button
                               type="button"
                               className="button-sm"
-                              disabled={updateOidcProviderMutation.isPending}
+                              disabled={updateOidcProviderMutation.isPending || discoverOidcProviderMutation.isPending}
                               onClick={() =>
                                 updateOidcProviderMutation.mutate({
                                   providerId: provider.id,
@@ -525,7 +566,7 @@ export function TenantsPage() {
                             <button
                               type="button"
                               className="button-sm"
-                              disabled={updateOidcProviderMutation.isPending || provider.is_default}
+                              disabled={updateOidcProviderMutation.isPending || discoverOidcProviderMutation.isPending || provider.is_default}
                               onClick={() =>
                                 updateOidcProviderMutation.mutate({
                                   providerId: provider.id,
@@ -535,6 +576,17 @@ export function TenantsPage() {
                             >
                               Make Default
                             </button>
+                            {!provider.test_mode ? (
+                              <button
+                                type="button"
+                                className="button-sm"
+                                disabled={updateOidcProviderMutation.isPending || discoverOidcProviderMutation.isPending}
+                                onClick={() => discoverOidcProviderMutation.mutate(provider.id)}
+                              >
+                                Refresh Metadata
+                              </button>
+                            ) : null}
+                            {provider.last_error ? <small className="error-text">{provider.last_error}</small> : null}
                           </div>
                         </td>
                       </tr>
@@ -552,67 +604,128 @@ export function TenantsPage() {
 
         <div className="module-card">
           <h3>Quota Usage</h3>
-          {tenantUsageQuery.isLoading || tenantQuotasQuery.isLoading ? (
+          {tenantUsageQuery.isLoading || tenantQuotasQuery.isLoading || tenantUsageReportQuery.isLoading ? (
             <div className="module-status loading">Loading quotas...</div>
-          ) : tenantUsageQuery.error || tenantQuotasQuery.error ? (
+          ) : tenantUsageQuery.error || tenantQuotasQuery.error || tenantUsageReportQuery.error ? (
             <div className="module-status error-text">Failed to load quotas.</div>
           ) : (
-            <table className="table-lite">
-              <thead>
-                <tr>
-                  <th>Quota</th>
-                  <th>Usage</th>
-                  <th>Limit</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {Object.entries(tenantQuotasQuery.data?.tenant_quotas.effective || {}).map(([quotaKey, quota]) => {
-                  const current = tenantUsageQuery.data?.tenant_usage.current?.[quotaKey]?.current_value ?? 0;
-                  return (
-                    <tr key={quotaKey}>
-                      <td>{quotaKey}</td>
-                      <td>{String(current)}</td>
-                      <td>{quota.limit_value ?? "Unlimited"}</td>
-                      <td>{quota.is_enforced ? "Enforced" : "Monitor only"}</td>
-                      <td>
-                        <div className="row-between">
-                          <button
-                            type="button"
-                            className="button-sm"
-                            disabled={updateQuotaMutation.isPending}
-                            onClick={() =>
-                              updateQuotaMutation.mutate({
-                                quotaKey,
-                                limitValue: Math.max(current, 1),
-                                isEnforced: true,
-                              })
-                            }
-                          >
-                            Enforce Current
-                          </button>
-                          <button
-                            type="button"
-                            className="button-sm"
-                            disabled={updateQuotaMutation.isPending}
-                            onClick={() =>
-                              updateQuotaMutation.mutate({
-                                quotaKey,
-                                limitValue: null,
-                                isEnforced: false,
-                              })
-                            }
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <>
+              <div className="stats-grid" style={{ marginBottom: "1rem" }}>
+                <StatCard
+                  label="Quota domains"
+                  value={tenantUsageReportQuery.data?.tenant_usage_report.summary.quota_count ?? 0}
+                  detail="Tracked tenant quota keys"
+                  status="neutral"
+                />
+                <StatCard
+                  label="Enforced"
+                  value={tenantUsageReportQuery.data?.tenant_usage_report.summary.enforced_count ?? 0}
+                  detail="Currently hard-enforced"
+                  status="ok"
+                />
+                <StatCard
+                  label="Near limit"
+                  value={tenantUsageReportQuery.data?.tenant_usage_report.summary.near_limit_count ?? 0}
+                  detail="80% or more of limit used"
+                  status={(tenantUsageReportQuery.data?.tenant_usage_report.summary.near_limit_count ?? 0) > 0 ? "warn" : "ok"}
+                />
+                <StatCard
+                  label="Quota blocks"
+                  value={tenantUsageReportQuery.data?.tenant_usage_report.summary.recent_enforcement_count ?? 0}
+                  detail="Recent enforcement failures"
+                  status={(tenantUsageReportQuery.data?.tenant_usage_report.summary.recent_enforcement_count ?? 0) > 0 ? "warn" : "ok"}
+                />
+              </div>
+              <table className="table-lite">
+                <thead>
+                  <tr>
+                    <th>Quota</th>
+                    <th>Usage</th>
+                    <th>Limit</th>
+                    <th>Health</th>
+                    <th>Mode</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(tenantUsageReportQuery.data?.tenant_usage_report.quotas || []).map((item) => {
+                    const quota = tenantQuotasQuery.data?.tenant_quotas.effective?.[item.quota_key];
+                    const current = tenantUsageQuery.data?.tenant_usage.current?.[item.quota_key]?.current_value ?? item.current_value;
+                    return (
+                      <tr key={item.quota_key}>
+                        <td>{item.quota_key}</td>
+                        <td>{String(current)}{item.percent_used != null ? ` (${item.percent_used}%)` : ""}</td>
+                        <td>{quota?.limit_value ?? "Unlimited"}</td>
+                        <td>{item.status}</td>
+                        <td>{quota?.is_enforced ? "Enforced" : "Monitor only"}</td>
+                        <td>
+                          <div className="row-between">
+                            <button
+                              type="button"
+                              className="button-sm"
+                              disabled={updateQuotaMutation.isPending}
+                              onClick={() =>
+                                updateQuotaMutation.mutate({
+                                  quotaKey: item.quota_key,
+                                  limitValue: Math.max(current, 1),
+                                  isEnforced: true,
+                                })
+                              }
+                            >
+                              Enforce Current
+                            </button>
+                            <button
+                              type="button"
+                              className="button-sm"
+                              disabled={updateQuotaMutation.isPending}
+                              onClick={() =>
+                                updateQuotaMutation.mutate({
+                                  quotaKey: item.quota_key,
+                                  limitValue: null,
+                                  isEnforced: false,
+                                })
+                              }
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              <div style={{ marginTop: "1rem" }}>
+                <h4>Recent Quota Enforcement</h4>
+                {tenantUsageReportQuery.data?.tenant_usage_report.recent_enforcement_events.length ? (
+                  <table className="table-lite">
+                    <thead>
+                      <tr>
+                        <th>Quota</th>
+                        <th>When</th>
+                        <th>Requested</th>
+                        <th>Limit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tenantUsageReportQuery.data?.tenant_usage_report.recent_enforcement_events.map((event) => {
+                        const details = event.details || {};
+                        return (
+                          <tr key={event.id}>
+                            <td>{event.quota_key ?? "unknown"}</td>
+                            <td>{event.created_at ?? "n/a"}</td>
+                            <td>{String(details.requested_value ?? "n/a")}</td>
+                            <td>{String(details.limit_value ?? "n/a")}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="module-status loading">No recent quota enforcement failures.</div>
+                )}
+              </div>
+            </>
           )}
         </div>
 

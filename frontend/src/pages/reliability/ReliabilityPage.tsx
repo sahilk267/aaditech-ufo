@@ -10,6 +10,7 @@ import {
   analyzeStackTraces,
   collectReliabilityHistory,
   detectPatterns,
+  getReliabilityReport,
   getReliabilityRun,
   getReliabilityRuns,
   identifyExceptions,
@@ -25,18 +26,29 @@ export function ReliabilityPage() {
   const [dumpName, setDumpName] = useState("access-violation-app.dmp");
   const [diagnosticFilter, setDiagnosticFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [errorReasonFilter, setErrorReasonFilter] = useState("");
+  const [latestPerType, setLatestPerType] = useState(false);
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const [latestResult, setLatestResult] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
 
   const runsQuery = useQuery({
-    queryKey: [...queryKeys.reliabilityRuns, hostName, diagnosticFilter, statusFilter],
+    queryKey: [...queryKeys.reliabilityRuns, hostName, diagnosticFilter, statusFilter, dumpName, errorReasonFilter, latestPerType],
     queryFn: () =>
       getReliabilityRuns({
         hostName: hostName || undefined,
         diagnosticType: diagnosticFilter || undefined,
         status: statusFilter || undefined,
+        dumpName: dumpName || undefined,
+        errorReason: errorReasonFilter || undefined,
+        latestPerType,
       }),
+    staleTime: 20_000,
+  });
+
+  const reportQuery = useQuery({
+    queryKey: [...queryKeys.reliabilityRuns, "report", hostName],
+    queryFn: () => getReliabilityReport(hostName || undefined),
     staleTime: 20_000,
   });
 
@@ -83,6 +95,12 @@ export function ReliabilityPage() {
   const selectedRun = selectedRunQuery.data?.reliability_run;
   const successfulRuns = runs.filter((run) => run.status === "success").length;
   const failureRuns = runs.filter((run) => run.status !== "success").length;
+  const report = reportQuery.data?.report;
+  const latestScore = report?.latest_score || {};
+  const latestTrend = report?.latest_trend || {};
+  const latestPrediction = report?.latest_prediction || {};
+  const recentFailures = Array.isArray(report?.recent_failures) ? report.recent_failures : [];
+  const crashRelatedRuns = Array.isArray(report?.crash_related_runs) ? report.crash_related_runs : [];
 
   return (
     <ModulePage
@@ -90,9 +108,48 @@ export function ReliabilityPage() {
       description="Operator-facing reliability diagnostics with durable execution history, crash workflows, and drill-down detail."
     >
       <div className="module-grid">
-        <StatCard label="Runs" value={runs.length} detail="Persisted reliability diagnostic executions" />
+        <StatCard label="Runs" value={report?.total_runs_considered ?? runs.length} detail="Persisted reliability diagnostic executions" />
         <StatCard label="Succeeded" value={successfulRuns} detail="Runs that completed successfully" status={successfulRuns > 0 ? "ok" : "neutral"} />
         <StatCard label="Failed" value={failureRuns} detail="Runs that need investigation" status={failureRuns > 0 ? "error" : "neutral"} />
+        <StatCard label="Latest Score" value={String((latestScore as { current_score?: number }).current_score ?? "n/a")} detail={String((latestScore as { health_band?: string }).health_band ?? "No score yet")} status={failureRuns > 0 ? "error" : "ok"} />
+      </div>
+
+      <div className="module-grid" style={{ marginTop: 12 }}>
+        <ActionPanel title="Operator Summary">
+          {reportQuery.isLoading ? <div className="module-status loading">Loading reliability summary...</div> : null}
+          {reportQuery.error ? <div className="module-status error-text">Failed to load reliability summary.</div> : null}
+          {!reportQuery.isLoading && !reportQuery.error ? (
+            <div className="stack-sm">
+              <div>Trend: {String((latestTrend as { direction?: string }).direction ?? "n/a")}</div>
+              <div>Predicted score: {String((latestPrediction as { predicted_score?: number }).predicted_score ?? "n/a")}</div>
+              <div>Failure reasons: {Object.keys(report?.failure_reasons || {}).length ? JSON.stringify(report?.failure_reasons) : "None"}</div>
+            </div>
+          ) : null}
+        </ActionPanel>
+        <ActionPanel title="Recent Failures">
+          {!recentFailures.length ? (
+            <div className="module-status loading">No recent reliability failures recorded.</div>
+          ) : (
+            <table className="table-lite">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>Type</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentFailures.map((run) => (
+                  <tr key={run.id} onClick={() => setSelectedRunId(run.id)} style={{ cursor: "pointer" }}>
+                    <td>{run.created_at || "n/a"}</td>
+                    <td>{run.diagnostic_type}</td>
+                    <td>{run.error_reason || "unknown"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </ActionPanel>
       </div>
 
       <ActionPanel title="Diagnostics" style={{ marginTop: 12 }}>
@@ -137,6 +194,11 @@ export function ReliabilityPage() {
               <option value="success">success</option>
               <option value="failure">failure</option>
             </select>
+            <input value={errorReasonFilter} onChange={(e) => setErrorReasonFilter(e.target.value)} placeholder="Error reason filter" />
+            <label className="row-between" style={{ alignItems: "center" }}>
+              <span>Latest per type</span>
+              <input type="checkbox" checked={latestPerType} onChange={(e) => setLatestPerType(e.target.checked)} />
+            </label>
           </div>
           {runsQuery.isLoading ? <div className="module-status loading" style={{ marginTop: 12 }}>Loading reliability runs...</div> : null}
           {runsQuery.error ? <div className="module-status error-text" style={{ marginTop: 12 }}>Failed to load reliability run history.</div> : null}
@@ -174,12 +236,61 @@ export function ReliabilityPage() {
 
         <ActionPanel title="Run Detail">
           {selectedRun ? (
-            <JsonViewer data={selectedRun} title="Selected reliability run" />
+            <>
+              <JsonViewer data={selectedRun} title="Selected reliability run" />
+              {selectedRun.related_runs?.length ? (
+                <table className="table-lite" style={{ marginTop: 12 }}>
+                  <thead>
+                    <tr>
+                      <th>Related At</th>
+                      <th>Type</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selectedRun.related_runs.map((run) => (
+                      <tr key={run.id} onClick={() => setSelectedRunId(run.id)} style={{ cursor: "pointer" }}>
+                        <td>{run.created_at || "n/a"}</td>
+                        <td>{run.diagnostic_type}</td>
+                        <td>{run.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : null}
+            </>
           ) : (
             <div className="module-status loading">Select a persisted reliability run to inspect full request/result detail.</div>
           )}
         </ActionPanel>
       </div>
+
+      <ActionPanel title="Crash Investigation Timeline" style={{ marginTop: 12 }}>
+        {!crashRelatedRuns.length ? (
+          <div className="module-status loading">No crash-related runs recorded for the current host filter.</div>
+        ) : (
+          <table className="table-lite">
+            <thead>
+              <tr>
+                <th>When</th>
+                <th>Dump</th>
+                <th>Type</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {crashRelatedRuns.map((run) => (
+                <tr key={run.id} onClick={() => setSelectedRunId(run.id)} style={{ cursor: "pointer" }}>
+                  <td>{run.created_at || "n/a"}</td>
+                  <td>{run.dump_name || "n/a"}</td>
+                  <td>{run.diagnostic_type}</td>
+                  <td>{run.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ActionPanel>
     </ModulePage>
   );
 }

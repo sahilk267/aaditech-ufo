@@ -402,4 +402,24 @@ Current Phase 6 reality:
 
 Current recommended next slice:
 
-- `P0-B: Logs Investigation V2` from `PHASE7_EXECUTION_BACKLOG.md`
+- `P2-A: Billing Provider Boundary Prep` from `PHASE7_EXECUTION_BACKLOG.md`
+
+Phase 7 progress notes:
+
+- [x] `P0-A: Full Validation Rebaseline` is recorded against the current `354`-item backend suite plus frontend build/Vitest validation.
+- [x] `P0-B: Logs Investigation V2` is implemented and validated.
+- [x] `P0-C: OIDC External Maturity` is implemented and validated.
+- [x] `P1-A: Reliability Operator V2` is implemented and validated.
+- [x] Tenant-scoped saved log investigations now persist filter snapshots, pinned source/entry context, notes, and last match counts.
+- [x] The SPA logs page now supports save/restore/update investigation workflows against the live API.
+- [x] Targeted logs regression coverage, fresh migration upgrade validation, and a production frontend build are on record for the Phase 7 logs slice.
+- [x] Tenant-scoped OIDC providers now support metadata discovery, bounded external token exchange, userinfo-backed claims, and persisted discovery/auth status visibility.
+- [x] The tenant admin SPA now supports discovery-aware OIDC setup and metadata refresh actions for external providers.
+- [x] Targeted OIDC maturity regression coverage, fresh migration upgrade validation, and a production frontend build are on record for the Phase 7 auth slice.
+- [x] Reliability runs now support richer operator filtering/reporting, related crash run linkage, aggregate reporting, and a clearer operator summary UX.
+- [x] Targeted reliability operator V2 regression coverage, fresh migration upgrade validation, and a production frontend build are on record for the Phase 7 reliability slice.
+- [x] AI / Ollama now has tenant-scoped operational reporting, provider/fallback diagnostics, recent operation visibility, and recent failure visibility.
+- [x] Targeted AI operational maturity regression coverage, fresh migration upgrade validation, and a production frontend build are on record for the Phase 7 AI slice.
+- [x] Quota coverage now includes `alert_rules` and `oidc_providers`, not only the earlier monitored-system/workflow/secret/agent keys.
+- [x] Tenant quota reporting now exposes health summaries, near-limit/over-limit visibility, and recent quota-enforcement events in the tenant admin SPA.
+- [x] Targeted quota/reporting regression coverage and a production frontend build are on record for the Phase 7 quota slice.

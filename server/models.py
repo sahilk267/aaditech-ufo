@@ -435,6 +435,49 @@ class LogEntry(db.Model):
         }
 
 
+class LogInvestigation(db.Model):
+    """Tenant-scoped saved log investigation context."""
+
+    __tablename__ = 'log_investigations'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    name = db.Column(db.String(160), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='open', index=True)
+    source_name = db.Column(db.String(128), nullable=True, index=True)
+    pinned_source_id = db.Column(db.Integer, db.ForeignKey('log_sources.id'), nullable=True, index=True)
+    pinned_entry_id = db.Column(db.Integer, db.ForeignKey('log_entries.id'), nullable=True, index=True)
+    filter_snapshot = db.Column(db.JSON, nullable=False, default=dict)
+    notes = db.Column(db.Text, nullable=True)
+    last_result_count = db.Column(db.Integer, nullable=False, default=0)
+    last_matched_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('organization_id', 'name', name='uq_log_investigations_org_name'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'created_by_user_id': self.created_by_user_id,
+            'name': self.name,
+            'status': self.status,
+            'source_name': self.source_name,
+            'pinned_source_id': self.pinned_source_id,
+            'pinned_entry_id': self.pinned_entry_id,
+            'filter_snapshot': self.filter_snapshot or {},
+            'notes': self.notes,
+            'last_result_count': self.last_result_count,
+            'last_matched_at': self.last_matched_at.isoformat() if self.last_matched_at else None,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
+
+
 class IncidentRecord(db.Model):
     """Tenant-scoped durable incident record derived from correlated alerts."""
 
@@ -856,9 +899,12 @@ class TenantOidcProvider(db.Model):
     issuer = db.Column(db.String(255), nullable=False)
     client_id = db.Column(db.String(255), nullable=False)
     client_secret_secret_name = db.Column(db.String(255), nullable=True)
+    discovery_endpoint = db.Column(db.String(500), nullable=True)
     authorization_endpoint = db.Column(db.String(500), nullable=False)
     token_endpoint = db.Column(db.String(500), nullable=True)
     userinfo_endpoint = db.Column(db.String(500), nullable=True)
+    jwks_uri = db.Column(db.String(500), nullable=True)
+    end_session_endpoint = db.Column(db.String(500), nullable=True)
     scopes = db.Column(db.JSON, nullable=False, default=list)
     claim_mappings = db.Column(db.JSON, nullable=False, default=dict)
     role_mappings = db.Column(db.JSON, nullable=False, default=dict)
@@ -866,6 +912,11 @@ class TenantOidcProvider(db.Model):
     test_claims = db.Column(db.JSON, nullable=False, default=dict)
     is_enabled = db.Column(db.Boolean, nullable=False, default=True, index=True)
     is_default = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    last_discovery_status = db.Column(db.String(32), nullable=True)
+    last_auth_status = db.Column(db.String(32), nullable=True)
+    last_error = db.Column(db.Text, nullable=True)
+    last_discovery_at = db.Column(db.DateTime, nullable=True)
+    last_auth_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -880,9 +931,12 @@ class TenantOidcProvider(db.Model):
             'name': self.name,
             'issuer': self.issuer,
             'client_id': self.client_id,
+            'discovery_endpoint': self.discovery_endpoint,
             'authorization_endpoint': self.authorization_endpoint,
             'token_endpoint': self.token_endpoint,
             'userinfo_endpoint': self.userinfo_endpoint,
+            'jwks_uri': self.jwks_uri,
+            'end_session_endpoint': self.end_session_endpoint,
             'scopes': self.scopes or [],
             'claim_mappings': self.claim_mappings or {},
             'role_mappings': self.role_mappings or {},
@@ -892,6 +946,11 @@ class TenantOidcProvider(db.Model):
             'is_default': self.is_default,
             'has_client_secret': bool(self.client_secret_secret_name),
             'client_secret_secret_name': self.client_secret_secret_name,
+            'last_discovery_status': self.last_discovery_status,
+            'last_auth_status': self.last_auth_status,
+            'last_error': self.last_error,
+            'last_discovery_at': self.last_discovery_at.isoformat() if self.last_discovery_at else None,
+            'last_auth_at': self.last_auth_at.isoformat() if self.last_auth_at else None,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

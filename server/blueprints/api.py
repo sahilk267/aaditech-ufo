@@ -3,14 +3,16 @@ API Blueprint
 REST API endpoints for agent data submission and system management
 """
 
+import ast
 import json
 import logging
 import os
 import re
 import time
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 from hashlib import sha1
 from datetime import UTC, datetime
+import requests
 from flask import current_app
 from flask import Blueprint, request, jsonify, g, send_file, abort, url_for, Response, stream_with_context, redirect
 from sqlalchemy import func, or_, text
@@ -53,8 +55,10 @@ from ..models import (
     Role,
     Permission,
     AuditEvent,
+    AlertRule,
     LogSource,
     LogEntry,
+    LogInvestigation,
     IncidentRecord,
     IncidentCaseComment,
     TenantSetting,
@@ -224,16 +228,155 @@ def _validate_relative_redirect_uri(value: str) -> str:
     return redirect_uri
 
 
+def _utcnow_naive() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+def _oidc_allowed_hosts() -> set[str]:
+    raw_hosts = str(current_app.config.get('OIDC_ALLOWED_HOSTS', '') or '').strip()
+    return {item.strip().lower() for item in raw_hosts.split(',') if item.strip()}
+
+
+def _oidc_host_allowed(provider: TenantOidcProvider, target_url: str) -> bool:
+    parsed = urlparse(str(target_url or '').strip())
+    hostname = (parsed.hostname or '').lower()
+    if not hostname:
+        return False
+    if hostname in {'localhost', '127.0.0.1'}:
+        return True
+    allowed_hosts = _oidc_allowed_hosts()
+    issuer_host = (urlparse(str(provider.issuer or '').strip()).hostname or '').lower()
+    return hostname == issuer_host or hostname in allowed_hosts
+
+
+def _oidc_validate_outbound_url(provider: TenantOidcProvider, target_url: str) -> None:
+    parsed = urlparse(str(target_url or '').strip())
+    if parsed.scheme not in {'http', 'https'}:
+        raise ValidationError({'provider': ['OIDC endpoint must use http:// or https://.']})
+    if not _oidc_host_allowed(provider, target_url):
+        raise ValidationError({'provider': ['OIDC endpoint host is not allowlisted for this provider.']})
+
+
+def _default_discovery_endpoint(issuer: str) -> str:
+    return f"{str(issuer or '').rstrip('/')}/.well-known/openid-configuration"
+
+
+def _load_oidc_secret(provider: TenantOidcProvider) -> str | None:
+    secret_name = str(provider.client_secret_secret_name or '').strip()
+    if not secret_name:
+        return None
+    secret = TenantSecret.query.filter_by(
+        organization_id=provider.organization_id,
+        secret_type='oidc_client',
+        name=secret_name,
+    ).first()
+    if secret is None:
+        return None
+    return TenantSecretService.decrypt_value(secret.ciphertext, current_app.config)
+
+
+def _record_oidc_discovery(provider: TenantOidcProvider, status: str, error_message: str | None = None) -> None:
+    provider.last_discovery_status = status
+    provider.last_discovery_at = _utcnow_naive()
+    provider.last_error = error_message[:500] if error_message else None
+    db.session.add(provider)
+    db.session.commit()
+
+
+def _record_oidc_auth(provider: TenantOidcProvider, status: str, error_message: str | None = None) -> None:
+    provider.last_auth_status = status
+    provider.last_auth_at = _utcnow_naive()
+    provider.last_error = error_message[:500] if error_message else None
+    db.session.add(provider)
+    db.session.commit()
+
+
+def _discover_oidc_provider_metadata(provider: TenantOidcProvider) -> dict:
+    discovery_url = str(provider.discovery_endpoint or '').strip() or _default_discovery_endpoint(provider.issuer)
+    _oidc_validate_outbound_url(provider, discovery_url)
+    response = requests.get(discovery_url, timeout=int(current_app.config.get('OIDC_DISCOVERY_TIMEOUT_SECONDS', 5)))
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValidationError({'provider': ['OIDC discovery response must be an object.']})
+    provider.discovery_endpoint = discovery_url
+    provider.authorization_endpoint = str(payload.get('authorization_endpoint') or provider.authorization_endpoint or '').strip()
+    provider.token_endpoint = str(payload.get('token_endpoint') or provider.token_endpoint or '').strip() or None
+    provider.userinfo_endpoint = str(payload.get('userinfo_endpoint') or provider.userinfo_endpoint or '').strip() or None
+    provider.jwks_uri = str(payload.get('jwks_uri') or provider.jwks_uri or '').strip() or None
+    provider.end_session_endpoint = str(payload.get('end_session_endpoint') or provider.end_session_endpoint or '').strip() or None
+    db.session.add(provider)
+    db.session.commit()
+    _record_oidc_discovery(provider, 'success')
+    return provider.to_dict()
+
+
+def _exchange_external_oidc_code(provider: TenantOidcProvider, code: str, redirect_uri: str) -> dict:
+    token_endpoint = str(provider.token_endpoint or '').strip()
+    if not token_endpoint:
+        raise ValidationError({'provider': ['OIDC token endpoint is not configured.']})
+    _oidc_validate_outbound_url(provider, token_endpoint)
+    client_secret = _load_oidc_secret(provider)
+    if not client_secret:
+        raise ValidationError({'provider': ['OIDC client secret is not configured.']})
+    response = requests.post(
+        token_endpoint,
+        data={
+            'grant_type': 'authorization_code',
+            'code': code,
+            'redirect_uri': redirect_uri,
+            'client_id': provider.client_id,
+            'client_secret': client_secret,
+        },
+        timeout=int(current_app.config.get('OIDC_HTTP_TIMEOUT_SECONDS', 8)),
+    )
+    response.raise_for_status()
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise ValidationError({'provider': ['OIDC token response must be an object.']})
+    return payload
+
+
+def _fetch_external_oidc_claims(provider: TenantOidcProvider, token_payload: dict) -> dict:
+    userinfo_endpoint = str(provider.userinfo_endpoint or '').strip()
+    access_token = str(token_payload.get('access_token') or '').strip()
+    if userinfo_endpoint and access_token:
+        _oidc_validate_outbound_url(provider, userinfo_endpoint)
+        response = requests.get(
+            userinfo_endpoint,
+            headers={'Authorization': f'Bearer {access_token}'},
+            timeout=int(current_app.config.get('OIDC_HTTP_TIMEOUT_SECONDS', 8)),
+        )
+        response.raise_for_status()
+        payload = response.json()
+        if isinstance(payload, dict):
+            return payload
+    raise ValidationError({'provider': ['OIDC external login requires a reachable userinfo endpoint and access token.']})
+
+
 def _validate_oidc_provider_payload(payload: dict, partial: bool = False) -> dict[str, list[str]]:
     errors: dict[str, list[str]] = {}
-    required_fields = ['name', 'issuer', 'client_id', 'authorization_endpoint']
-    url_fields = ['issuer', 'authorization_endpoint', 'token_endpoint', 'userinfo_endpoint']
+    required_fields = ['name', 'issuer', 'client_id']
+    url_fields = ['issuer', 'discovery_endpoint', 'authorization_endpoint', 'token_endpoint', 'userinfo_endpoint']
 
     for field_name in required_fields:
         if partial and field_name not in payload:
             continue
         if not str(payload.get(field_name) or '').strip():
             errors[field_name] = ['Field required.']
+
+    requires_auth_endpoint = True
+    if partial:
+        if 'authorization_endpoint' in payload:
+            requires_auth_endpoint = not bool(str(payload.get('authorization_endpoint') or '').strip()) and 'discovery_endpoint' not in payload
+        else:
+            requires_auth_endpoint = False
+    elif not str(payload.get('authorization_endpoint') or '').strip() and not str(payload.get('discovery_endpoint') or '').strip():
+        errors['authorization_endpoint'] = ['Provide authorization_endpoint or discovery_endpoint.']
+        requires_auth_endpoint = False
+
+    if requires_auth_endpoint and 'authorization_endpoint' in payload and not str(payload.get('authorization_endpoint') or '').strip():
+        errors['authorization_endpoint'] = ['Field required.']
 
     for field_name in url_fields:
         if field_name not in payload:
@@ -388,6 +531,8 @@ def _tenant_quota_defaults() -> dict:
         'automation_workflows': {'limit_value': None, 'is_enforced': False, 'metadata': {'unit': 'workflows'}},
         'tenant_secrets': {'limit_value': None, 'is_enforced': False, 'metadata': {'unit': 'secrets'}},
         'enrolled_agents': {'limit_value': None, 'is_enforced': False, 'metadata': {'unit': 'agents'}},
+        'alert_rules': {'limit_value': None, 'is_enforced': False, 'metadata': {'unit': 'rules'}},
+        'oidc_providers': {'limit_value': None, 'is_enforced': False, 'metadata': {'unit': 'providers'}},
     }
 
 
@@ -462,6 +607,14 @@ def _compute_usage_snapshot(organization_id: int) -> dict[str, dict]:
             'current_value': Agent.query.filter_by(organization_id=organization_id).count(),
             'metadata': {'source': 'agents'},
         },
+        'alert_rules': {
+            'current_value': AlertRule.query.filter_by(organization_id=organization_id).count(),
+            'metadata': {'source': 'alert_rules'},
+        },
+        'oidc_providers': {
+            'current_value': TenantOidcProvider.query.filter_by(organization_id=organization_id).count(),
+            'metadata': {'source': 'tenant_oidc_providers'},
+        },
     }
 
 
@@ -489,6 +642,92 @@ def _sync_tenant_usage_metrics(organization_id: int) -> dict:
             }
             for row in rows
         },
+    }
+
+
+def _build_tenant_quota_report(organization_id: int, limit: int = 10) -> dict:
+    quotas = _get_effective_tenant_quotas(organization_id)
+    usage = _sync_tenant_usage_metrics(organization_id)
+    report_rows: list[dict] = []
+    enforced_count = 0
+    over_limit_count = 0
+    near_limit_count = 0
+
+    for quota_key, quota in quotas['effective'].items():
+        current_value = int(usage['current'].get(quota_key, {}).get('current_value') or 0)
+        limit_value = quota.get('limit_value')
+        percent_used = None
+        status = 'unlimited'
+        if limit_value is not None and int(limit_value) >= 0:
+            safe_limit = max(int(limit_value), 1)
+            percent_used = round((current_value / safe_limit) * 100, 1)
+            if current_value > int(limit_value):
+                status = 'over_limit'
+                over_limit_count += 1
+            elif percent_used >= 80:
+                status = 'near_limit'
+                near_limit_count += 1
+            else:
+                status = 'ok'
+        if quota.get('is_enforced'):
+            enforced_count += 1
+            if status == 'unlimited':
+                status = 'enforced_unlimited'
+
+        report_rows.append({
+            'quota_key': quota_key,
+            'current_value': current_value,
+            'limit_value': limit_value,
+            'is_enforced': bool(quota.get('is_enforced')),
+            'percent_used': percent_used,
+            'status': status,
+            'metadata': quota.get('metadata') or {},
+            'usage_metadata': usage['current'].get(quota_key, {}).get('metadata') or {},
+        })
+
+    enforcement_events = (
+        AuditEvent.query
+        .filter(
+            ((AuditEvent.tenant_id == organization_id) | (AuditEvent.tenant_id.is_(None)))
+            & (AuditEvent.action == 'quota.enforce')
+            & (AuditEvent.outcome == 'failure')
+        )
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+    recent_enforcement_events = [
+        {
+            'id': event.id,
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'quota_key': (event.event_metadata or {}).get('quota_key'),
+            'details': (
+                (event.event_metadata or {}).get('details')
+                if isinstance((event.event_metadata or {}).get('details'), dict)
+                else (
+                    ast.literal_eval((event.event_metadata or {}).get('details'))
+                    if isinstance((event.event_metadata or {}).get('details'), str)
+                    and str((event.event_metadata or {}).get('details')).startswith('{')
+                    else None
+                )
+            ),
+            'metadata': event.event_metadata or {},
+        }
+        for event in enforcement_events
+    ]
+
+    report_rows.sort(key=lambda item: (0 if item['status'] == 'over_limit' else 1 if item['status'] == 'near_limit' else 2, item['quota_key']))
+    return {
+        'generated_at': datetime.now(UTC).isoformat(),
+        'summary': {
+            'quota_count': len(report_rows),
+            'enforced_count': enforced_count,
+            'over_limit_count': over_limit_count,
+            'near_limit_count': near_limit_count,
+            'recent_enforcement_count': len(recent_enforcement_events),
+        },
+        'quotas': report_rows,
+        'recent_enforcement_events': recent_enforcement_events,
     }
 
 
@@ -917,31 +1156,32 @@ def _serialize_log_source_with_summary(source: LogSource) -> dict:
     return payload
 
 
-def _apply_log_entry_filters(query, organization_id: int):
-    """Apply shared tenant-scoped log entry filters from query string parameters."""
+def _apply_log_entry_filters(query, organization_id: int, filters: dict | None = None):
+    """Apply shared tenant-scoped log entry filters from query args or a saved filter snapshot."""
     query = query.filter_by(organization_id=organization_id)
+    filters = filters or {}
 
-    source_id = request.args.get('source_id')
+    source_id = filters.get('source_id') if filters else request.args.get('source_id')
     if source_id and str(source_id).isdigit():
         query = query.filter_by(log_source_id=int(source_id))
 
-    source_name = str(request.args.get('source_name') or '').strip()
+    source_name = str((filters.get('source_name') if filters else request.args.get('source_name')) or '').strip()
     if source_name:
         query = query.filter(LogEntry.source_name == source_name)
 
-    severity = str(request.args.get('severity') or '').strip().lower()
+    severity = str((filters.get('severity') if filters else request.args.get('severity')) or '').strip().lower()
     if severity:
         query = query.filter(LogEntry.severity == severity)
 
-    capture_kind = str(request.args.get('capture_kind') or '').strip()
+    capture_kind = str((filters.get('capture_kind') if filters else request.args.get('capture_kind')) or '').strip()
     if capture_kind:
         query = query.filter(LogEntry.capture_kind == capture_kind)
 
-    event_id = str(request.args.get('event_id') or '').strip()
+    event_id = str((filters.get('event_id') if filters else request.args.get('event_id')) or '').strip()
     if event_id:
         query = query.filter(LogEntry.event_id == event_id)
 
-    query_text = str(request.args.get('query_text') or '').strip()
+    query_text = str((filters.get('query_text') if filters else request.args.get('query_text')) or '').strip()
     if query_text:
         query = query.filter(
             or_(
@@ -1080,6 +1320,72 @@ def _record_reliability_run(
     db.session.add(run)
     db.session.commit()
     return run
+
+
+def _serialize_reliability_run_with_related(item: ReliabilityRun) -> dict:
+    payload = item.to_dict()
+    related_query = ReliabilityRun.query.filter(
+        ReliabilityRun.organization_id == item.organization_id,
+        ReliabilityRun.id != item.id,
+        ReliabilityRun.host_name == item.host_name,
+    )
+    if item.dump_name:
+        related_query = related_query.filter_by(dump_name=item.dump_name)
+    related_runs = (
+        related_query
+        .order_by(ReliabilityRun.created_at.desc(), ReliabilityRun.id.desc())
+        .limit(5)
+        .all()
+    )
+    payload['related_runs'] = [related.to_dict() for related in related_runs]
+    return payload
+
+
+def _build_reliability_report(organization_id: int, host_name: str | None = None) -> dict:
+    query = ReliabilityRun.query.filter_by(organization_id=organization_id)
+    if host_name:
+        query = query.filter_by(host_name=host_name)
+
+    runs = query.order_by(ReliabilityRun.created_at.desc(), ReliabilityRun.id.desc()).limit(100).all()
+    status_counts: dict[str, int] = {}
+    diagnostic_counts: dict[str, int] = {}
+    failure_reasons: dict[str, int] = {}
+    latest_by_type: dict[str, dict] = {}
+    host_counts: dict[str, int] = {}
+    recent_failures: list[dict] = []
+
+    for run in runs:
+        status_counts[run.status] = status_counts.get(run.status, 0) + 1
+        diagnostic_counts[run.diagnostic_type] = diagnostic_counts.get(run.diagnostic_type, 0) + 1
+        host_counts[run.host_name] = host_counts.get(run.host_name, 0) + 1
+        if run.error_reason:
+            failure_reasons[run.error_reason] = failure_reasons.get(run.error_reason, 0) + 1
+        latest_by_type.setdefault(run.diagnostic_type, run.to_dict())
+        if run.status != 'success' and len(recent_failures) < 5:
+            recent_failures.append(run.to_dict())
+
+    latest_score = latest_by_type.get('score', {}).get('summary', {}) if latest_by_type.get('score') else {}
+    latest_trend = latest_by_type.get('trend', {}).get('summary', {}) if latest_by_type.get('trend') else {}
+    latest_prediction = latest_by_type.get('prediction', {}).get('summary', {}) if latest_by_type.get('prediction') else {}
+    crash_related = [
+        run.to_dict()
+        for run in runs
+        if run.diagnostic_type in {'crash_dump_parse', 'exception_identify', 'stack_trace_analyze'}
+    ][:6]
+
+    return {
+        'status_counts': status_counts,
+        'diagnostic_counts': diagnostic_counts,
+        'failure_reasons': failure_reasons,
+        'host_counts': host_counts,
+        'latest_by_type': latest_by_type,
+        'latest_score': latest_score,
+        'latest_trend': latest_trend,
+        'latest_prediction': latest_prediction,
+        'crash_related_runs': crash_related,
+        'recent_failures': recent_failures,
+        'total_runs_considered': len(runs),
+    }
 
 
 def _summarize_update_result(result: dict | None) -> dict:
@@ -1604,6 +1910,15 @@ def list_oidc_providers_api():
 @require_api_key_or_permission('tenant.manage')
 def create_oidc_provider_api():
     """Create a tenant-scoped OIDC provider config."""
+    allowed, quota_error = _enforce_tenant_quota(
+        g.tenant.id,
+        'oidc_providers',
+        prospective_value=TenantOidcProvider.query.filter_by(organization_id=g.tenant.id).count() + 1,
+    )
+    if not allowed:
+        log_audit_event('quota.enforce', outcome='failure', quota_key='oidc_providers', details=quota_error)
+        return jsonify({'error': 'Quota exceeded', 'details': {'quota': quota_error}}), 403
+
     payload = request.get_json(silent=True) or {}
     errors = _validate_oidc_provider_payload(payload, partial=False)
     if errors:
@@ -1615,6 +1930,7 @@ def create_oidc_provider_api():
         name=str(payload.get('name') or '').strip(),
         issuer=str(payload.get('issuer') or '').strip(),
         client_id=str(payload.get('client_id') or '').strip(),
+        discovery_endpoint=str(payload.get('discovery_endpoint') or '').strip() or None,
         authorization_endpoint=str(payload.get('authorization_endpoint') or '').strip(),
         token_endpoint=str(payload.get('token_endpoint') or '').strip() or None,
         userinfo_endpoint=str(payload.get('userinfo_endpoint') or '').strip() or None,
@@ -1637,11 +1953,21 @@ def create_oidc_provider_api():
             )
         db.session.add(provider)
         db.session.commit()
+        if provider.discovery_endpoint and not provider.test_mode:
+            _discover_oidc_provider_metadata(provider)
     except ValidationError as exc:
         db.session.rollback()
         details = exc.messages if isinstance(exc.messages, dict) else {'provider': [str(exc)]}
         log_audit_event('auth.oidc.provider.create', outcome='failure', reason='validation_failed', details=details)
         return jsonify({'error': 'Validation failed', 'details': details}), 400
+    except requests.RequestException as exc:
+        db.session.rollback()
+        db.session.add(provider)
+        db.session.commit()
+        _record_oidc_discovery(provider, 'error', str(exc))
+        details = {'provider': [f'OIDC discovery failed: {exc}']}
+        log_audit_event('auth.oidc.provider.create', outcome='failure', reason='discovery_failed', details=details)
+        return jsonify({'error': 'OIDC discovery failed', 'details': details, 'provider': provider.to_dict()}), 502
     except Exception:
         db.session.rollback()
         raise
@@ -1668,6 +1994,8 @@ def update_oidc_provider_api(provider_id: int):
     for field_name in ['name', 'issuer', 'client_id', 'authorization_endpoint']:
         if field_name in payload:
             setattr(provider, field_name, str(payload.get(field_name) or '').strip())
+    if 'discovery_endpoint' in payload:
+        provider.discovery_endpoint = str(payload.get('discovery_endpoint') or '').strip() or None
     for field_name in ['token_endpoint', 'userinfo_endpoint']:
         if field_name in payload:
             setattr(provider, field_name, str(payload.get(field_name) or '').strip() or None)
@@ -1697,19 +2025,56 @@ def update_oidc_provider_api(provider_id: int):
                     TenantOidcProvider.is_default.is_(True),
                 )
                 .update({'is_default': False}, synchronize_session=False)
-            )
+        )
         db.session.add(provider)
         db.session.commit()
+        if provider.discovery_endpoint and not provider.test_mode:
+            _discover_oidc_provider_metadata(provider)
     except ValidationError as exc:
         db.session.rollback()
         details = exc.messages if isinstance(exc.messages, dict) else {'provider': [str(exc)]}
         log_audit_event('auth.oidc.provider.update', outcome='failure', reason='validation_failed', provider_id=provider_id, details=details)
         return jsonify({'error': 'Validation failed', 'details': details}), 400
+    except requests.RequestException as exc:
+        db.session.rollback()
+        db.session.add(provider)
+        db.session.commit()
+        _record_oidc_discovery(provider, 'error', str(exc))
+        details = {'provider': [f'OIDC discovery failed: {exc}']}
+        log_audit_event('auth.oidc.provider.update', outcome='failure', reason='discovery_failed', provider_id=provider_id, details=details)
+        return jsonify({'error': 'OIDC discovery failed', 'details': details, 'provider': provider.to_dict()}), 502
     except Exception:
         db.session.rollback()
         raise
 
     log_audit_event('auth.oidc.provider.update', outcome='success', provider_id=provider.id, provider_name=provider.name)
+    return jsonify({'status': 'success', 'provider': provider.to_dict()}), 200
+
+
+@api_bp.route('/auth/oidc/providers/<int:provider_id>/discover', methods=['POST'])
+@limiter.limit("30 per hour")
+@require_api_key_or_permission('tenant.manage')
+def discover_oidc_provider_api(provider_id: int):
+    """Fetch OpenID metadata for a configured provider."""
+    provider = _get_oidc_provider_for_tenant(provider_id, g.tenant.id)
+    if provider is None:
+        return jsonify({'error': 'OIDC provider not found'}), 404
+    try:
+        _discover_oidc_provider_metadata(provider)
+    except ValidationError as exc:
+        db.session.rollback()
+        details = exc.messages if isinstance(exc.messages, dict) else {'provider': [str(exc)]}
+        _record_oidc_discovery(provider, 'error', json.dumps(details))
+        log_audit_event('auth.oidc.provider.discover', outcome='failure', reason='validation_failed', provider_id=provider_id, details=details)
+        return jsonify({'error': 'Validation failed', 'details': details, 'provider': provider.to_dict()}), 400
+    except requests.RequestException as exc:
+        db.session.rollback()
+        _record_oidc_discovery(provider, 'error', str(exc))
+        details = {'provider': [f'OIDC discovery failed: {exc}']}
+        log_audit_event('auth.oidc.provider.discover', outcome='failure', reason='discovery_failed', provider_id=provider_id, details=details)
+        return jsonify({'error': 'OIDC discovery failed', 'details': details, 'provider': provider.to_dict()}), 502
+
+    log_audit_event('auth.oidc.provider.discover', outcome='success', provider_id=provider.id, provider_name=provider.name)
     return jsonify({'status': 'success', 'provider': provider.to_dict()}), 200
 
 
@@ -1745,6 +2110,16 @@ def start_oidc_login():
     if provider is None:
         return jsonify({'error': 'OIDC provider not found'}), 404
 
+    if not provider.test_mode and provider.discovery_endpoint and (
+        not str(provider.authorization_endpoint or '').strip() or not str(provider.token_endpoint or '').strip()
+    ):
+        try:
+            _discover_oidc_provider_metadata(provider)
+        except Exception as exc:  # noqa: BLE001
+            details = {'provider': [f'OIDC provider metadata unavailable: {exc}']}
+            log_audit_event('auth.oidc.login.start', outcome='failure', reason='discovery_unavailable', tenant_id=tenant.id, provider_id=provider.id, details=details)
+            return jsonify({'error': 'OIDC provider metadata unavailable', 'details': details, 'provider': provider.to_dict()}), 502
+
     state = issue_oidc_state_token(tenant.slug, provider.id, redirect_uri=requested_redirect, web_session=web_session)
     callback_url = url_for('api.oidc_callback', _external=False)
     auth_params = {
@@ -1770,13 +2145,14 @@ def start_oidc_login():
             'state_token': state['state_token'],
             'mode': 'test' if provider.test_mode else 'external',
             'web_session': web_session,
+            'requires_userinfo': not provider.test_mode,
         },
     }), 200
 
 
 @api_bp.route('/auth/oidc/callback', methods=['GET'])
 def oidc_callback():
-    """Complete OIDC login for deterministic test-mode foundation flows."""
+    """Complete OIDC login for deterministic test-mode and bounded external-provider flows."""
     state_token = str(request.args.get('state') or '').strip()
     code = str(request.args.get('code') or '').strip()
     if not state_token or not code:
@@ -1795,23 +2171,38 @@ def oidc_callback():
     if provider is None or not provider.is_enabled:
         return jsonify({'error': 'OIDC provider not found'}), 404
 
-    if not provider.test_mode:
-        return jsonify({'error': 'Not implemented', 'message': 'External token exchange is not enabled in this foundation build.'}), 501
-
-    test_claims = provider.test_claims or {}
-    claims = test_claims.get(code) or test_claims.get('default')
-    if not isinstance(claims, dict):
-        return jsonify({'error': 'Unauthorized', 'message': 'Invalid or expired authorization code'}), 401
+    try:
+        if provider.test_mode:
+            test_claims = provider.test_claims or {}
+            claims = test_claims.get(code) or test_claims.get('default')
+            if not isinstance(claims, dict):
+                return jsonify({'error': 'Unauthorized', 'message': 'Invalid or expired authorization code'}), 401
+        else:
+            callback_url = url_for('api.oidc_callback', _external=False)
+            token_payload = _exchange_external_oidc_code(provider, code, callback_url)
+            claims = _fetch_external_oidc_claims(provider, token_payload)
+    except ValidationError as exc:
+        details = exc.messages if isinstance(exc.messages, dict) else {'provider': [str(exc)]}
+        _record_oidc_auth(provider, 'error', json.dumps(details))
+        log_audit_event('auth.oidc.callback', outcome='failure', reason='provider_validation_failed', tenant_id=tenant.id, provider_id=provider.id, details=details)
+        return jsonify({'error': 'Validation failed', 'details': details, 'provider': provider.to_dict()}), 400
+    except requests.RequestException as exc:
+        _record_oidc_auth(provider, 'error', str(exc))
+        details = {'provider': [f'OIDC external exchange failed: {exc}']}
+        log_audit_event('auth.oidc.callback', outcome='failure', reason='external_exchange_failed', tenant_id=tenant.id, provider_id=provider.id, details=details)
+        return jsonify({'error': 'OIDC external exchange failed', 'details': details, 'provider': provider.to_dict()}), 502
 
     try:
         user, created = _upsert_oidc_user(tenant, provider, claims)
     except ValidationError as exc:
         details = exc.messages if isinstance(exc.messages, dict) else {'claims': [str(exc)]}
+        _record_oidc_auth(provider, 'error', json.dumps(details))
         log_audit_event('auth.oidc.callback', outcome='failure', reason='claim_validation_failed', tenant_id=tenant.id, provider_id=provider.id, details=details)
         return jsonify({'error': 'Validation failed', 'details': details}), 400
 
     reset_login_state(user)
     redirect_uri = _validate_relative_redirect_uri(str(state.get('redirect_uri') or '')) or '/app'
+    _record_oidc_auth(provider, 'success')
     log_audit_event('auth.oidc.callback', outcome='success', tenant_id=tenant.id, provider_id=provider.id, user_id=user.id, oidc_user_created=created)
 
     if bool(state.get('web_session')):
@@ -1955,6 +2346,15 @@ def get_tenant_usage_api():
     """Return current tenant usage snapshot for quota reporting."""
     usage = _sync_tenant_usage_metrics(g.tenant.id)
     return jsonify({'status': 'success', 'tenant_usage': usage}), 200
+
+
+@api_bp.route('/tenant-usage/report', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_tenant_usage_report_api():
+    """Return operator-facing quota health reporting and recent enforcement visibility."""
+    limit = max(min(int(request.args.get('limit', 10) or 10), 25), 1)
+    report = _build_tenant_quota_report(g.tenant.id, limit=limit)
+    return jsonify({'status': 'success', 'tenant_usage_report': report}), 200
 
 
 @api_bp.route('/tenant-commercial', methods=['GET'])
@@ -3173,6 +3573,15 @@ def list_alert_rules():
 @require_api_key_or_permission('tenant.manage')
 def create_alert_rule():
     """Create new threshold alert rule for current tenant."""
+    allowed, quota_error = _enforce_tenant_quota(
+        g.tenant.id,
+        'alert_rules',
+        prospective_value=AlertRule.query.filter_by(organization_id=g.tenant.id).count() + 1,
+    )
+    if not allowed:
+        log_audit_event('quota.enforce', outcome='failure', quota_key='alert_rules', details=quota_error)
+        return jsonify({'error': 'Quota exceeded', 'details': {'quota': quota_error}}), 403
+
     payload = request.get_json(silent=True) or {}
     rule, errors = AlertService.create_rule(g.tenant.id, payload)
     if errors:
@@ -3830,6 +4239,94 @@ def get_log_entry_api(entry_id):
     return jsonify({'status': 'success', 'entry': entry.to_dict()}), 200
 
 
+@api_bp.route('/logs/investigations', methods=['GET'])
+@require_api_key_or_permission('automation.manage')
+def list_log_investigations_api():
+    """List tenant-scoped saved log investigations."""
+    status = str(request.args.get('status') or '').strip()
+    query = LogInvestigation.query.filter_by(organization_id=g.tenant.id)
+    if status:
+        query = query.filter_by(status=status)
+    items = query.order_by(LogInvestigation.updated_at.desc(), LogInvestigation.id.desc()).all()
+    return jsonify({'status': 'success', 'count': len(items), 'investigations': [item.to_dict() for item in items]}), 200
+
+
+@api_bp.route('/logs/investigations', methods=['POST'])
+@limiter.limit("120 per hour")
+@require_api_key_or_permission('automation.manage')
+def create_log_investigation_api():
+    """Create a saved log investigation from current filter context."""
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get('name') or '').strip()
+    if not name:
+        return jsonify({'error': 'Validation failed', 'details': {'name': ['Field required.']}}), 400
+
+    filter_snapshot = payload.get('filter_snapshot') if isinstance(payload.get('filter_snapshot'), dict) else {}
+    notes = str(payload.get('notes') or '').strip() or None
+    pinned_source_id = payload.get('pinned_source_id')
+    pinned_entry_id = payload.get('pinned_entry_id')
+    source_name = str(payload.get('source_name') or filter_snapshot.get('source_name') or '').strip() or None
+
+    result_count = _apply_log_entry_filters(LogEntry.query, g.tenant.id, filter_snapshot).count()
+    investigation = LogInvestigation(
+        organization_id=g.tenant.id,
+        created_by_user_id=getattr(getattr(g, 'current_user', None), 'id', None),
+        name=name,
+        status=str(payload.get('status') or 'open').strip() or 'open',
+        source_name=source_name,
+        pinned_source_id=int(pinned_source_id) if pinned_source_id not in (None, '') else None,
+        pinned_entry_id=int(pinned_entry_id) if pinned_entry_id not in (None, '') else None,
+        filter_snapshot=filter_snapshot,
+        notes=notes,
+        last_result_count=result_count,
+        last_matched_at=datetime.now(UTC).replace(tzinfo=None),
+    )
+    db.session.add(investigation)
+    db.session.commit()
+    log_audit_event('logs.investigation.create', outcome='success', investigation_id=investigation.id)
+    return jsonify({'status': 'success', 'investigation': investigation.to_dict()}), 201
+
+
+@api_bp.route('/logs/investigations/<int:investigation_id>', methods=['PATCH'])
+@limiter.limit("120 per hour")
+@require_api_key_or_permission('automation.manage')
+def update_log_investigation_api(investigation_id):
+    """Update a saved log investigation and refresh its last match count."""
+    investigation = LogInvestigation.query.filter_by(id=investigation_id, organization_id=g.tenant.id).first()
+    if not investigation:
+        return jsonify({'error': 'Log investigation not found'}), 404
+
+    payload = request.get_json(silent=True) or {}
+    if 'name' in payload:
+        name = str(payload.get('name') or '').strip()
+        if not name:
+            return jsonify({'error': 'Validation failed', 'details': {'name': ['Field cannot be blank.']}}), 400
+        investigation.name = name
+    if 'status' in payload:
+        investigation.status = str(payload.get('status') or '').strip() or investigation.status
+    if 'notes' in payload:
+        investigation.notes = str(payload.get('notes') or '').strip() or None
+    if 'source_name' in payload:
+        investigation.source_name = str(payload.get('source_name') or '').strip() or None
+    if 'pinned_source_id' in payload:
+        raw = payload.get('pinned_source_id')
+        investigation.pinned_source_id = int(raw) if raw not in (None, '') else None
+    if 'pinned_entry_id' in payload:
+        raw = payload.get('pinned_entry_id')
+        investigation.pinned_entry_id = int(raw) if raw not in (None, '') else None
+    if 'filter_snapshot' in payload:
+        if not isinstance(payload.get('filter_snapshot'), dict):
+            return jsonify({'error': 'Validation failed', 'details': {'filter_snapshot': ['Must be an object.']}}), 400
+        investigation.filter_snapshot = payload.get('filter_snapshot') or {}
+
+    result_count = _apply_log_entry_filters(LogEntry.query, g.tenant.id, investigation.filter_snapshot or {}).count()
+    investigation.last_result_count = result_count
+    investigation.last_matched_at = datetime.now(UTC).replace(tzinfo=None)
+    db.session.commit()
+    log_audit_event('logs.investigation.update', outcome='success', investigation_id=investigation.id)
+    return jsonify({'status': 'success', 'investigation': investigation.to_dict()}), 200
+
+
 @api_bp.route('/logs/ingest', methods=['POST'])
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
@@ -4320,6 +4817,36 @@ def list_reliability_runs_api():
     if status:
         query = query.filter_by(status=status)
 
+    dump_name = str(request.args.get('dump_name') or '').strip()
+    if dump_name:
+        query = query.filter_by(dump_name=dump_name)
+
+    error_reason = str(request.args.get('error_reason') or '').strip()
+    if error_reason:
+        query = query.filter_by(error_reason=error_reason)
+
+    latest_per_type = str(request.args.get('latest_per_type') or '').strip().lower() in {'1', 'true', 'yes', 'on'}
+    if latest_per_type:
+        filtered_runs = query.order_by(ReliabilityRun.created_at.desc(), ReliabilityRun.id.desc()).all()
+        latest_map: dict[tuple[str, str, str], ReliabilityRun] = {}
+        for run in filtered_runs:
+            key = (run.host_name, run.diagnostic_type, run.dump_name or '')
+            latest_map.setdefault(key, run)
+        items = list(latest_map.values())
+        total = len(items)
+        start = (page - 1) * per_page
+        end = start + per_page
+        page_items = items[start:end]
+        pages = (total + per_page - 1) // per_page if total else 0
+        return jsonify({
+            'status': 'success',
+            'page': page,
+            'per_page': per_page,
+            'total': total,
+            'pages': pages,
+            'reliability_runs': [item.to_dict() for item in page_items],
+        }), 200
+
     pagination = query.order_by(ReliabilityRun.created_at.desc(), ReliabilityRun.id.desc()).paginate(
         page=page,
         per_page=per_page,
@@ -4342,7 +4869,16 @@ def get_reliability_run_api(run_id):
     item = ReliabilityRun.query.filter_by(id=run_id, organization_id=g.tenant.id).first()
     if not item:
         return jsonify({'error': 'Reliability run not found'}), 404
-    return jsonify({'status': 'success', 'reliability_run': item.to_dict()}), 200
+    return jsonify({'status': 'success', 'reliability_run': _serialize_reliability_run_with_related(item)}), 200
+
+
+@api_bp.route('/reliability/report', methods=['GET'])
+@require_api_key_or_permission('automation.manage')
+def get_reliability_report_api():
+    """Return operator-oriented aggregate reporting for reliability runs."""
+    host_name = str(request.args.get('host_name') or '').strip() or None
+    report = _build_reliability_report(g.tenant.id, host_name=host_name)
+    return jsonify({'status': 'success', 'report': report}), 200
 
 
 @api_bp.route('/reliability/history', methods=['POST'])
@@ -4971,6 +5507,120 @@ def _build_ollama_runtime_config(model_override: str = '', **extra):
     return runtime_config
 
 
+def _coerce_int(value, default=0):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _build_ai_operations_report(tenant_id: int, limit: int = 10):
+    """Build a tenant-scoped operational report across AI audit events."""
+    ai_actions = (
+        'ai.ollama.inference',
+        'ai.root_cause.analyze',
+        'ai.recommendations.generate',
+        'ai.troubleshooting.assist',
+        'ai.learning.feedback',
+        'ai.anomaly.analyze',
+        'ai.incident.explain',
+        'ai.confidence.score',
+    )
+
+    events = (
+        AuditEvent.query
+        .filter(
+            ((AuditEvent.tenant_id == tenant_id) | (AuditEvent.tenant_id.is_(None)))
+            & AuditEvent.action.in_(ai_actions)
+        )
+        .order_by(AuditEvent.created_at.desc(), AuditEvent.id.desc())
+        .limit(max(limit, 1) * 5)
+        .all()
+    )
+
+    action_counts: dict[str, int] = {}
+    outcome_counts = {'success': 0, 'failure': 0}
+    adapter_counts: dict[str, int] = {}
+    primary_error_counts: dict[str, int] = {}
+    fallback_count = 0
+    duration_values: list[int] = []
+    recent_operations: list[dict[str, object]] = []
+    recent_failures: list[dict[str, object]] = []
+
+    for event in events:
+        metadata = event.event_metadata or {}
+        action_counts[event.action] = action_counts.get(event.action, 0) + 1
+        if event.outcome in outcome_counts:
+            outcome_counts[event.outcome] += 1
+
+        adapter = (
+            metadata.get('adapter')
+            or metadata.get('requested_adapter')
+            or metadata.get('from_adapter')
+        )
+        if adapter:
+            adapter = str(adapter)
+            adapter_counts[adapter] = adapter_counts.get(adapter, 0) + 1
+
+        if str(metadata.get('fallback_used')).lower() == 'true':
+            fallback_count += 1
+
+        duration_ms = _coerce_int(metadata.get('duration_ms'), default=-1)
+        if duration_ms >= 0:
+            duration_values.append(duration_ms)
+
+        error_reason = metadata.get('primary_error_reason') or metadata.get('reason')
+        if error_reason:
+            error_reason = str(error_reason)
+            primary_error_counts[error_reason] = primary_error_counts.get(error_reason, 0) + 1
+
+        item = {
+            'id': event.id,
+            'created_at': event.created_at.isoformat() if event.created_at else None,
+            'action': event.action,
+            'outcome': event.outcome,
+            'adapter': adapter,
+            'model': metadata.get('model'),
+            'fallback_used': str(metadata.get('fallback_used')).lower() == 'true',
+            'duration_ms': duration_ms if duration_ms >= 0 else None,
+            'primary_error_reason': metadata.get('primary_error_reason'),
+            'reason': metadata.get('reason'),
+            'metadata': metadata,
+        }
+
+        if len(recent_operations) < limit:
+            recent_operations.append(item)
+        if event.outcome == 'failure' and len(recent_failures) < limit:
+            recent_failures.append(item)
+
+    total_events = len(events)
+    success_count = outcome_counts['success']
+    failure_count = outcome_counts['failure']
+    avg_duration_ms = (
+        round(sum(duration_values) / len(duration_values))
+        if duration_values
+        else None
+    )
+
+    return {
+        'summary': {
+            'total_events': total_events,
+            'success_count': success_count,
+            'failure_count': failure_count,
+            'fallback_count': fallback_count,
+            'success_rate': round((success_count / total_events) * 100, 1) if total_events else None,
+            'avg_duration_ms': avg_duration_ms,
+        },
+        'counts': {
+            'by_action': action_counts,
+            'by_adapter': adapter_counts,
+            'by_primary_error_reason': primary_error_counts,
+        },
+        'recent_operations': recent_operations,
+        'recent_failures': recent_failures,
+    }
+
+
 @api_bp.route('/ai/ollama/infer', methods=['POST'])
 @limiter.limit("240 per hour")
 @require_api_key_or_permission('automation.manage')
@@ -5014,6 +5664,15 @@ def run_ollama_inference():
         fallback_used=observability.get('fallback_used'),
     )
     return jsonify({'status': 'success', 'ollama': result}), 200
+
+
+@api_bp.route('/ai/operations/report', methods=['GET'])
+@require_api_key_or_permission('automation.manage')
+def get_ai_operations_report():
+    """Return a tenant-scoped operational summary across AI/Ollama activity."""
+    limit = max(min(int(request.args.get('limit', 10) or 10), 25), 1)
+    report = _build_ai_operations_report(g.tenant.id, limit=limit)
+    return jsonify({'status': 'success', 'report': report}), 200
 
 
 @api_bp.route('/ai/root-cause/analyze', methods=['POST'])

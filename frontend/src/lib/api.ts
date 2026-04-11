@@ -11,6 +11,7 @@ import type {
   AlertRule,
   AlertRulesResponse,
   AlertSilencesResponse,
+  AiOperationsReportResponse,
   AnomalyAnalysisResponse,
   AuditEventsResponse,
   AutomationWorkflowExecutionResponse,
@@ -33,6 +34,8 @@ import type {
   LogsCorrelateResponse,
   LogsIngestResponse,
   LogEntriesResponse,
+  LogInvestigationMutationResponse,
+  LogInvestigationsResponse,
   LogEntryDetailResponse,
   LogSourceDetailResponse,
   LogSourcesResponse,
@@ -49,6 +52,7 @@ import type {
   PatternDetectionResponse,
   PredictionAnalysisResponse,
   ReliabilityRunDetailResponse,
+  ReliabilityReportResponse,
   ReliabilityRunsResponse,
   RecommendationsGenerationResponse,
   ReliabilityHistoryResponse,
@@ -69,6 +73,7 @@ import type {
   TenantQuotasResponse,
   TenantSettingsResponse,
   TenantUsageResponse,
+  TenantUsageReportResponse,
   TenantsResponse,
   TotpFactorStatusResponse,
   TrendAnalysisResponse,
@@ -152,6 +157,13 @@ export async function getTenantUsage() {
   return data;
 }
 
+export async function getTenantUsageReport(limit = 10) {
+  const { data } = await apiClient.get<TenantUsageReportResponse>("/api/tenant-usage/report", {
+    params: { limit },
+  });
+  return data;
+}
+
 export async function getTenantCommercial() {
   const { data } = await apiClient.get<TenantCommercialResponse>("/api/tenant-commercial");
   return data;
@@ -184,6 +196,11 @@ export async function createOidcProvider(payload: Record<string, unknown>) {
 
 export async function updateOidcProvider(providerId: number, payload: Record<string, unknown>) {
   const { data } = await apiClient.patch<OidcProviderMutationResponse>(`/api/auth/oidc/providers/${providerId}`, payload);
+  return data;
+}
+
+export async function discoverOidcProvider(providerId: number) {
+  const { data } = await apiClient.post<OidcProviderMutationResponse>(`/api/auth/oidc/providers/${providerId}/discover`);
   return data;
 }
 
@@ -431,6 +448,23 @@ export async function getLogEntry(entryId: number) {
   return data;
 }
 
+export async function getLogInvestigations(status?: string) {
+  const { data } = await apiClient.get<LogInvestigationsResponse>("/api/logs/investigations", {
+    params: { status },
+  });
+  return data;
+}
+
+export async function createLogInvestigation(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<LogInvestigationMutationResponse>("/api/logs/investigations", payload);
+  return data;
+}
+
+export async function updateLogInvestigation(investigationId: number, payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<LogInvestigationMutationResponse>(`/api/logs/investigations/${investigationId}`, payload);
+  return data;
+}
+
 export async function queryEventLogs(sourceName: string) {
   const { data } = await apiClient.post<LogsQueryResponse>("/api/logs/events/query", { source_name: sourceName });
   return data;
@@ -482,12 +516,15 @@ export async function collectReliabilityHistory(hostName: string) {
   return data;
 }
 
-export async function getReliabilityRuns(params?: { hostName?: string; diagnosticType?: string; status?: string }) {
+export async function getReliabilityRuns(params?: { hostName?: string; diagnosticType?: string; status?: string; dumpName?: string; errorReason?: string; latestPerType?: boolean }) {
   const { data } = await apiClient.get<ReliabilityRunsResponse>("/api/reliability/runs", {
     params: {
       host_name: params?.hostName,
       diagnostic_type: params?.diagnosticType,
       status: params?.status,
+      dump_name: params?.dumpName,
+      error_reason: params?.errorReason,
+      latest_per_type: params?.latestPerType,
     },
   });
   return data;
@@ -495,6 +532,13 @@ export async function getReliabilityRuns(params?: { hostName?: string; diagnosti
 
 export async function getReliabilityRun(runId: number) {
   const { data } = await apiClient.get<ReliabilityRunDetailResponse>(`/api/reliability/runs/${runId}`);
+  return data;
+}
+
+export async function getReliabilityReport(hostName?: string) {
+  const { data } = await apiClient.get<ReliabilityReportResponse>("/api/reliability/report", {
+    params: { host_name: hostName },
+  });
   return data;
 }
 
@@ -561,6 +605,13 @@ export async function generateAiRecommendations(symptomSummary: string, probable
     symptom_summary: symptomSummary,
     probable_cause: probableCause,
     evidence_points: evidencePoints,
+  });
+  return data;
+}
+
+export async function getAiOperationsReport(limit = 10) {
+  const { data } = await apiClient.get<AiOperationsReportResponse>("/api/ai/operations/report", {
+    params: { limit },
   });
   return data;
 }

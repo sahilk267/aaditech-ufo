@@ -105,6 +105,37 @@ export type TenantUsageResponse = {
   };
 };
 
+export type TenantUsageReportResponse = {
+  status: string;
+  tenant_usage_report: {
+    generated_at: string;
+    summary: {
+      quota_count: number;
+      enforced_count: number;
+      over_limit_count: number;
+      near_limit_count: number;
+      recent_enforcement_count: number;
+    };
+    quotas: Array<{
+      quota_key: string;
+      current_value: number;
+      limit_value?: number | null;
+      is_enforced: boolean;
+      percent_used?: number | null;
+      status: string;
+      metadata?: Record<string, unknown>;
+      usage_metadata?: Record<string, unknown>;
+    }>;
+    recent_enforcement_events: Array<{
+      id: number;
+      created_at?: string | null;
+      quota_key?: string | null;
+      details?: Record<string, unknown> | null;
+      metadata?: Record<string, unknown> | null;
+    }>;
+  };
+};
+
 export type TenantCommercialResponse = {
   status: string;
   tenant_commercial: {
@@ -169,9 +200,12 @@ export type OidcProvider = {
   name: string;
   issuer: string;
   client_id: string;
+  discovery_endpoint?: string | null;
   authorization_endpoint: string;
   token_endpoint?: string | null;
   userinfo_endpoint?: string | null;
+  jwks_uri?: string | null;
+  end_session_endpoint?: string | null;
   scopes: string[];
   claim_mappings: Record<string, unknown>;
   role_mappings: Record<string, unknown>;
@@ -181,6 +215,11 @@ export type OidcProvider = {
   is_default: boolean;
   has_client_secret: boolean;
   client_secret_secret_name?: string | null;
+  last_discovery_status?: string | null;
+  last_auth_status?: string | null;
+  last_error?: string | null;
+  last_discovery_at?: string | null;
+  last_auth_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -543,6 +582,32 @@ export type LogEntryDetailResponse = {
   entry: LogEntryRecord;
 };
 
+export type LogInvestigationRecord = {
+  id: number;
+  name: string;
+  status: string;
+  source_name?: string | null;
+  pinned_source_id?: number | null;
+  pinned_entry_id?: number | null;
+  filter_snapshot: Record<string, unknown>;
+  notes?: string | null;
+  last_result_count: number;
+  last_matched_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type LogInvestigationsResponse = {
+  status: string;
+  count: number;
+  investigations: LogInvestigationRecord[];
+};
+
+export type LogInvestigationMutationResponse = {
+  status: string;
+  investigation: LogInvestigationRecord;
+};
+
 // Reliability types
 export type ReliabilityHistoryResponse = {
   status: string;
@@ -600,7 +665,26 @@ export type ReliabilityRunsResponse = {
 
 export type ReliabilityRunDetailResponse = {
   status: string;
-  reliability_run: ReliabilityRunRecord;
+  reliability_run: ReliabilityRunRecord & {
+    related_runs?: ReliabilityRunRecord[];
+  };
+};
+
+export type ReliabilityReportResponse = {
+  status: string;
+  report: {
+    status_counts: Record<string, number>;
+    diagnostic_counts: Record<string, number>;
+    failure_reasons: Record<string, number>;
+    host_counts: Record<string, number>;
+    latest_by_type: Record<string, ReliabilityRunRecord>;
+    latest_score?: Record<string, unknown>;
+    latest_trend?: Record<string, unknown>;
+    latest_prediction?: Record<string, unknown>;
+    crash_related_runs: ReliabilityRunRecord[];
+    recent_failures: ReliabilityRunRecord[];
+    total_runs_considered: number;
+  };
 };
 
 export type TrendAnalysisResponse = {
@@ -638,6 +722,41 @@ export type RecommendationsGenerationResponse = {
   status: string;
   recommendations?: Record<string, unknown>[];
   [key: string]: unknown;
+};
+
+export type AiOperationReportItem = {
+  id: number;
+  created_at: string | null;
+  action: string;
+  outcome: string;
+  adapter?: string | null;
+  model?: string | null;
+  fallback_used?: boolean;
+  duration_ms?: number | null;
+  primary_error_reason?: string | null;
+  reason?: string | null;
+  metadata?: Record<string, unknown> | null;
+};
+
+export type AiOperationsReportResponse = {
+  status: string;
+  report: {
+    summary: {
+      total_events: number;
+      success_count: number;
+      failure_count: number;
+      fallback_count: number;
+      success_rate: number | null;
+      avg_duration_ms: number | null;
+    };
+    counts: {
+      by_action: Record<string, number>;
+      by_adapter: Record<string, number>;
+      by_primary_error_reason: Record<string, number>;
+    };
+    recent_operations: AiOperationReportItem[];
+    recent_failures: AiOperationReportItem[];
+  };
 };
 
 export type AnomalyAnalysisResponse = {

@@ -1,6 +1,6 @@
 # Phase 7 Execution Backlog
 
-Updated: April 9, 2026
+Updated: April 10, 2026
 
 ## Purpose
 
@@ -86,6 +86,13 @@ Primary files:
 - `frontend/src/pages/logs/LogsPage.tsx`
 - `FEATURE_ACCEPTANCE_CRITERIA.md`
 
+Status:
+
+- Completed on April 10, 2026
+- Saved tenant-scoped log investigations now persist filter snapshots, pinned source/entry context, notes, and last match counts
+- The SPA logs page now supports saving, restoring, and updating investigations as part of the operator workflow
+- Targeted logs/backend contract validation, frontend production build validation, and fresh migration upgrade validation are on record
+
 ### P0-C: OIDC External Maturity
 
 Goal:
@@ -106,6 +113,13 @@ Primary files:
 - `ENTERPRISE_AUTH_ROADMAP_DECISION.md`
 - `frontend/src/pages/tenants/TenantsPage.tsx`
 
+Status:
+
+- Completed on April 10, 2026
+- Tenant-scoped OIDC providers now support discovery metadata refresh, bounded external code exchange, userinfo-backed claim fetches, and persisted discovery/auth status visibility
+- The SPA tenant admin surface now supports discovery-aware provider setup and metadata refresh actions for external providers
+- Dedicated OIDC maturity regression coverage, frontend production build validation, and fresh migration upgrade validation are on record
+
 ---
 
 ## P1
@@ -122,6 +136,14 @@ Deliverables:
 - stronger crash/exception investigation flow
 - clearer trend and score review UX
 
+Status:
+
+- Completed on April 10, 2026
+- Reliability runs now support richer filtering by dump and error reason, plus latest-per-type reporting
+- Operator-facing reliability reporting now includes aggregate summaries, recent failures, latest score/trend/prediction views, and related crash investigation runs
+- The SPA reliability page now exposes operator summary panels, recent failures, crash timelines, and related-run drill-down flows
+- Dedicated reliability operator V2 regression coverage, frontend production build validation, and fresh migration upgrade validation are on record
+
 ### P1-B: AI / Ollama Operational Maturity
 
 Goal:
@@ -134,6 +156,13 @@ Deliverables:
 - provider/fallback visibility
 - admin/operator diagnostics around inference behavior
 
+Status:
+
+- Completed on April 10, 2026
+- Added tenant-scoped `/api/ai/operations/report` diagnostics built from live AI audit history
+- AI SPA now surfaces operational summary cards, provider/fallback visibility, recent operations, and recent failures
+- Targeted backend AI suites, frontend production build, and fresh migration upgrade validation are on record
+
 ### P1-C: Quota Expansion And Reporting
 
 Goal:
@@ -145,6 +174,14 @@ Deliverables:
 - additional quota domains if justified
 - better usage reporting/admin visibility
 - clearer acceptance criteria for quotaed resources
+
+Status:
+
+- Completed on April 11, 2026
+- Expanded quota coverage to additional live domains: `alert_rules` and `oidc_providers`
+- Added tenant-scoped quota health reporting with usage percentage, near-limit/over-limit status, and recent enforcement visibility
+- The SPA tenant admin page now shows quota summary cards and recent enforcement events instead of only the basic usage table
+- Targeted backend quota/reporting validation and frontend production build validation are on record
 
 ---
 
@@ -180,13 +217,13 @@ Deliverables:
 
 Start with:
 
-### `P0-B: Logs Investigation V2`
+### `P2-A: Billing Provider Boundary Prep`
 
 Why this slice:
 
-- logs is one of the clearest remaining product-depth opportunities
-- the repo now has a fresh validation baseline, so deeper product work can proceed safely
-- this continues a partial-but-real area instead of opening another foundation track
+- quota expansion and reporting are now implemented and validated
+- the next most natural step is preparing the billing-provider boundary on top of the existing commercial/quota models
+- this continues the same commercial/platform-control track without reopening earlier foundations
 
 ---
 
@@ -195,5 +232,5 @@ Why this slice:
 Phase 7 should be considered underway once:
 
 - the fresh rebaseline is recorded
-- one `P0` slice is active with dedicated regression proof
+- one post-rebaseline `P0` slice is completed with dedicated regression proof
 - tracker and plan point to this backlog instead of Phase 6 as the active next-cycle source
