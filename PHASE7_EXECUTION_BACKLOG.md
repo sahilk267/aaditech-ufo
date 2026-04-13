@@ -1,6 +1,6 @@
 # Phase 7 Execution Backlog
 
-Updated: April 10, 2026
+Updated: April 13, 2026
 
 ## Purpose
 
@@ -199,6 +199,14 @@ Deliverables:
 - stronger plan/license lifecycle semantics
 - docs and acceptance updates
 
+Status:
+
+- Completed on April 11, 2026
+- Added a tenant-scoped billing provider boundary draft with supported-provider capabilities, sync-readiness flags, and outbound contract preview data
+- Tightened commercial patch semantics around plan status, billing cycle, provider name, license status, enforcement mode, and ISO date fields
+- The SPA tenant admin surface now shows provider readiness, supported-provider capabilities, and lifecycle semantics
+- Targeted backend billing-boundary validation and frontend production build validation are on record
+
 ### P2-B: Documentation Truth Sweep
 
 Goal:
@@ -211,19 +219,26 @@ Deliverables:
 - archive or flag stale sections
 - cleaner onboarding/document navigation
 
+Status:
+
+- Completed on April 13, 2026
+- Refreshed the docs index so it now clearly separates current source-of-truth files from historical snapshots and planning references
+- Updated `README.md`, `FRONTEND_PHASE_1_TO_5_TRACKING.md`, and `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` so their status framing matches the current Phase 7 reality
+- Added explicit historical framing to the April 9 repo rebaseline snapshot to reduce trust drift during onboarding and review
+
 ---
 
 ## Suggested First Working Slice
 
 Start with:
 
-### `P2-A: Billing Provider Boundary Prep`
+### `Phase 7 Closeout Rebaseline And Next-Cycle Backlog Refresh`
 
 Why this slice:
 
-- quota expansion and reporting are now implemented and validated
-- the next most natural step is preparing the billing-provider boundary on top of the existing commercial/quota models
-- this continues the same commercial/platform-control track without reopening earlier foundations
+- Phase 7 implementation slices are now complete
+- the repo now benefits more from a fresh rebaseline and next-cycle planning refresh than from another ad hoc feature slice
+- the documentation truth sweep reduced drift, so the next backlog can start from a cleaner base
 
 ---
 

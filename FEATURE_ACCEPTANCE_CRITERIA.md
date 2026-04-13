@@ -203,6 +203,28 @@ Primary evidence:
 
 ---
 
+## Commercial Provider Boundary
+
+Current status: `PARTIAL`
+
+Acceptance criteria for `IMPLEMENTED`:
+- Tenant admins can inspect a supported-provider boundary without binding the product to one billing vendor too early.
+- Commercial responses expose sync-readiness and outbound contract preview data for customer/subscription/license layers.
+- Plan, billing, and license lifecycle fields validate against bounded semantics instead of behaving as an untyped draft blob.
+- The SPA admin surface exposes provider readiness and supported-provider capability visibility.
+- Regression coverage proves both successful commercial draft updates and invalid lifecycle/provider values.
+
+Current blockers:
+- no real provider adapter execution or webhook/invoice reconciliation path exists yet
+- no production billing sync job or contract enforcement loop exists yet
+
+Primary evidence:
+- `tests/test_phase6_commercial_preparation.py`
+- `tests/test_phase7_billing_provider_boundary.py`
+- `frontend/src/pages/tenants/TenantsPage.tsx`
+
+---
+
 ## How To Use This File
 
 - Move a feature to `IMPLEMENTED` only when every acceptance bullet for that area is true in the repo.

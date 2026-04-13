@@ -165,8 +165,43 @@ export type TenantCommercialResponse = {
       enforcement_mode: string;
       expires_at?: string | null;
       metadata?: Record<string, unknown>;
+      };
+      contract_boundaries: Record<string, string>;
+      provider_boundary: {
+        current_provider: string;
+        provider_capabilities: Record<string, unknown>;
+        supported_providers: Record<string, Record<string, unknown>>;
+        sync_readiness: {
+          customer_ready: boolean;
+          subscription_ready: boolean;
+          license_ready: boolean;
+          can_sync_customer: boolean;
+          can_sync_subscription: boolean;
+          can_sync_license: boolean;
+        };
+        outbound_contract_preview: {
+          customer: Record<string, unknown>;
+          subscription: Record<string, unknown>;
+          license: Record<string, unknown>;
+        };
+      };
+      lifecycle_semantics: {
+        allowed_plan_statuses: string[];
+        allowed_billing_cycles: string[];
+        allowed_license_statuses: string[];
+        allowed_enforcement_modes: string[];
+      };
     };
-    contract_boundaries: Record<string, string>;
+  };
+
+export type TenantCommercialProviderBoundaryResponse = {
+  status: string;
+  provider_boundary: {
+    current_provider: string;
+    provider_capabilities: Record<string, unknown>;
+    supported_providers: Record<string, Record<string, unknown>>;
+    sync_readiness: Record<string, boolean>;
+    outbound_contract_preview: Record<string, Record<string, unknown>>;
   };
 };
 

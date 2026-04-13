@@ -1,593 +1,127 @@
-# 📚 AADITECH UFO - DOCUMENTATION INDEX
+# AADITECH UFO - Documentation Index
 
-**Guide to All Project Documentation** | Updated March 31, 2026 for Phase 5 product-surface implementation
+Updated: April 13, 2026
 
----
+## Purpose
 
-## 🎯 START HERE: QUICK NAVIGATION
+This file is the navigation map for the repository's documentation.
 
-### If you want to...
+Use it to answer two questions quickly:
 
-| Goal | Document | Time |
-|------|----------|------|
-| **🎯 IMPLEMENTATION REFERENCE** | [IMPLEMENTATION_REFERENCE_GUIDE.md](IMPLEMENTATION_REFERENCE_GUIDE.md) | 10 min |
-| **See project vision & goals** | [README.md](README.md) (92 features) | 20 min |
-| **Control Panel operations guide** | [README.md](README.md) → "Unified Control Panel (/features)" | 8 min |
-| **New frontend migration blueprint** | [FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md](FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md) | 15 min |
-| **Frontend developer guide** | [frontend/README.md](frontend/README.md) | 8 min |
-| **Know what to do this week** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
-| **Track implementation progress** | [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) | 5 min |
-| **Start backend correctly** | [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md) | 8 min |
-| **Run first staging deploy checks** | [STAGING_VERIFICATION_CHECKLIST.md](STAGING_VERIFICATION_CHECKLIST.md) | 8 min |
-| **Rollback SPA wave safely** | [SPA_WAVE_ROLLBACK_CHECKLIST.md](SPA_WAVE_ROLLBACK_CHECKLIST.md) | 6 min |
-| **Know feature exit criteria** | [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md) | 8 min |
-| **Review Phase 4 remediation todos** | [PHASE4_REVIEW_REMEDIATION_TODOS.md](PHASE4_REVIEW_REMEDIATION_TODOS.md) | 5 min |
-| **Review Phase 5 product gaps** | [PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md](PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md) | 10 min |
-| **Decide agent enrollment model** | [AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md](AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md) | 8 min |
-| **Decide tenant secret model** | [TENANT_SECRET_MANAGEMENT_DECISION.md](TENANT_SECRET_MANAGEMENT_DECISION.md) | 8 min |
-| **Read supportability policy draft** | [PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md](PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md) | 8 min |
-| **Choose realtime transport** | [REALTIME_TRANSPORT_DECISION.md](REALTIME_TRANSPORT_DECISION.md) | 6 min |
-| **Review enterprise auth roadmap** | [ENTERPRISE_AUTH_ROADMAP_DECISION.md](ENTERPRISE_AUTH_ROADMAP_DECISION.md) | 7 min |
-| **Review commercial roadmap** | [COMMERCIAL_PLATFORM_ROADMAP_DECISION.md](COMMERCIAL_PLATFORM_ROADMAP_DECISION.md) | 7 min |
-| **Run restore-drill ops checklist** | [RESTORE_DRILL_CHECKLIST.md](RESTORE_DRILL_CHECKLIST.md) | 6 min |
-| **Read full repo rebaseline** | [FULL_REPO_REBASELINE_REPORT_2026_04_09.md](FULL_REPO_REBASELINE_REPORT_2026_04_09.md) | 8 min |
-| **Read Phase 7 backlog** | [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md) | 8 min |
-| **Understand architecture** | [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) | 10 min |
-| **See feature details** | [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) | 20 min |
-| **Map all 157 features** | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) | 10 min |
-| **Weekly tasks** | [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) | 5 min |
-| **See the older baseline snapshot** | [ARCHIVE/README_CURRENT_STATE.md](ARCHIVE/README_CURRENT_STATE.md) | 10 min |
-| **Deep dive analysis** | [ARCHIVE/](ARCHIVE/) | 30 min |
+1. Which documents are the current source of truth?
+2. Which documents are historical or planning references?
 
 ---
 
-## 🎯 FOR IMPLEMENTATION (THE ESSENTIALS)
+## Start Here
 
-**During actual development, use these 21 files:**
+If you need the current repo reality, read these first:
 
-Status vocabulary source of truth:
-- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
-- `PROGRESS_TRACKER.md`
-- `FEATURE_COVERAGE_MAP.md`
-- `FEATURE_ACCEPTANCE_CRITERIA.md`
-
-| File | Purpose | When | Update |
-|------|---------|------|--------|
-| **IMPLEMENTATION_REFERENCE_GUIDE.md** | 🗺️ File usage map (START HERE FIRST!) | Before any work | Never |
-| **WEEK_BY_WEEK_CHECKLIST.md** | 📋 Today's tasks & step-by-step | Every morning | Weekly (plan) |
-| **PROGRESS_TRACKER.md** | ✅ Track completed functions | After each task | 2-3x daily |
-| **BACKEND_STARTUP_RUNBOOK.md** | Backend local/dev/test startup | When running backend or fixing startup | When startup flow changes |
-| **STAGING_VERIFICATION_CHECKLIST.md** | First real staging deploy checklist | Before staging deploys and promotions | When deployment flow changes |
-| **FEATURE_ACCEPTANCE_CRITERIA.md** | Feature exit criteria by product area | During Phase 3 productization and review | When delivery definition changes |
-| **PHASE4_REVIEW_REMEDIATION_TODOS.md** | Phase 4 deployment/runtime remediation checklist | During deployment hardening and review follow-up | When Phase 4 findings change |
-| **PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md** | Phase 5 product-gap review and decision backlog | During overlooked-feature review and roadmap clarification | When Phase 5 decisions change |
-| **AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md** | Agent lifecycle and enrollment decision | During agent platform planning and rollout preparation | When agent identity decisions change |
-| **TENANT_SECRET_MANAGEMENT_DECISION.md** | Tenant secret ownership, storage, and rotation decision | During tenant integration/security planning | When tenant secret design changes |
-| **PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md** | Supportability baseline for backup, retention, and platform observability | During operations/readiness planning | When supportability policy changes |
-| **REALTIME_TRANSPORT_DECISION.md** | Realtime transport decision across polling, SSE, and WebSocket | During live-feed planning and future frontend/backend refresh design | When transport strategy changes |
-| **ENTERPRISE_AUTH_ROADMAP_DECISION.md** | Enterprise auth staging plan for MFA, OIDC, and SAML | During auth roadmap and tenant-identity planning | When identity roadmap changes |
-| **COMMERCIAL_PLATFORM_ROADMAP_DECISION.md** | Commercial controls roadmap for entitlements, quotas, and billing | During packaging, licensing, and platform-controls planning | When commercial roadmap changes |
-| **RESTORE_DRILL_CHECKLIST.md** | Restore-drill execution and evidence checklist | During backup verification and operational drills | When restore-drill flow changes |
-| **FULL_REPO_REBASELINE_REPORT_2026_04_09.md** | Fresh repo-wide status rebaseline and next-step summary | At phase transitions or before choosing the next execution track | When a new repo-wide rebaseline is created |
-| **PHASE7_EXECUTION_BACKLOG.md** | Practical P0/P1/P2 backlog for the next execution cycle | When choosing the next implementation track after rebaseline | When the next-cycle backlog changes |
-| **SPA_WAVE_ROLLBACK_CHECKLIST.md** | SPA redirect rollback checklist | Before/after SPA wave activation | When redirect scope or rollout flow changes |
-| **UPDATED_ARCHITECTURE.md** | 🏗️ System design reference | When coding | Rarely |
-| **README.md** | 📚 Feature specifications | When figuring out what a feature does | Rarely |
-| **FEATURE_COVERAGE_MAP.md** | 📍 Feature status dashboard | Weekly review | Weekly |
-
-**Read this first**: [IMPLEMENTATION_REFERENCE_GUIDE.md](IMPLEMENTATION_REFERENCE_GUIDE.md)
+| Need | Document |
+| --- | --- |
+| Current active execution plan | [CURRENT_PHASE_WISE_PROGRESS_PLAN.md](CURRENT_PHASE_WISE_PROGRESS_PLAN.md) |
+| Real-time progress and latest validated slice | [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) |
+| Current execution backlog | [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md) |
+| Current repo-wide status snapshot | [FULL_REPO_REBASELINE_REPORT_2026_04_09.md](FULL_REPO_REBASELINE_REPORT_2026_04_09.md) |
+| Feature status vocabulary and coverage | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) |
+| Feature exit criteria | [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md) |
+| Backend startup / migration / runtime flow | [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md) |
+| Frontend local dev / build / deployment notes | [frontend/README.md](frontend/README.md) |
+| Staging deploy checklist | [STAGING_VERIFICATION_CHECKLIST.md](STAGING_VERIFICATION_CHECKLIST.md) |
+| SPA rollback checklist | [SPA_WAVE_ROLLBACK_CHECKLIST.md](SPA_WAVE_ROLLBACK_CHECKLIST.md) |
 
 ---
 
-## 📁 ACTIVE WORKING DOCUMENTS (Root Level)
+## Current Source Of Truth
 
-### 🟢 PRIMARY DOCUMENTS
+Use these during active development and review:
 
-#### 0. **IMPLEMENTATION_REFERENCE_GUIDE.md** (START HERE FOR DEVELOPERS)
-- **Purpose**: Map of which files to read/update during implementation
-- **Contains**:
-  - Quick reference tables (what to read/update)
-  - Implementation workflow steps
-  - File-by-file reference guide
-  - Decision flow (which file answers what question)
-  - Update frequency for each document
-  - How to track progress properly
-- **Audience**: Developers (ESSENTIAL READING)
-- **Update Frequency**: Never (reference only)
-- **Use**: FIRST thing you read when starting implementation
+- [CURRENT_PHASE_WISE_PROGRESS_PLAN.md](CURRENT_PHASE_WISE_PROGRESS_PLAN.md)
+- [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md)
+- [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md)
+- [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md)
+- [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md)
+- [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md)
+- [frontend/README.md](frontend/README.md)
+- [STAGING_VERIFICATION_CHECKLIST.md](STAGING_VERIFICATION_CHECKLIST.md)
+- [SPA_WAVE_ROLLBACK_CHECKLIST.md](SPA_WAVE_ROLLBACK_CHECKLIST.md)
 
-#### 1. **README.md** (THE VISION DOCUMENT - 92 FEATURES)
-- **Purpose**: The comprehensive 92-feature enterprise vision, prefaced with the current implementation milestone summary
-- **Contains**:
-  - Project overview and goals
-  - All major platform capabilities
-  - System architecture vision
-  - Security model
-  - Unified Control Panel (`/features`) usage and endpoint inventory
-  - All 92 planned features
-  - Deployment modes
-  - Integration points
-- **Audience**: Everyone (to understand what we're building)
-- **Update Frequency**: Reference document (rarely changes)
-- **Use**: Understand the complete vision
+Rule:
 
-#### 2. **MASTER_ROADMAP.md** (EXECUTION PLAN - 157 FEATURES)
-- **Purpose**: Comprehensive 25-week implementation plan
-- **Contains**: 
-  - Executive summary of execution approach
-  - All 157 features consolidated (92 original + 65 new)
-  - Phase-by-phase breakdown (0-4)
-  - Detailed week-by-week timeline
-  - Architecture overview
-  - Security requirements
-  - Database schema
-  - Team composition
-- **Audience**: Everyone (managers, developers, architects)
-- **Update Frequency**: Weekly
-- **Use**: When you need THE complete execution picture
-
-#### 3. **WEEK_BY_WEEK_CHECKLIST.md** (DAILY EXECUTION GUIDE)
-- **Purpose**: Day-to-day implementation tasks
-- **Contains**:
-  - Week 1-4 detailed daily checklist
-  - Deliverables for each week
-  - Dependencies and prerequisites
-  - Testing requirements
-  - Git commit messages
-- **Audience**: Development team
-- **Update Frequency**: Every Sunday for next week
-- **Use**: Every morning, check what's on today's list
-
-#### 4. **PROGRESS_TRACKER.md** (IMPLEMENTATION PROGRESS DASHBOARD)
-- **Purpose**: Real-time tracking of development progress
-- **Contains**:
-  - Current milestone summary for delivered Phase 0 and Phase 1 work
-  - Control Panel delivery updates (user creation + agent build/upload workflows)
-  - Phase-wise feature & function breakdown (all 157 features)
-  - Feature completion matrix (status by phase)
-  - Completion checklist (all 25 weeks)
-  - Progress dashboard (qualitative delivery status)
-  - How-to update guide
-- **Audience**: Development team (MOST USED DURING CODING)
-- **Update Frequency**: 2-3 times daily (after each task)
-- **Use**: Track which functions are completed, daily progress
-
-#### 5. **SETUP_GUIDE.md** (LOCAL ENVIRONMENT SETUP)
-- **Purpose**: Quick reference for developers
-- **Contains**:
-  - Setup instructions
-  - Common commands
-  - Debugging tips
-  - Environment variables
-  - Testing commands
-- **Audience**: All developers
-- **Update Frequency**: As needed (when new patterns emerge)
-- **Use**: Quick lookup for commands/setup
-
-#### 5A. **FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md**
-- **Purpose**: Complete implementation blueprint for the new Vite SPA frontend
-- **Contains**:
-  - Recommended stack and dependency versions
-  - Route map and module boundaries
-  - API-to-page mapping
-  - Database dependency map
-  - Auth/RBAC/tenant handling strategy
-  - Migration plan and zero-conflict rollout rules
-  - Required backend additions for full SPA replacement
-- **Audience**: Frontend developers, architects, platform leads
-- **Update Frequency**: When frontend scope or backend contracts change
-- **Use**: Primary plan for replacing the legacy template UI with SPA
-
-#### 5B. **FRONTEND_PHASE_1_TO_5_TRACKING.md**
-- **Purpose**: Live status tracking for frontend Phase 1 to Phase 5 migration progress
-- **Contains**:
-  - Phase-wise status (complete/in-progress/not-started)
-  - Progress percentages by phase
-  - Completed implementation summary
-  - Pending tasks and immediate next actions
-- **Audience**: Frontend developers, PM/engineering leads
-- **Update Frequency**: After each major frontend implementation milestone
-- **Use**: Quick checkpoint file for current migration state and next priorities
-
-#### 5C. **frontend/README.md**
-- **Purpose**: Project-specific frontend developer and deployment guide
-- **Contains**:
-  - local dev/build/test commands
-  - `/app` deployment assumptions
-  - auth/tenant/RBAC notes
-  - key frontend file map
-  - current validation baseline
-- **Audience**: Frontend developers, reviewers, operators validating SPA behavior
-- **Update Frequency**: When frontend runtime behavior, commands, or validation baselines change
-- **Use**: First stop when working directly in `frontend/`
+- Prefer these files over older milestone snapshots when there is wording drift.
 
 ---
 
-### 🟡 FEATURE & ARCHITECTURE DOCUMENTS
+## Current Strategy And Decision Docs
 
-#### 6. **ADVANCED_WINDOWS_TROUBLESHOOTING.md** (65 WINDOWS FEATURES)
-- **Purpose**: Define 65 new Windows troubleshooting features
-- **Contains**:
-  - Feature breakdown (Event Logs, Reliability, Crashes, etc.)
-  - Code examples for each feature
-  - Implementation timeline (Weeks 13-16)
-  - Effort estimates
-  - Cost-benefit analysis
-  - Competitive positioning
-- **Audience**: Feature architects, senior developers
-- **Update Frequency**: Finalized (reference only)
-- **Use**: Understand what troubleshooting features will be built
+Use these when working on platform direction or deeper product changes:
 
-#### 7. **UPDATED_ARCHITECTURE.md**
-- **Purpose**: Complete system architecture with troubleshooting
-- **Contains**:
-  - Enhanced system diagrams
-  - Original vs updated architecture comparison
-  - Data flow examples
-  - API endpoint expansion (30+ endpoints)
-  - Database schema for troubleshooting
-  - Deployment architecture
-  - Scalability analysis
-- **Audience**: Architects, DevOps, senior developers
-- **Update Frequency**: When architecture changes
-- **Use**: Understand system design and integration points
-
-#### 8. **FEATURE_COVERAGE_MAP.md**
-- **Purpose**: Map all 157 features to phases/weeks
-- **Contains**:
-  - 92 original features (categorized)
-  - 65 new troubleshooting features
-  - Feature status (implemented/planned/in-progress)
-  - Phase allocation
-  - Week assignment
-  - Implementation notes
-- **Audience**: Everyone wants to verify features are covered
-- **Update Frequency**: Weekly (as features progress)
-- **Use**: "Are we building feature X?" → Check here
+- [PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md](PHASE5_PRODUCT_GAPS_REVIEW_REPORT.md)
+- [AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md](AGENT_IDENTITY_AND_ENROLLMENT_DECISION.md)
+- [TENANT_SECRET_MANAGEMENT_DECISION.md](TENANT_SECRET_MANAGEMENT_DECISION.md)
+- [PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md](PLATFORM_SUPPORTABILITY_POLICY_DRAFT.md)
+- [REALTIME_TRANSPORT_DECISION.md](REALTIME_TRANSPORT_DECISION.md)
+- [ENTERPRISE_AUTH_ROADMAP_DECISION.md](ENTERPRISE_AUTH_ROADMAP_DECISION.md)
+- [COMMERCIAL_PLATFORM_ROADMAP_DECISION.md](COMMERCIAL_PLATFORM_ROADMAP_DECISION.md)
+- [RESTORE_DRILL_CHECKLIST.md](RESTORE_DRILL_CHECKLIST.md)
 
 ---
 
-### ⚙️ CODE & IMPLEMENTATION FILES
+## Architecture And Vision
 
-These are the actual Python files you will modify during implementation:
+Use these to understand the larger product direction, not day-to-day status:
 
-#### **server/app.py** (Main Flask Application)
-- **Current**: App factory, blueprint registration, tenant context, auth context, and template globals
-- **What you'll do next**: 
-  - Extend feature routes for later phases
-  - Keep auth and tenant bootstrap aligned with new modules
-  - Add future alerting, automation, and AI integration points
-
-#### **agent/agent.py** (Windows Monitoring Agent)
-- **Current**: 150 lines
-- **What you'll do**:
-  - Add Windows Event Logs collection (Week 13)
-  - Add Reliability history collection (Week 15)
-  - Add Driver monitoring (Week 14)
-  - Add Crash analysis (Week 15)
-
-#### **server/models.py** (Database Models)
-- **Current**: System monitoring plus Organization, User, Role, Permission, and RevokedToken models
-- **What you'll do next**:
-  - Add alerting models (Phase 2)
-  - Add automation models (Phase 2)
-  - Add Windows troubleshooting models (Phase 2)
-
-#### **server/forms.py** (Input Validation)
-- **Current**: Minimal validation surface; more schemas are still needed
-- **What you'll do next**:
-  - Expand validation coverage for new API endpoints in later phases
-
-#### **server/config.py** (Configuration Management)
-- **Current**: Environment-based Flask config plus session and JWT settings
-- **What you'll do next**:
-  - Add Redis/Celery config (Week 8)
-  - Add LLM/Ollama config (Week 16)
-
-#### **KEY FILES ADDED DURING PHASE 0-1**
-```
-server/
-├─ auth.py                  (API key auth, JWT auth, browser session auth, RBAC decorators)
-├─ schemas.py               (Validation support)
-├─ extensions.py            (Flask db, migrate, limiter)
-├─ blueprints/
-│  ├─ web.py               (Browser routes, login/logout, protected UI actions)
-│  └─ api.py               (Tenant admin and JWT auth APIs plus ingestion routes)
-├─ services/
-│  ├─ system_service.py    (System monitoring logic)
-│  ├─ backup_service.py    (Backup/restore logic)
-│  ├─ alert_service.py     (planned for Phase 2)
-│  ├─ automation_service.py (planned for Phase 2)
-│  └─ windows_service.py   (planned for Phase 2)
-
-tests/
-├─ test_tenant_context.py
-├─ test_tenant_admin_api.py
-├─ test_rbac_models.py
-├─ test_auth_jwt_rbac.py
-├─ test_web_management_rbac.py
-└─ test_web_session_auth.py
-
-migrations/                 (Initial and follow-up schema migrations)
-├─ versions/
-│  ├─ 001_initial_schema.py
-│  ├─ 002_multi_tenant.py
-│  ├─ 003_rbac_models.py
-│  └─ 004_jwt_revoked_tokens.py
-```
+- [README.md](README.md)
+- [MASTER_ROADMAP.md](MASTER_ROADMAP.md)
+- [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md)
+- [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md)
+- [IMPLEMENTATION_REFERENCE_GUIDE.md](IMPLEMENTATION_REFERENCE_GUIDE.md)
+- [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md)
 
 ---
 
-### 🔗 REFERENCE & SUPPORT DOCUMENTS
+## Frontend-Specific Docs
 
-#### 9. **REMOVED_FEATURES.md**
-- **Purpose**: User-facing project documentation
-- **Contains**:
-  - Project overview
-  - Feature summary
-  - Installation instructions
-  - Configuration guide
-  - API documentation
-  - Troubleshooting guide
-- **Audience**: End users, new team members
-- **Update Frequency**: Every sprint
-- **Use**: Deployment instructions & user guide
+- [FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md](FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md)
+- [FRONTEND_PHASE_1_TO_5_TRACKING.md](FRONTEND_PHASE_1_TO_5_TRACKING.md)
+- [FRONTEND_PHASE_5_CUTOVER_PLAYBOOK.md](FRONTEND_PHASE_5_CUTOVER_PLAYBOOK.md)
+- [FRONTEND_PHASE_5_COMPATIBILITY_RETIREMENT_CRITERIA.md](FRONTEND_PHASE_5_COMPATIBILITY_RETIREMENT_CRITERIA.md)
+- [frontend/README.md](frontend/README.md)
 
-#### 9. **REMOVED_FEATURES.md**
-- **Purpose**: Track features removed from original scope
-- **Contains**:
-  - 19+ features documented but not implemented
-  - Why they were removed
-  - Future consideration
-- **Audience**: Product managers, stakeholders
-- **Update Frequency**: Reference only
-- **Use**: Understanding scope changes
+Note:
+
+- `FRONTEND_PHASE_1_TO_5_TRACKING.md` is now primarily a historical frontend migration record. For the current active state, check [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) and [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md).
 
 ---
 
-## 📦 ARCHIVE/ (Supporting Documents & Historical)
+## Deployment And Operations
 
-**Location**: `ARCHIVE/`
-
-All detailed analysis, decision matrices, supporting documents, and implementation snapshots are archived here.
-
-### Archive Contents:
-
-```
-ARCHIVE/
-├─ README_CURRENT_STATE.md           - Older baseline snapshot with a current-state note at the top
-├─ AUDIT_REPORT.md                   - Deep security audit
-├─ AUDIT_SUMMARY.md                  - Audit executive summary
-├─ IMPLEMENTATION_SUMMARY.md          - Consolidated into MASTER_ROADMAP
-├─ START_HERE.md                      - Replaced by DOCUMENTATION_INDEX
-├─ START_HERE_STRATEGIC_PLAN.md       - Replaced by MASTER_ROADMAP
-├─ STRATEGIC_DECISION_MATRIX.md       - Decision framework
-├─ PHASE_WISE_IMPLEMENTATION_PLAN.md  - Detailed phase planning
-├─ FEATURE_TIMELINE.md                - Visual schedule
-├─ EXPANSION_SUMMARY.md               - Feature expansion analysis
-└─ REMOVED_FEATURES.md                - Analysis of scope changes
-```
-
-**When to use ARCHIVE**:
-- 📖 **Deep dive analysis**: Need security audit or planning details?
-- 🔍 **Historical context**: Understanding why decisions were made?
-- 📚 **Reference material**: Getting detailed analysis on a topic?
-- ✅ **Verification**: Cross-checking past decisions?
-- 📷 **Snapshot**: See what was implemented at specific point in time?
+- [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md)
+- [STAGING_VERIFICATION_CHECKLIST.md](STAGING_VERIFICATION_CHECKLIST.md)
+- [SPA_WAVE_ROLLBACK_CHECKLIST.md](SPA_WAVE_ROLLBACK_CHECKLIST.md)
+- [PHASE4_REVIEW_REMEDIATION_TODOS.md](PHASE4_REVIEW_REMEDIATION_TODOS.md)
+- [RESTORE_DRILL_CHECKLIST.md](RESTORE_DRILL_CHECKLIST.md)
+- [DOCKER_DEPLOYMENT_GUIDE.md](DOCKER_DEPLOYMENT_GUIDE.md)
 
 ---
 
-## 🎯 DOCUMENTATION HIERARCHY
+## Historical Snapshots
 
-### Consolidation Rationale
+These are useful context, but they are not the primary truth source for current execution:
 
-**Before** (15+ documents): 
-- ❌ Confusion - which is the source of truth?
-- ❌ Contradictions - different docs said different things
-- ❌ Maintenance nightmare - update in multiple places
-- ❌ Overhead - too much reading
+- [ARCHIVE/README_CURRENT_STATE.md](ARCHIVE/README_CURRENT_STATE.md)
+- [FULL_REPO_REBASELINE_REPORT_2026_04_01.md](FULL_REPO_REBASELINE_REPORT_2026_04_01.md)
+- [FULL_REPO_REBASELINE_REPORT_2026_04_09.md](FULL_REPO_REBASELINE_REPORT_2026_04_09.md)
 
-**After** (8 active + 10 archived):
-- ✅ Clear hierarchy: MASTER_ROADMAP is truth
-- ✅ Single source: Information in one place
-- ✅ Working docs: Only active implementation guides at root
-- ✅ Organized: Archive for reference
-- ✅ Efficient: Know exactly where to look
+Interpretation rule:
 
-### Document Update Protocol
-
-```
-PRIORITY 1 (Update immediately if scope/timeline changes):
-└─ MASTER_ROADMAP.md
-
-PRIORITY 2 (Update weekly for next week's tasks):
-└─ WEEK_BY_WEEK_CHECKLIST.md
-
-PRIORITY 3 (Update as features progress):
-└─ FEATURE_COVERAGE_MAP.md
-
-PRIORITY 4 (Update as needed):
-├─ QUICK_START_GUIDE.md
-├─ UPDATED_ARCHITECTURE.md
-├─ ADVANCED_WINDOWS_TROUBLESHOOTING.md
-└─ README.md
-
-PRIORITY 5 (Historical/Reference - rarely update):
-├─ ARCHIVE/* files
-└─ README_OLD.md
-```
+- If a historical snapshot conflicts with the active plan or tracker, follow the active plan/tracker.
 
 ---
 
-## 👥 ROLES & DOCUMENTATION
+## Documentation Truth Rules
 
-### Project Manager / Stakeholder
-**Read**:
-1. [MASTER_ROADMAP.md](MASTER_ROADMAP.md) - Timeline & budget (~15 min)
-2. [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) - Feature completion (~10 min)
-3. [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) - Weekly progress (~5 min)
-
-**Action**: Verify roadmap, approve scope, manage team allocation
-
----
-
-### Development Team Lead
-**Read**:
-1. [MASTER_ROADMAP.md](MASTER_ROADMAP.md) - Full context (~20 min)
-2. [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) - This week's tasks (~10 min)
-3. [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) - System design (~15 min)
-4. [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) - Feature specs (~20 min)
-
-**Action**: Plan sprints, assign tasks, verify technical approach
-
----
-
-### Individual Developer (Starting Now)
-**Read**:
-1. [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) - Setup (~5 min)
-2. [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) - This week (~10 min)
-3. [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) - Architecture (~15 min)
-4. [README.md](README.md) - API docs (~10 min)
-
-**Action**: Setup environment, start Week 1 tasks
-
----
-
-### DevOps / Infrastructure
-**Read**:
-1. [MASTER_ROADMAP.md](MASTER_ROADMAP.md) - Phases 3-4 section (~10 min)
-2. [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) - Deployment section (~10 min)
-3. [QUICK_START_GUIDE.md](QUICK_START_GUIDE.md) - Environment setup (~5 min)
-
-**Action**: Plan infrastructure, prepare Docker/K8s setup
-
----
-
-### QA / Testing
-**Read**:
-1. [MASTER_ROADMAP.md](MASTER_ROADMAP.md) - Success criteria (~10 min)
-2. [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) - Weekly deliverables (~10 min)
-3. [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) - Feature checklist (~10 min)
-
-**Action**: Define test plans, create test cases, verify acceptance
-
----
-
-## 🔄 WEEKLY MAINTENANCE
-
-### Every Monday Morning:
-- [ ] Review [MASTER_ROADMAP.md](MASTER_ROADMAP.md) for week ahead
-- [ ] Check [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) for progress
-- [ ] Plan sprint based on [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md)
-
-### Every Friday Afternoon:
-- [ ] Update [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) for next week
-- [ ] Update [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) with progress
-- [ ] Note any changes to [MASTER_ROADMAP.md](MASTER_ROADMAP.md) for review
-
-### Every Monthly:
-- [ ] Review [MASTER_ROADMAP.md](MASTER_ROADMAP.md) timeline accuracy
-- [ ] Update any documentation based on learnings
-- [ ] Archive completed phase documentation
-
----
-
-## 📊 DOCUMENTATION STATISTICS
-
-### Active Documents (in Root)
-- **MASTER_ROADMAP.md**: ~15,000 words (comprehensive source)
-- **WEEK_BY_WEEK_CHECKLIST.md**: ~8,000 words (execution guide)
-- **UPDATED_ARCHITECTURE.md**: ~8,000 words (technical design)
-- **ADVANCED_WINDOWS_TROUBLESHOOTING.md**: ~10,000 words (feature spec)
-- **FEATURE_COVERAGE_MAP.md**: ~5,000 words (feature tracking)
-
-- **README.md**: ~5,000 words (user documentation)
-- **REMOVED_FEATURES.md**: ~2,000 words (scope reference)
-
-**Total Active**: ~56,000 words (organized, referenced, current)
-
-### Archive Documents (reference)
-- **9 detailed documents**: ~44,000 words (historical, deep-dive)
-- **Purpose**: Reference, audit trail, detailed analysis
-
-**Total Project Documentation**: ~100,000 words
-
----
-
-## ✅ VERIFICATION CHECKLIST
-
-### Information Consolidation
-
-- [x] All 157 features listed in MASTER_ROADMAP.md
-- [x] Timeline 25 weeks (original 24 + 1 for troubleshooting)
-- [x] Architecture documented in UPDATED_ARCHITECTURE.md
-- [x] Security requirements in MASTER_ROADMAP.md
-- [x] Database schema in MASTER_ROADMAP.md
-- [x] Team composition in MASTER_ROADMAP.md
-- [x] Phase breakdown detailed
-- [x] Week-by-week tasks in CHECKLIST
-- [x] Feature mapping in COVERAGE_MAP
-- [x] No information lost - all in ARCHIVE
-
-### Active Doc Quality
-
-- [x] MASTER_ROADMAP is comprehensive and current
-- [x] WEEK_BY_WEEK_CHECKLIST is actionable
-- [x] README references MASTER_ROADMAP
-- [x] No contradicting information
-- [x] All cross-references valid
-
-### Archive Organization
-
-- [x] All 9 supporting docs moved to ARCHIVE/
-- [x] ARCHIVE INDEX created
-- [x] Git tracking maintained
-- [x] Can restore if needed
-
----
-
-## 🚀 HOW TO USE THIS INDEX
-
-### First Time?
-1. Read this file (you're doing it now!)
-2. Go to [MASTER_ROADMAP.md](MASTER_ROADMAP.md)
-3. Then follow role-specific docs above
-
-### Looking for Something?
-1. Check the **Start Here** table at top
-2. Find your role section
-3. Follow the recommended reading order
-
-### Updating Documentation?
-1. Check **Document Update Protocol**
-2. Edit appropriate document
-3. Update this INDEX if new docs created
-
-### Confused About a Decision?
-1. Check ARCHIVE/STRATEGIC_DECISION_MATRIX.md
-2. Read the reasoning
-3. Reference back to MASTER_ROADMAP.md
-
----
-
-## 📞 QUESTIONS?
-
-| Question | Answer |
-|----------|--------|
-| "What should I work on today?" | → [WEEK_BY_WEEK_CHECKLIST.md](WEEK_BY_WEEK_CHECKLIST.md) |
-| "What's the overall plan?" | → [MASTER_ROADMAP.md](MASTER_ROADMAP.md) |
-| "Are we building feature X?" | → [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) |
-| "How should I set up?" | → [README.md](README.md) |
-| "What's the architecture?" | → [UPDATED_ARCHITECTURE.md](UPDATED_ARCHITECTURE.md) |
-| "Why did we make decision Y?" | → [ARCHIVE/STRATEGIC_DECISION_MATRIX.md](ARCHIVE/STRATEGIC_DECISION_MATRIX.md) |
-| "What features are new?" | → [ADVANCED_WINDOWS_TROUBLESHOOTING.md](ADVANCED_WINDOWS_TROUBLESHOOTING.md) |
-
----
-
-**Version**: 1.1
-**Last Updated**: March 16, 2026  
-**Status**: 🟢 Documentation aligned to the current Phase 1 milestone  
-
-**🎉 No more confusion. Everything in one place. Let's build!** 🚀
-
-
+- Do not treat roadmap or vision language as delivery proof.
+- Do not treat historical rebaseline files as live status without checking the tracker.
+- When a slice lands, update the active plan, tracker, and the most relevant feature-specific doc together.
+- If a document becomes historical, label it clearly instead of silently letting it drift.

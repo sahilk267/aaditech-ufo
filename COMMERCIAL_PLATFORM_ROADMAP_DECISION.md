@@ -76,4 +76,5 @@ Phase C status as of April 9, 2026:
 
 - billing/licensing preparation foundations now exist through `TenantPlan`, `TenantBillingProfile`, and `TenantLicense`
 - tenant-admin APIs now expose a draft commercial profile without coupling entitlements or quotas to billing state
+- provider-boundary drafting now exists through supported-provider capability metadata, sync-readiness reporting, outbound contract preview data, and stronger lifecycle validation semantics
 - external billing-provider integration, invoicing, and hard contract/license enforcement are still intentionally open

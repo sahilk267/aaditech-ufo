@@ -768,6 +768,85 @@ def _get_or_create_tenant_commercial_profile(organization_id: int) -> tuple[Tena
     return plan, billing, license_row
 
 
+def _commercial_provider_catalog() -> dict[str, dict]:
+    return {
+        'manual': {
+            'kind': 'manual',
+            'supports_customer_sync': False,
+            'supports_subscription_sync': False,
+            'supports_license_sync': False,
+        },
+        'stripe': {
+            'kind': 'billing_provider',
+            'supports_customer_sync': True,
+            'supports_subscription_sync': True,
+            'supports_license_sync': False,
+        },
+        'paddle': {
+            'kind': 'billing_provider',
+            'supports_customer_sync': True,
+            'supports_subscription_sync': True,
+            'supports_license_sync': False,
+        },
+        'test_billing_double': {
+            'kind': 'test_double',
+            'supports_customer_sync': True,
+            'supports_subscription_sync': True,
+            'supports_license_sync': True,
+        },
+    }
+
+
+def _build_tenant_commercial_provider_boundary(plan: TenantPlan, billing: TenantBillingProfile, license_row: TenantLicense) -> dict:
+    provider_name = (billing.provider_name or 'manual').strip() or 'manual'
+    provider_catalog = _commercial_provider_catalog()
+    provider_info = provider_catalog.get(provider_name, {
+        'kind': 'unknown',
+        'supports_customer_sync': False,
+        'supports_subscription_sync': False,
+        'supports_license_sync': False,
+    })
+
+    customer_ready = bool(billing.provider_customer_ref or plan.external_customer_ref)
+    subscription_ready = bool(plan.external_subscription_ref)
+    license_ready = bool(license_row.license_status in {'trial', 'active', 'expired', 'suspended'})
+
+    return {
+        'current_provider': provider_name,
+        'provider_capabilities': provider_info,
+        'supported_providers': provider_catalog,
+        'sync_readiness': {
+            'customer_ready': customer_ready,
+            'subscription_ready': subscription_ready,
+            'license_ready': license_ready,
+            'can_sync_customer': bool(provider_info.get('supports_customer_sync') and customer_ready),
+            'can_sync_subscription': bool(provider_info.get('supports_subscription_sync') and subscription_ready),
+            'can_sync_license': bool(provider_info.get('supports_license_sync') and license_ready),
+        },
+        'outbound_contract_preview': {
+            'customer': {
+                'external_customer_ref': billing.provider_customer_ref or plan.external_customer_ref,
+                'billing_email': billing.billing_email,
+                'billing_name': billing.billing_name,
+                'country_code': billing.country_code,
+            },
+            'subscription': {
+                'plan_key': plan.plan_key,
+                'display_name': plan.display_name,
+                'status': plan.status,
+                'billing_cycle': plan.billing_cycle,
+                'external_subscription_ref': plan.external_subscription_ref,
+            },
+            'license': {
+                'license_status': license_row.license_status,
+                'seat_limit': license_row.seat_limit,
+                'enforcement_mode': license_row.enforcement_mode,
+                'expires_at': license_row.expires_at.isoformat() if license_row.expires_at else None,
+            },
+        },
+    }
+
+
 def _serialize_tenant_commercial_profile(organization_id: int) -> dict:
     plan, billing, license_row = _get_or_create_tenant_commercial_profile(organization_id)
     return {
@@ -779,6 +858,13 @@ def _serialize_tenant_commercial_profile(organization_id: int) -> dict:
             'quotas_source': 'tenant_quota_policies',
             'billing_source': 'tenant_plans + tenant_billing_profiles',
             'license_source': 'tenant_licenses',
+        },
+        'provider_boundary': _build_tenant_commercial_provider_boundary(plan, billing, license_row),
+        'lifecycle_semantics': {
+            'allowed_plan_statuses': ['draft', 'trial', 'active', 'past_due', 'suspended', 'canceled'],
+            'allowed_billing_cycles': ['monthly', 'annual', 'usage_based'],
+            'allowed_license_statuses': ['draft', 'trial', 'active', 'expired', 'suspended'],
+            'allowed_enforcement_modes': ['advisory', 'soft_block', 'hard_block'],
         },
     }
 
@@ -2365,6 +2451,17 @@ def get_tenant_commercial_api():
     return jsonify({'status': 'success', 'tenant_commercial': commercial}), 200
 
 
+@api_bp.route('/tenant-commercial/provider-boundary', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_tenant_commercial_provider_boundary_api():
+    """Return the current billing-provider boundary draft for the tenant commercial profile."""
+    plan, billing, license_row = _get_or_create_tenant_commercial_profile(g.tenant.id)
+    return jsonify({
+        'status': 'success',
+        'provider_boundary': _build_tenant_commercial_provider_boundary(plan, billing, license_row),
+    }), 200
+
+
 @api_bp.route('/tenant-commercial', methods=['PATCH'])
 @limiter.limit("30 per hour")
 @require_api_key_or_permission('tenant.manage')
@@ -2387,19 +2484,41 @@ def update_tenant_commercial_api():
         return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
     plan, billing, license_row = _get_or_create_tenant_commercial_profile(g.tenant.id)
+    allowed_plan_statuses = {'draft', 'trial', 'active', 'past_due', 'suspended', 'canceled'}
+    allowed_billing_cycles = {'monthly', 'annual', 'usage_based'}
+    allowed_license_statuses = {'draft', 'trial', 'active', 'expired', 'suspended'}
+    allowed_enforcement_modes = {'advisory', 'soft_block', 'hard_block'}
+    allowed_providers = set(_commercial_provider_catalog().keys())
 
     if 'plan_key' in plan_payload:
         plan.plan_key = str(plan_payload.get('plan_key') or '').strip() or plan.plan_key
     if 'display_name' in plan_payload:
         plan.display_name = str(plan_payload.get('display_name') or '').strip() or plan.display_name
     if 'status' in plan_payload:
-        plan.status = str(plan_payload.get('status') or '').strip() or plan.status
+        next_status = str(plan_payload.get('status') or '').strip()
+        if next_status and next_status not in allowed_plan_statuses:
+            errors['plan.status'] = ['Unsupported plan status.']
+        elif next_status:
+            plan.status = next_status
     if 'billing_cycle' in plan_payload:
-        plan.billing_cycle = str(plan_payload.get('billing_cycle') or '').strip() or None
+        next_cycle = str(plan_payload.get('billing_cycle') or '').strip()
+        if next_cycle and next_cycle not in allowed_billing_cycles:
+            errors['plan.billing_cycle'] = ['Unsupported billing cycle.']
+        else:
+            plan.billing_cycle = next_cycle or None
     if 'external_customer_ref' in plan_payload:
         plan.external_customer_ref = str(plan_payload.get('external_customer_ref') or '').strip() or None
     if 'external_subscription_ref' in plan_payload:
         plan.external_subscription_ref = str(plan_payload.get('external_subscription_ref') or '').strip() or None
+    if 'effective_from' in plan_payload:
+        raw_effective_from = str(plan_payload.get('effective_from') or '').strip()
+        if raw_effective_from:
+            try:
+                plan.effective_from = datetime.fromisoformat(raw_effective_from.replace('Z', '+00:00')).replace(tzinfo=None)
+            except ValueError:
+                errors['plan.effective_from'] = ['Must be a valid ISO datetime.']
+        else:
+            plan.effective_from = None
     if 'metadata' in plan_payload and isinstance(plan_payload.get('metadata'), dict):
         plan.metadata_json = plan_payload.get('metadata')
 
@@ -2408,18 +2527,49 @@ def update_tenant_commercial_api():
             setattr(billing, field_name, str(billing_payload.get(field_name) or '').strip() or None)
     if 'metadata' in billing_payload and isinstance(billing_payload.get('metadata'), dict):
         billing.metadata_json = billing_payload.get('metadata')
+    if billing.provider_name and billing.provider_name not in allowed_providers:
+        errors['billing_profile.provider_name'] = ['Unsupported billing provider.']
 
     if 'license_status' in license_payload:
-        license_row.license_status = str(license_payload.get('license_status') or '').strip() or license_row.license_status
+        next_license_status = str(license_payload.get('license_status') or '').strip()
+        if next_license_status and next_license_status not in allowed_license_statuses:
+            errors['license.license_status'] = ['Unsupported license status.']
+        elif next_license_status:
+            license_row.license_status = next_license_status
     if 'license_key_hint' in license_payload:
         license_row.license_key_hint = str(license_payload.get('license_key_hint') or '').strip() or None
     if 'seat_limit' in license_payload:
         seat_limit = license_payload.get('seat_limit')
-        license_row.seat_limit = int(seat_limit) if seat_limit not in (None, '') else None
+        if seat_limit not in (None, ''):
+            try:
+                parsed_seat_limit = int(seat_limit)
+                if parsed_seat_limit < 0:
+                    raise ValueError
+                license_row.seat_limit = parsed_seat_limit
+            except (TypeError, ValueError):
+                errors['license.seat_limit'] = ['Must be a non-negative integer or null.']
+        else:
+            license_row.seat_limit = None
     if 'enforcement_mode' in license_payload:
-        license_row.enforcement_mode = str(license_payload.get('enforcement_mode') or '').strip() or license_row.enforcement_mode
+        next_enforcement_mode = str(license_payload.get('enforcement_mode') or '').strip()
+        if next_enforcement_mode and next_enforcement_mode not in allowed_enforcement_modes:
+            errors['license.enforcement_mode'] = ['Unsupported enforcement mode.']
+        elif next_enforcement_mode:
+            license_row.enforcement_mode = next_enforcement_mode
+    if 'expires_at' in license_payload:
+        raw_expires_at = str(license_payload.get('expires_at') or '').strip()
+        if raw_expires_at:
+            try:
+                license_row.expires_at = datetime.fromisoformat(raw_expires_at.replace('Z', '+00:00')).replace(tzinfo=None)
+            except ValueError:
+                errors['license.expires_at'] = ['Must be a valid ISO datetime.']
+        else:
+            license_row.expires_at = None
     if 'metadata' in license_payload and isinstance(license_payload.get('metadata'), dict):
         license_row.metadata_json = license_payload.get('metadata')
+
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
 
     db.session.add(plan)
     db.session.add(billing)

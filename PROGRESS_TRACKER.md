@@ -19,8 +19,8 @@ Use these labels consistently across planning and tracking files:
 
 | Metric | Status | Details |
 |--------|--------|---------|
-| **Current Phase** | Phase 7 P1 Active | Phase 7 is now deepening operator productization work after completing the rebaseline and remaining P0 maturity slices |
-| **Current Week** | Phase 7 P1-C Quota Expansion And Reporting | Quotas now cover additional live domains and expose tenant-scoped health reporting, near-limit visibility, and recent enforcement diagnostics |
+| **Current Phase** | Phase 7 Closeout Active | Phase 7 implementation slices are complete and the repo is closing the cycle with a documentation truth sweep before the next rebaseline/backlog refresh |
+| **Current Week** | Phase 7 P2-B Documentation Truth Sweep | Primary onboarding and status docs now separate current truth files from historical snapshots and remove stale status framing |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
 | **Overall Progress** | Foundations delivered, stabilization and Phase 4 runtime remediation validated | Major backend/frontend foundations exist, the backend test baseline is green, and the reviewed Phase 4 deployment/runtime gaps have been corrected and revalidated |
@@ -213,17 +213,30 @@ Use these labels consistently across planning and tracking files:
 - `pytest tests/test_phase7_quota_reporting.py tests/test_phase6_quotas_usage.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `8 passed`
 - `npm.cmd run build` in `frontend/` -> PASS
 - No new migration was required for this slice because it expanded behavior on the existing `TenantQuotaPolicy` / `TenantUsageMetric` foundation.
-- `pytest -q` -> `294 passed`
-- Backend startup runbook created and linked from `DOCUMENTATION_INDEX.md` -> PASS
-- `pytest tests/test_app_bootstrap.py -q` -> `6 passed`
-- `pytest tests/test_alert_suppression_pattern_ai_anomaly.py tests/test_phase2_remaining_features.py -q` -> `53 passed`
-- `pytest tests/test_alert_notifications.py -q` -> `5 passed`
-- `pytest tests/test_tenant_admin_api.py tests/test_tenant_context.py tests/test_web_session_auth.py -q` -> `25 passed`
-- `pytest tests/test_api_endpoints.py tests/test_alerting_api.py tests/test_async_maintenance_jobs.py -q` -> `21 passed`
-- `flask --app server.app db upgrade` against a fresh SQLite database -> PASS (`alert_silences` and `scheduled_jobs` included)
-- `node .\\node_modules\\typescript\\bin\\tsc -b` in `frontend/` -> PASS
-- `docker compose --profile full -f docker-compose.yml -f docker-compose.dev.yml config` -> PASS
-- `docker compose -f docker-compose.gateway.yml config` -> PASS
+
+## Phase 7 P2-A Update (2026-04-11)
+
+### Completed now
+- Added `GET /api/tenant-commercial/provider-boundary` so tenant admins can inspect supported commercial providers, sync-readiness, and outbound contract preview data.
+- Extended `GET /api/tenant-commercial` with provider-boundary and lifecycle-semantics sections so the draft commercial model is no longer just raw plan/billing/license storage.
+- Tightened `PATCH /api/tenant-commercial` validation for supported provider names, plan status, billing cycle, license status, enforcement mode, and ISO datetime fields while still allowing draft commercial setup.
+- Updated the SPA tenant admin view to show provider readiness, supported-provider capabilities, and lifecycle semantics alongside the editable commercial draft.
+
+### Validation
+- `pytest tests/test_phase7_billing_provider_boundary.py tests/test_phase6_commercial_preparation.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `5 passed`
+- `npm.cmd run build` in `frontend/` -> PASS
+- No new migration was required for this slice because it deepened the existing `TenantPlan` / `TenantBillingProfile` / `TenantLicense` boundary instead of changing schema.
+
+## Phase 7 P2-B Update (2026-04-13)
+
+### Completed now
+- Refreshed the docs index into a cleaner source-of-truth map and removed stale references to missing setup and quick-start documents.
+- Added a current repo status note in `README.md` so readers are redirected to the tracker/plan/backlog before relying on the older vision-preface wording.
+- Updated `FRONTEND_PHASE_1_TO_5_TRACKING.md` so it is clearly treated as a migration history file with Phases 1 through 5 marked complete.
+- Updated `CURRENT_PHASE_WISE_PROGRESS_PLAN.md` and the April 9 rebaseline report so Phase 7 closeout and historical-snapshot boundaries are explicit.
+
+### Validation
+- `rg -n "Current Source Of Truth|Historical note|Phase 7 P2-B Documentation Truth Sweep|Historical Frontend Migration Closeout|Phase 7 Closeout Rebaseline And Next-Cycle Backlog Refresh|Current Repo Status Note" DOCUMENTATION_INDEX.md README.md FRONTEND_PHASE_1_TO_5_TRACKING.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md FULL_REPO_REBASELINE_REPORT_2026_04_09.md PHASE7_EXECUTION_BACKLOG.md PROGRESS_TRACKER.md` -> PASS
 
 ### Phase 0 status
 
@@ -1516,18 +1529,18 @@ PHASE 3 (Weeks 17-20):    in progress 🟡
 PHASE 4 (Weeks 21-25):    complete ✅
 
 TARGET COMPLETION: 25 Weeks
-CURRENT STATUS: Phase 7 backlog execution active; the P0 rebaseline, Logs Investigation V2, OIDC External Maturity, Reliability Operator V2, AI / Ollama Operational Maturity, and Quota Expansion And Reporting slices are now implemented and validated, and the next recommended work is billing provider boundary prep
-LATEST VALIDATION: `pytest tests/test_phase7_quota_reporting.py tests/test_phase6_quotas_usage.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `8 passed`; frontend build passing on April 11, 2026
+CURRENT STATUS: Phase 7 backlog execution is effectively complete; the remaining work now shifts to a fresh repo rebaseline and next-cycle backlog refresh after the documentation truth sweep
+LATEST VALIDATION: documentation truth sweep cross-reference check PASS on April 13, 2026; latest code-facing validation remains `pytest tests/test_phase7_billing_provider_boundary.py tests/test_phase6_commercial_preparation.py tests/test_frontend_page_api_contracts.py::test_dashboard_inventory_users_and_tenants_page_contracts -q` -> `5 passed`; frontend build passing on April 11, 2026
 ```
 
 ---
 
 ## ✉️ LAST UPDATED
 
-- **Date**: April 10, 2026
-- **By**: Phase 7 P1-C Quota Expansion And Reporting implementation sync
-- **Next Update**: Start `P2-A: Billing Provider Boundary Prep` from `PHASE7_EXECUTION_BACKLOG.md`
-- **Status**: 🟡 PHASE 7 P1 ACTIVE
+- **Date**: April 13, 2026
+- **By**: Phase 7 P2-B Documentation Truth Sweep sync
+- **Next Update**: Refresh the repo rebaseline and create the next-cycle backlog after Phase 7 closeout
+- **Status**: PHASE 7 CLOSEOUT ACTIVE
 
 
 

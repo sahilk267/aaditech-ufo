@@ -20,6 +20,19 @@
 
 ---
 
+## Current Repo Status Note
+
+This README remains the product vision document.
+
+For current execution truth, use:
+
+- `PROGRESS_TRACKER.md`
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
+- `PHASE7_EXECUTION_BACKLOG.md`
+- `FEATURE_COVERAGE_MAP.md`
+
+Current repo reality is materially ahead of the older stabilization wording at the top of this file. The repository now includes stabilized startup/migrations, a validated SPA deployment path, stronger tenant/admin controls, auth hardening, TOTP MFA, OIDC maturity work, quota/commercial controls, and deeper operator workflows across logs, reliability, AI, updates, and related admin surfaces.
+
 ## Overview
 
 This project is an enterprise-grade **Infrastructure Observability, Monitoring, Automation, and AI Analytics Platform** designed to monitor, analyze, and manage distributed infrastructure environments.

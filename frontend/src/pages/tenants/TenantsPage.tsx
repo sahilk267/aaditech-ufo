@@ -18,6 +18,7 @@ import {
   disableTotp,
   enrollTotp,
   getTenantCommercial,
+  getTenantCommercialProviderBoundary,
   getOidcProviders,
   getTenantQuotas,
   getTenantSettings,
@@ -101,6 +102,12 @@ export function TenantsPage() {
   const tenantCommercialQuery = useQuery({
     queryKey: queryKeys.tenantCommercial,
     queryFn: getTenantCommercial,
+    staleTime: 60_000,
+  });
+
+  const tenantCommercialBoundaryQuery = useQuery({
+    queryKey: queryKeys.tenantCommercialProviderBoundary,
+    queryFn: getTenantCommercialProviderBoundary,
     staleTime: 60_000,
   });
 
@@ -311,6 +318,7 @@ export function TenantsPage() {
     onSuccess: () => {
       setFeedback("Tenant commercial profile updated.");
       void queryClient.invalidateQueries({ queryKey: queryKeys.tenantCommercial });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.tenantCommercialProviderBoundary });
     },
     onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
   });
@@ -731,15 +739,41 @@ export function TenantsPage() {
 
         <div className="module-card">
           <h3>Commercial Draft</h3>
-          {tenantCommercialQuery.isLoading ? (
+          {tenantCommercialQuery.isLoading || tenantCommercialBoundaryQuery.isLoading ? (
             <div className="module-status loading">Loading commercial profile...</div>
-          ) : tenantCommercialQuery.error ? (
+          ) : tenantCommercialQuery.error || tenantCommercialBoundaryQuery.error ? (
             <div className="module-status error-text">Failed to load commercial profile.</div>
           ) : (
             <>
               <p>Plan: {tenantCommercialQuery.data?.tenant_commercial.plan.display_name} ({tenantCommercialQuery.data?.tenant_commercial.plan.plan_key})</p>
               <p>Provider: {tenantCommercialQuery.data?.tenant_commercial.billing_profile.provider_name ?? "manual"}</p>
               <p>License: {tenantCommercialQuery.data?.tenant_commercial.license.license_status}</p>
+              <div className="stats-grid" style={{ marginBottom: "1rem" }}>
+                <StatCard
+                  label="Provider"
+                  value={tenantCommercialBoundaryQuery.data?.provider_boundary.current_provider ?? "manual"}
+                  detail="Current commercial provider boundary"
+                  status="neutral"
+                />
+                <StatCard
+                  label="Customer sync"
+                  value={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_customer ? "Ready" : "Not ready"}
+                  detail={`Customer ref ready: ${tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.customer_ready ? "yes" : "no"}`}
+                  status={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_customer ? "ok" : "warn"}
+                />
+                <StatCard
+                  label="Subscription sync"
+                  value={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_subscription ? "Ready" : "Not ready"}
+                  detail={`Subscription ref ready: ${tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.subscription_ready ? "yes" : "no"}`}
+                  status={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_subscription ? "ok" : "warn"}
+                />
+                <StatCard
+                  label="License sync"
+                  value={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_license ? "Ready" : "Not ready"}
+                  detail={`Lifecycle ready: ${tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.license_ready ? "yes" : "no"}`}
+                  status={tenantCommercialBoundaryQuery.data?.provider_boundary.sync_readiness.can_sync_license ? "ok" : "warn"}
+                />
+              </div>
               <div className="stack-sm">
                 <input value={planKey} onChange={(e) => setPlanKey(e.target.value)} placeholder="Plan key" />
                 <input value={planDisplayName} onChange={(e) => setPlanDisplayName(e.target.value)} placeholder="Plan display name" />
@@ -753,11 +787,41 @@ export function TenantsPage() {
                   disabled={updateCommercialMutation.isPending}
                 >
                   Save Commercial Draft
-                </button>
-              </div>
-            </>
-          )}
-        </div>
+                  </button>
+                </div>
+                <div style={{ marginTop: "1rem" }}>
+                  <h4>Supported Providers</h4>
+                  <table className="table-lite">
+                    <thead>
+                      <tr>
+                        <th>Provider</th>
+                        <th>Customer Sync</th>
+                        <th>Subscription Sync</th>
+                        <th>License Sync</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Object.entries(tenantCommercialBoundaryQuery.data?.provider_boundary.supported_providers || {}).map(([providerKey, capability]) => (
+                        <tr key={providerKey}>
+                          <td>{providerKey}</td>
+                          <td>{String(capability.supports_customer_sync ? "Yes" : "No")}</td>
+                          <td>{String(capability.supports_subscription_sync ? "Yes" : "No")}</td>
+                          <td>{String(capability.supports_license_sync ? "Yes" : "No")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div style={{ marginTop: "1rem" }}>
+                  <h4>Lifecycle Semantics</h4>
+                  <p>Plan statuses: {(tenantCommercialQuery.data?.tenant_commercial.lifecycle_semantics.allowed_plan_statuses || []).join(", ")}</p>
+                  <p>Billing cycles: {(tenantCommercialQuery.data?.tenant_commercial.lifecycle_semantics.allowed_billing_cycles || []).join(", ")}</p>
+                  <p>License statuses: {(tenantCommercialQuery.data?.tenant_commercial.lifecycle_semantics.allowed_license_statuses || []).join(", ")}</p>
+                  <p>Enforcement modes: {(tenantCommercialQuery.data?.tenant_commercial.lifecycle_semantics.allowed_enforcement_modes || []).join(", ")}</p>
+                </div>
+              </>
+            )}
+          </div>
       </div>
     </ModulePage>
   );

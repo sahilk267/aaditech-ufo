@@ -2,6 +2,12 @@
 
 Updated: April 9, 2026
 
+Historical note:
+
+- This report is a point-in-time snapshot from April 9, 2026.
+- Later Phase 7 slices landed after this file was written.
+- For current execution truth, cross-check `PROGRESS_TRACKER.md`, `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`, and `PHASE7_EXECUTION_BACKLOG.md`.
+
 ## Purpose
 
 Capture the current repository reality after the full Phase 6 execution backlog landed.

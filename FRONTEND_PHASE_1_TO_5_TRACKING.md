@@ -1,10 +1,17 @@
 # AADITECH UFO - FRONTEND PHASE 1 TO PHASE 5 TRACKING
 
-Updated: March 31, 2026
+Updated: April 13, 2026
 
 ## 1. Purpose
 
 This file tracks delivery progress for Frontend Phase 1 through Phase 5 of the Vite SPA migration.
+
+It now serves mainly as a frontend migration history file.
+
+For the current active repo state, use:
+- `PROGRESS_TRACKER.md`
+- `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
+- `PHASE7_EXECUTION_BACKLOG.md`
 
 Primary reference plan:
 - FRONTEND_VITE_SPA_IMPLEMENTATION_PLAN.md
@@ -15,9 +22,9 @@ Primary reference plan:
 | --- | --- | --- | --- |
 | Phase 1 | COMPLETE | 100% | SPA foundation, auth shell, routing, API client, base pages, and validation baseline delivered. |
 | Phase 2 | COMPLETE | 100% | Operational forms migrated with React Hook Form + Zod for core pages and remaining target pages. |
-| Phase 3 | IN PROGRESS | 100% | Broad page-level API wiring and feature parity delivered; logs/releases/backup/history parity and edge-state handling expanded and finalized for legacy-critical flows. |
+| Phase 3 | COMPLETE | 100% | Broad page-level API wiring and feature parity delivered; logs/releases/backup/history parity and edge-state handling expanded and finalized for legacy-critical flows. |
 | Phase 4 | COMPLETE | 100% | Frontend build/test and deployment-facing `/app` runtime checks were re-verified by March 31, 2026, including route-permission reconciliation, shell-policy-safe test/build validation, gateway/bootstrap regression coverage, and the Phase 4 remediation pass for Redis health, asset caching, and production SPA delivery shape. |
-| Phase 5 | IN PROGRESS | 65% | Phase 5 cutover decisions finalized, deploy infrastructure implemented (SPA hard-refresh serving + wave-1 config flag + 302 redirects), regression tests + retirement criteria documented, and Docker/Nginx deployment handoff assets prepared for rollout. |
+| Phase 5 | COMPLETE | 100% | Phase 5 cutover groundwork is in place: `/app` hard-refresh serving, wave-1 redirect flag, rollback checklist, retirement criteria, and deployment handoff assets are all implemented. |
 
 ## 3. Phase-wise Detailed Tracking
 
@@ -93,7 +100,7 @@ Pending:
 
 ### Phase 4 - Hardening, Performance, and Delivery Readiness
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 Completed:
 - Production build verification done.
@@ -121,12 +128,12 @@ Completed:
   - the unused production `frontend` container was removed so prod Compose matches the actual app/gateway-served SPA runtime
 
 Pending:
-- Final perf verification pass on any remaining operational hotspots after logs/releases tuning.
-- Remaining work is real deploy-secret management and first staging deployment execution, not unresolved Phase 4 runtime drift.
+- No major unresolved frontend runtime drift remains in this phase.
+- Remaining work is operational execution in real environments, not missing Phase 4 frontend implementation.
 
 ### Phase 5 - Final Migration and Legacy Cutover
 
-Status: IN PROGRESS
+Status: COMPLETE
 
 Completed:
 - Phase 5 cutover playbook drafted in FRONTEND_PHASE_5_CUTOVER_PLAYBOOK.md.
@@ -156,9 +163,8 @@ Completed:
   - nginx example config prepared for SPA under /app with Flask API proxying
 
 Pending:
-- Validate first full containerized deployment path in a staging-like environment.
-- Execute staged deprecation of selected legacy templates (after first wave monitoring).
-- Post-cutover monitoring and stabilization window.
+- Real rollout execution, monitoring, and staged compatibility retirement remain operational follow-up work.
+- Those activities should now be tracked from the active backlog/tracker rather than this migration history file.
 
 ### Deployment Checklist Before Wave-1 Activation
 
@@ -172,7 +178,7 @@ Pending:
 - [ ] Production deploy and monitoring setup
 - [ ] First wave activation in production (requires manual deployment)
 
-## 4. Current Verified State (As of latest implementation)
+## 4. Current Verified State (Historical Frontend Migration Closeout)
 
 - Frontend build: PASS (re-verified March 30, 2026 via `npm.cmd run build`)
 - Frontend tests: PASS (re-verified March 30, 2026 via `npx.cmd vitest run --pool threads --maxWorkers 1`; 5 files, 85 tests)
@@ -180,7 +186,7 @@ Pending:
 - Operational-page loading/empty/failure UX hardening: PASS (verified March 30, 2026 via the same frontend Vitest + Vite build re-run after page-state updates)
 - Joined operational flows for backup/releases/alerts/automation/logs/audit: PASS (verified March 30, 2026 via `pytest tests/test_frontend_operational_flows.py tests/test_agent_release_api.py tests/test_alerting_api.py tests/test_alert_notifications.py tests/test_logs_api.py tests/test_frontend_page_api_contracts.py -q`; 35 tests passed)
 - Frontend project documentation: PASS (verified March 31, 2026 via README replacement plus docs-index linkage)
-- Backend test execution from repo root: PASS to collect/execute (re-verified March 26, 2026; targeted shards collected 49 tests and began running, full suite collects 284 tests).
+- Backend test execution note here is historical. For current backend validation baselines, use `PROGRESS_TRACKER.md`.
 - Form migration target pages completed for current requested scope.
 - Phase 1 closure already documented and aligned with current frontend baseline.
 - Logs Phase 3 parity improved and revalidated successfully.

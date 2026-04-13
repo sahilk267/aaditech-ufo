@@ -70,6 +70,7 @@ import type {
   TenantMutationResponse,
   TenantControlsResponse,
   TenantCommercialResponse,
+  TenantCommercialProviderBoundaryResponse,
   TenantQuotasResponse,
   TenantSettingsResponse,
   TenantUsageResponse,
@@ -171,6 +172,11 @@ export async function getTenantCommercial() {
 
 export async function updateTenantCommercial(payload: Record<string, unknown>) {
   const { data } = await apiClient.patch<TenantCommercialResponse>("/api/tenant-commercial", payload);
+  return data;
+}
+
+export async function getTenantCommercialProviderBoundary() {
+  const { data } = await apiClient.get<TenantCommercialProviderBoundaryResponse>("/api/tenant-commercial/provider-boundary");
   return data;
 }
 

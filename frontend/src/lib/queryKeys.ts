@@ -12,6 +12,7 @@ export const queryKeys = {
   tenantUsage: ["tenants", "usage"] as const,
   tenantUsageReport: ["tenants", "usage-report"] as const,
   tenantCommercial: ["tenants", "commercial"] as const,
+  tenantCommercialProviderBoundary: ["tenants", "commercial", "provider-boundary"] as const,
   oidcProviders: ["auth", "oidc", "providers"] as const,
   myTotp: ["auth", "mfa", "totp"] as const,
   alerts: ["alerts"] as const,
