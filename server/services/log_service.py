@@ -4,7 +4,13 @@ from __future__ import annotations
 
 import re
 import subprocess
+from datetime import datetime, UTC
 from typing import Any
+
+from sqlalchemy import or_
+
+from ..extensions import db
+from ..models import LogEntry, LogSource
 
 
 class LogService:
@@ -909,6 +915,149 @@ class LogService:
             'token_count': len(token_map),
             'tokens': sorted(token_map.keys())[:50],
         }
+
+    @classmethod
+    def persist_log_entries(
+        cls,
+        organization_id: int,
+        source_name: str,
+        adapter: str,
+        entries: list[Any],
+        capture_kind: str,
+    ) -> dict[str, int | None]:
+        """Persist log entries for durable search and investigation workflows."""
+        if not entries:
+            return {'persisted_count': 0, 'log_source_id': None}
+
+        source = LogSource.query.filter_by(organization_id=organization_id, name=source_name).first()
+        if source is None:
+            source = LogSource(
+                organization_id=organization_id,
+                name=source_name,
+                adapter=adapter,
+            )
+            db.session.add(source)
+            db.session.flush()
+        else:
+            source.adapter = adapter
+
+        source.last_ingested_at = datetime.now(UTC).replace(tzinfo=None)
+
+        persisted_count = 0
+        for item in entries:
+            if isinstance(item, dict):
+                structured = dict(item)
+                raw_entry = str(structured.get('raw') or structured.get('message') or '').strip()
+                if not raw_entry:
+                    raw_entry = str(item)
+            else:
+                raw_entry = str(item).strip()
+                structured = cls._parse_single_entry(raw_entry)
+
+            raw_entry = raw_entry.strip()
+            if not raw_entry:
+                continue
+
+            message = str(structured.get('message') or raw_entry).strip()
+            observed_at = cls._coerce_log_datetime(structured.get('timestamp'))
+            severity = str(structured.get('severity') or '').strip().lower() or None
+            event_id = str(structured.get('event_id') or '').strip() or None
+
+            db.session.add(
+                LogEntry(
+                    organization_id=organization_id,
+                    log_source_id=source.id,
+                    source_name=source_name,
+                    adapter=adapter,
+                    capture_kind=capture_kind,
+                    observed_at=observed_at,
+                    severity=severity,
+                    event_id=event_id,
+                    message=message[:4000],
+                    raw_entry=raw_entry[:8000],
+                    entry_metadata={
+                        'source': structured.get('source'),
+                        'capture_kind': capture_kind,
+                    },
+                )
+            )
+            persisted_count += 1
+
+        db.session.commit()
+        return {'persisted_count': persisted_count, 'log_source_id': source.id}
+
+    @classmethod
+    def search_persistent_entries(
+        cls,
+        organization_id: int,
+        source_name: str,
+        query_text: str,
+        max_results: int,
+    ) -> dict[str, Any]:
+        """Search the durable log store for previously captured entries."""
+        if not query_text:
+            return {
+                'status': 'success',
+                'adapter': 'persistent_store',
+                'source_name': source_name,
+                'query_text': query_text,
+                'results': [],
+                'result_count': 0,
+                'index': {'document_count': 0, 'token_count': 0, 'tokens': []},
+            }
+
+        rows = (
+            LogEntry.query
+            .filter_by(organization_id=organization_id, source_name=source_name)
+            .filter(
+                or_(
+                    LogEntry.message.ilike(f'%{query_text}%'),
+                    LogEntry.raw_entry.ilike(f'%{query_text}%'),
+                )
+            )
+            .order_by(LogEntry.observed_at.desc(), LogEntry.id.desc())
+            .limit(max_results)
+            .all()
+        )
+
+        results = [
+            {
+                'timestamp': row.observed_at.isoformat() if row.observed_at else None,
+                'severity': row.severity or 'info',
+                'event_id': row.event_id or 'unknown',
+                'source': row.source_name,
+                'message': row.message,
+                'raw': row.raw_entry,
+                'capture_kind': row.capture_kind,
+                'entry_id': row.id,
+            }
+            for row in rows
+        ]
+
+        return {
+            'status': 'success',
+            'adapter': 'persistent_store',
+            'source_name': source_name,
+            'query_text': query_text,
+            'results': results,
+            'result_count': len(results),
+            'index': cls._build_simple_inverted_index(results),
+        }
+
+    @staticmethod
+    def _coerce_log_datetime(text_value: str | None) -> datetime | None:
+        """Normalize log timestamps in ISO format to UTC datetimes."""
+        if not isinstance(text_value, str) or not text_value.strip():
+            return None
+        text_value = text_value.strip()
+        try:
+            parsed = datetime.fromisoformat(text_value)
+        except ValueError:
+            return None
+
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(UTC).replace(tzinfo=None)
+        return parsed
 
     @staticmethod
     def _parse_driver_entry(entry_text: str) -> dict[str, Any]:

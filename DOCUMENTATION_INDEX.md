@@ -22,6 +22,7 @@ If you need the current repo reality, read these first:
 | Current active execution plan | [CURRENT_PHASE_WISE_PROGRESS_PLAN.md](CURRENT_PHASE_WISE_PROGRESS_PLAN.md) |
 | Real-time progress and latest validated slice | [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md) |
 | Current execution backlog | [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md) |
+| Next-cycle execution backlog | [NEXT_CYCLE_BACKLOG.md](NEXT_CYCLE_BACKLOG.md) |
 | Current repo-wide status snapshot | [FULL_REPO_REBASELINE_REPORT_2026_04_09.md](FULL_REPO_REBASELINE_REPORT_2026_04_09.md) |
 | Feature status vocabulary and coverage | [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md) |
 | Feature exit criteria | [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md) |
@@ -39,6 +40,7 @@ Use these during active development and review:
 - [CURRENT_PHASE_WISE_PROGRESS_PLAN.md](CURRENT_PHASE_WISE_PROGRESS_PLAN.md)
 - [PROGRESS_TRACKER.md](PROGRESS_TRACKER.md)
 - [PHASE7_EXECUTION_BACKLOG.md](PHASE7_EXECUTION_BACKLOG.md)
+- [NEXT_CYCLE_BACKLOG.md](NEXT_CYCLE_BACKLOG.md)
 - [FEATURE_COVERAGE_MAP.md](FEATURE_COVERAGE_MAP.md)
 - [FEATURE_ACCEPTANCE_CRITERIA.md](FEATURE_ACCEPTANCE_CRITERIA.md)
 - [BACKEND_STARTUP_RUNBOOK.md](BACKEND_STARTUP_RUNBOOK.md)

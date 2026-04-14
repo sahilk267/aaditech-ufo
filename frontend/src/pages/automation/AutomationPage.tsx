@@ -9,6 +9,7 @@ import { JsonViewer } from "../../components/common/JsonViewer";
 import { MutationFeedback } from "../../components/common/MutationFeedback";
 import {
   FormInput,
+  FormSelect,
   FormSubmitButton,
 } from "../../components/forms/FormComponents";
 import {
@@ -39,10 +40,12 @@ export function AutomationPage() {
       description: "",
       triggerType: "alert",
       triggerMatch: { metric: "cpu_usage" },
-      steps: [{ action: "restart_service", service: "spooler" }],
+      steps: [{ action: "restart_service", service: "spooler", params: {} }],
       isActive: true,
     },
   });
+
+  const selectedAction = form.watch("steps.0.action");
 
   const workflowsQuery = useQuery({
     queryKey: ["automation", "workflows"],
@@ -92,9 +95,24 @@ export function AutomationPage() {
 
   const createWorkflowMutation = useMutation({
     mutationFn: (data: CreateAutomationWorkflowInput) => {
-      const firstStep = data.steps[0] || { action: "restart_service" };
+      const firstStep = data.steps[0] || { action: "restart_service", service: "spooler", params: {} };
       const actionType =
         firstStep.action === "restart_service" ? "service_restart" : firstStep.action;
+
+      const actionConfig: Record<string, unknown> =
+        actionType === "script_execute"
+          ? {
+              script_path: String(firstStep.params?.script_path || firstStep.params?.script || ""),
+              ...(Array.isArray(firstStep.params?.args)
+                ? { args: firstStep.params.args }
+                : firstStep.params?.args
+                ? { args: String(firstStep.params.args).split(",").map((item) => item.trim()).filter(Boolean) }
+                : {}),
+            }
+          : {
+              service_name: firstStep.service,
+              ...(firstStep.params || {}),
+            };
 
       return createAutomationWorkflow({
         name: data.name,
@@ -102,10 +120,7 @@ export function AutomationPage() {
         trigger_type: data.triggerType,
         trigger_conditions: data.triggerMatch || {},
         action_type: actionType,
-        action_config: {
-          service_name: firstStep.service,
-          ...(firstStep.params || {}),
-        },
+        action_config: actionConfig,
         is_active: data.isActive,
       });
     },
@@ -175,6 +190,48 @@ export function AutomationPage() {
             placeholder="Restart service when high CPU alerts trigger"
             helperText="Optional, up to 2000 characters"
           />
+        </div>
+        <div className="module-grid" style={{ marginTop: 12 }}>
+          <FormSelect
+            form={form}
+            name="steps.0.action"
+            label="Action"
+            placeholder="Select an action"
+            options={[
+              { value: "restart_service", label: "Restart service" },
+              { value: "script_execute", label: "Execute script" },
+            ]}
+            required
+            helperText="Choose the action to perform when the workflow triggers."
+          />
+          {selectedAction === "restart_service" ? (
+            <FormInput
+              form={form}
+              name="steps.0.service"
+              label="Service Name"
+              placeholder="spooler"
+              helperText="Example: spooler or sshd"
+            />
+          ) : null}
+          {selectedAction === "script_execute" ? (
+            <>
+              <FormInput
+                form={form}
+                name="steps.0.params.script_path"
+                label="Script Path"
+                placeholder="/usr/local/bin/check_disk.sh"
+                required
+                helperText="Allowed script root is configured on the backend."
+              />
+              <FormInput
+                form={form}
+                name="steps.0.params.args"
+                label="Script Arguments"
+                placeholder="arg1,arg2"
+                helperText="Comma-separated arguments for the script."
+              />
+            </>
+          ) : null}
         </div>
         <FormSubmitButton
           isLoading={createWorkflowMutation.isPending}

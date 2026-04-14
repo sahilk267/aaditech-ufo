@@ -29,6 +29,7 @@ For current execution truth, use:
 - `PROGRESS_TRACKER.md`
 - `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`
 - `PHASE7_EXECUTION_BACKLOG.md`
+- `NEXT_CYCLE_BACKLOG.md`
 - `FEATURE_COVERAGE_MAP.md`
 
 Current repo reality is materially ahead of the older stabilization wording at the top of this file. The repository now includes stabilized startup/migrations, a validated SPA deployment path, stronger tenant/admin controls, auth hardening, TOTP MFA, OIDC maturity work, quota/commercial controls, and deeper operator workflows across logs, reliability, AI, updates, and related admin surfaces.

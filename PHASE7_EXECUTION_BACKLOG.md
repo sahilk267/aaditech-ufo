@@ -240,6 +240,20 @@ Why this slice:
 - the repo now benefits more from a fresh rebaseline and next-cycle planning refresh than from another ad hoc feature slice
 - the documentation truth sweep reduced drift, so the next backlog can start from a cleaner base
 
+Active next step:
+
+- publish the active next-cycle backlog to `NEXT_CYCLE_BACKLOG.md`
+- keep this file as the Phase 7 historical execution record
+- update all current-truth docs to point to the new backlog
+
+#### Closeout Checklist
+
+- [ ] Confirm all Phase 7 P0/P1/P2 slices are complete and validated
+- [ ] Confirm `PROGRESS_TRACKER.md`, `CURRENT_PHASE_WISE_PROGRESS_PLAN.md`, `DOCUMENTATION_INDEX.md`, and `README.md` point to the active next-cycle backlog
+- [ ] Publish `NEXT_CYCLE_BACKLOG.md` as the active next-cycle backlog source
+- [ ] Archive or explicitly label older historical snapshots with clear "Historical note" framing
+- [ ] Start the first next-cycle P0 slice from the Phase 3 productization cleanup candidate list
+
 ---
 
 ## Exit Criteria For Phase 7 Start

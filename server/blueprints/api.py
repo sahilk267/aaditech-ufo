@@ -1068,138 +1068,6 @@ def _coerce_log_datetime(value: str | None) -> datetime | None:
     return parsed
 
 
-def _get_or_create_log_source(organization_id: int, source_name: str, adapter: str) -> LogSource:
-    """Return a persistent log source row for the tenant/source pair."""
-    source = LogSource.query.filter_by(organization_id=organization_id, name=source_name).first()
-    if source is None:
-        source = LogSource(
-            organization_id=organization_id,
-            name=source_name,
-            adapter=adapter,
-        )
-        db.session.add(source)
-        db.session.flush()
-    else:
-        source.adapter = adapter
-
-    source.last_ingested_at = datetime.now(UTC).replace(tzinfo=None)
-    return source
-
-
-def _persist_log_entries(
-    organization_id: int,
-    source_name: str,
-    adapter: str,
-    entries: list,
-    capture_kind: str,
-) -> dict[str, int | None]:
-    """Persist raw/structured log entries for durable search and investigations."""
-    if not entries:
-        return {'persisted_count': 0, 'log_source_id': None}
-
-    log_source = _get_or_create_log_source(organization_id, source_name, adapter)
-    persisted_count = 0
-
-    for item in entries:
-        if isinstance(item, dict):
-            structured = dict(item)
-            raw_entry = str(structured.get('raw') or structured.get('message') or '').strip()
-            if not raw_entry:
-                raw_entry = str(item)
-        else:
-            raw_entry = str(item).strip()
-            structured = LogService._parse_single_entry(raw_entry)
-
-        raw_entry = raw_entry.strip()
-        if not raw_entry:
-            continue
-
-        message = str(structured.get('message') or raw_entry).strip()
-        observed_at = _coerce_log_datetime(structured.get('timestamp'))
-        severity = str(structured.get('severity') or '').strip().lower() or None
-        event_id = str(structured.get('event_id') or '').strip() or None
-
-        db.session.add(
-            LogEntry(
-                organization_id=organization_id,
-                log_source_id=log_source.id,
-                source_name=source_name,
-                adapter=adapter,
-                capture_kind=capture_kind,
-                observed_at=observed_at,
-                severity=severity,
-                event_id=event_id,
-                message=message[:4000],
-                raw_entry=raw_entry[:8000],
-                entry_metadata={
-                    'source': structured.get('source'),
-                    'capture_kind': capture_kind,
-                },
-            )
-        )
-        persisted_count += 1
-
-    db.session.commit()
-    return {'persisted_count': persisted_count, 'log_source_id': log_source.id}
-
-
-def _search_persisted_log_entries(
-    organization_id: int,
-    source_name: str,
-    query_text: str,
-    max_results: int,
-) -> dict:
-    """Search the durable log store for previously captured entries."""
-    if not query_text:
-        return {
-            'status': 'success',
-            'adapter': 'persistent_store',
-            'source_name': source_name,
-            'query_text': query_text,
-            'results': [],
-            'result_count': 0,
-            'index': {'document_count': 0, 'token_count': 0, 'tokens': []},
-        }
-
-    rows = (
-        LogEntry.query
-        .filter_by(organization_id=organization_id, source_name=source_name)
-        .filter(
-            or_(
-                LogEntry.message.ilike(f'%{query_text}%'),
-                LogEntry.raw_entry.ilike(f'%{query_text}%'),
-            )
-        )
-        .order_by(LogEntry.observed_at.desc(), LogEntry.id.desc())
-        .limit(max_results)
-        .all()
-    )
-
-    results = [
-        {
-            'timestamp': row.observed_at.isoformat() if row.observed_at else None,
-            'severity': row.severity or 'info',
-            'event_id': row.event_id or 'unknown',
-            'source': row.source_name,
-            'message': row.message,
-            'raw': row.raw_entry,
-            'capture_kind': row.capture_kind,
-            'entry_id': row.id,
-        }
-        for row in rows
-    ]
-
-    return {
-        'status': 'success',
-        'adapter': 'persistent_store',
-        'source_name': source_name,
-        'query_text': query_text,
-        'results': results,
-        'result_count': len(results),
-        'index': LogService._build_simple_inverted_index(results),
-    }
-
-
 def _serialize_log_source_with_summary(source: LogSource) -> dict:
     """Serialize a log source with lightweight investigation summary fields."""
     entry_query = LogEntry.query.filter_by(
@@ -4525,7 +4393,7 @@ def ingest_logs_pipeline():
 
     persistence = {'persisted_count': 0, 'log_source_id': None}
     if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
-        persistence = _persist_log_entries(
+        persistence = LogService.persist_log_entries(
             organization_id=g.tenant.id,
             source_name=source_name,
             adapter=str(result.get('adapter') or 'unknown'),
@@ -4594,7 +4462,7 @@ def query_windows_event_entries():
 
     persistence = {'persisted_count': 0, 'log_source_id': None}
     if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
-        persistence = _persist_log_entries(
+        persistence = LogService.persist_log_entries(
             organization_id=g.tenant.id,
             source_name=source_name,
             adapter=str(result.get('adapter') or 'unknown'),
@@ -4643,7 +4511,7 @@ def parse_log_entries():
             grouped_events.setdefault(source_name, []).append(event)
 
         for source_name, grouped in grouped_events.items():
-            persisted = _persist_log_entries(
+            persisted = LogService.persist_log_entries(
                 organization_id=g.tenant.id,
                 source_name=source_name,
                 adapter='parsed_payload',
@@ -4904,7 +4772,7 @@ def search_logs():
     result = None
     error = None
     if current_app.config.get('LOG_PERSISTENT_STORE_ENABLED', True):
-        persistent_result = _search_persisted_log_entries(
+        persistent_result = LogService.search_persistent_entries(
             organization_id=g.tenant.id,
             source_name=source_name,
             query_text=query_text,

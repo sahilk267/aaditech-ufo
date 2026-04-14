@@ -207,6 +207,66 @@ def test_execute_automation_workflow_blocks_service_outside_allowlist(client, ap
         assert workflow.last_triggered_at is None
 
 
+def test_service_restart_workflow_run_persists_command_details(client, app_fixture):
+    create = client.post(
+        '/api/automation/workflows',
+        headers=_headers(),
+        json={
+            'name': 'Restart Redis With History',
+            'trigger_type': 'manual',
+            'trigger_conditions': {},
+            'action_type': 'service_restart',
+            'action_config': {'service_name': 'redis'},
+        },
+    )
+    assert create.status_code == 201
+    workflow_id = create.get_json()['workflow']['id']
+
+    class _CompletedProcessDouble:
+        returncode = 0
+        stdout = 'service restarted successfully'
+        stderr = ''
+
+    with patch(
+        'server.services.automation_service.AutomationService._run_service_restart_command',
+        return_value=_CompletedProcessDouble(),
+    ) as runner_double:
+        execute = client.post(
+            f'/api/automation/workflows/{workflow_id}/execute',
+            headers=_headers(),
+            json={'dry_run': False},
+        )
+
+    assert execute.status_code == 202
+    assert runner_double.call_count == 1
+
+    with app_fixture.app_context():
+        workflow_run = (
+            WorkflowRun.query
+            .filter_by(workflow_id=workflow_id)
+            .order_by(WorkflowRun.id.desc())
+            .first()
+        )
+        assert workflow_run is not None
+        assert workflow_run.status == 'executed'
+        assert workflow_run.action_result['status'] == 'success'
+        assert workflow_run.action_result['returncode'] == 0
+        assert workflow_run.execution_metadata['runtime_config']['restart_binary'] == 'systemctl'
+        assert workflow_run.execution_metadata['action_config']['service_name'] == 'redis'
+
+    history_response = client.get(
+        f'/api/automation/workflow-runs?workflow_id={workflow_id}',
+        headers=_headers(),
+    )
+    assert history_response.status_code == 200
+    history_payload = history_response.get_json()
+    assert history_payload['total'] >= 1
+    stored_run = history_payload['workflow_runs'][0]
+    assert stored_run['status'] == 'executed'
+    assert stored_run['action_result']['command'][0] == 'systemctl'
+    assert stored_run['execution_metadata']['action_config']['service_name'] == 'redis'
+
+
 def test_execute_script_workflow_runs_allowlisted_script(client, app_fixture):
     with TemporaryDirectory() as temp_dir:
         script_path = Path(temp_dir) / 'cleanup.cmd'
@@ -258,6 +318,8 @@ def test_execute_script_workflow_runs_allowlisted_script(client, app_fixture):
     assert payload['status'] == 'success'
     assert payload['result']['action_result']['status'] == 'success'
     assert payload['result']['action_result']['adapter'] == 'subprocess'
+    assert payload['result']['execution_metadata']['runtime_config']['script_executor_adapter'] == 'subprocess'
+    assert payload['result']['execution_metadata']['action_config']['script_path'] == str(script_path.resolve())
 
 
 def test_execute_script_workflow_blocks_path_outside_allowlist(client, app_fixture):

@@ -57,8 +57,9 @@ class AutomationService:
             .all()
         )
 
-    @staticmethod
+    @classmethod
     def _build_workflow_run(
+        cls,
         organization_id: int,
         workflow: AutomationWorkflow,
         payload: dict[str, Any],
@@ -68,6 +69,7 @@ class AutomationService:
         action_result: dict[str, Any],
         error_reason: str | None = None,
         execution_context: dict[str, Any] | None = None,
+        runtime_config: dict[str, Any] | None = None,
     ) -> WorkflowRun:
         execution_context = execution_context or {}
         trigger_source = str(execution_context.get('trigger_source') or 'manual').strip() or 'manual'
@@ -88,9 +90,38 @@ class AutomationService:
             execution_metadata={
                 'workflow_name': workflow.name,
                 'action_type': workflow.action_type,
+                'action_config': cls._summarize_action_config(workflow.action_config or {}),
+                'runtime_config': cls._summarize_runtime_config(runtime_config or {}),
             },
             executed_at=executed_at.replace(tzinfo=None),
         )
+
+    @staticmethod
+    def _summarize_action_config(action_config: dict[str, Any]) -> dict[str, Any]:
+        summary: dict[str, Any] = {}
+        if action_config.get('service_name'):
+            summary['service_name'] = str(action_config.get('service_name'))
+        if action_config.get('script_path'):
+            summary['script_path'] = str(action_config.get('script_path'))
+        if action_config.get('script'):
+            summary['script_path'] = str(action_config.get('script'))
+        if action_config.get('url'):
+            summary['url'] = str(action_config.get('url'))
+        if action_config.get('method'):
+            summary['method'] = str(action_config.get('method')).upper()
+        return summary
+
+    @classmethod
+    def _summarize_runtime_config(cls, runtime_config: dict[str, Any]) -> dict[str, Any]:
+        return {
+            'restart_binary': str(runtime_config.get('restart_binary') or '').strip() or None,
+            'script_executor_adapter': str(runtime_config.get('script_executor_adapter') or '').strip() or None,
+            'webhook_adapter': str(runtime_config.get('webhook_adapter') or '').strip() or None,
+            'allowed_services': cls._coerce_string_list(runtime_config.get('allowed_services')),
+            'allowed_script_roots': cls._coerce_string_list(runtime_config.get('allowed_script_roots')),
+            'allowed_webhook_hosts': cls._coerce_string_list(runtime_config.get('allowed_webhook_hosts')),
+            'command_timeout_seconds': int(runtime_config.get('command_timeout_seconds') or 0),
+        }
 
     @classmethod
     def create_workflow(
@@ -213,6 +244,7 @@ class AutomationService:
                     action_result=action_result,
                     error_reason=action_error,
                     execution_context=execution_context,
+                    runtime_config=runtime_config,
                 )
                 db.session.add(workflow_run)
                 commit_errors = cls._commit_with_rollback(generic_message='Failed to persist workflow execution history.')
@@ -226,6 +258,7 @@ class AutomationService:
                     'input_payload': payload,
                     'status': 'failed',
                     'action_result': action_result,
+                    'execution_metadata': workflow_run.execution_metadata if workflow_run is not None else {},
                     'workflow_run_id': workflow_run.id if not commit_errors else None,
                     'persistence_errors': commit_errors or None,
                 }, 'execution_failed'
@@ -239,6 +272,7 @@ class AutomationService:
             status='simulated' if dry_run else 'executed',
             action_result=action_result,
             execution_context=execution_context,
+            runtime_config=runtime_config,
         )
         db.session.add(workflow_run)
 
@@ -269,6 +303,7 @@ class AutomationService:
             'input_payload': payload,
             'status': 'simulated' if dry_run else 'executed',
             'action_result': action_result,
+            'execution_metadata': workflow_run.execution_metadata if workflow_run is not None else {},
             'workflow_run_id': workflow_run.id if workflow_run is not None else None,
         }
         return result, None

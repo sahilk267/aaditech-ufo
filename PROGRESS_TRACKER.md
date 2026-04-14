@@ -20,7 +20,7 @@ Use these labels consistently across planning and tracking files:
 | Metric | Status | Details |
 |--------|--------|---------|
 | **Current Phase** | Phase 7 Closeout Active | Phase 7 implementation slices are complete and the repo is closing the cycle with a documentation truth sweep before the next rebaseline/backlog refresh |
-| **Current Week** | Phase 7 P2-B Documentation Truth Sweep | Primary onboarding and status docs now separate current truth files from historical snapshots and remove stale status framing |
+| **Current Week** | Phase 7 Closeout / Next-Cycle Backlog Refresh | Phase 7 implementation slices are complete; the repo is finalizing documentation truth alignment and publishing the next-cycle backlog |
 | **Start Date** | 2026-03-16 | Phase 0 kickoff |
 | **Completion Target** | TBD | 25 weeks total (5 phases) |
 | **Overall Progress** | Foundations delivered, stabilization and Phase 4 runtime remediation validated | Major backend/frontend foundations exist, the backend test baseline is green, and the reviewed Phase 4 deployment/runtime gaps have been corrected and revalidated |
@@ -237,6 +237,7 @@ Use these labels consistently across planning and tracking files:
 
 ### Validation
 - `rg -n "Current Source Of Truth|Historical note|Phase 7 P2-B Documentation Truth Sweep|Historical Frontend Migration Closeout|Phase 7 Closeout Rebaseline And Next-Cycle Backlog Refresh|Current Repo Status Note" DOCUMENTATION_INDEX.md README.md FRONTEND_PHASE_1_TO_5_TRACKING.md CURRENT_PHASE_WISE_PROGRESS_PLAN.md FULL_REPO_REBASELINE_REPORT_2026_04_09.md PHASE7_EXECUTION_BACKLOG.md PROGRESS_TRACKER.md` -> PASS
+- `pytest tests/test_automation_api.py tests/test_logs_api.py -q` -> `33 passed`
 
 ### Phase 0 status
 

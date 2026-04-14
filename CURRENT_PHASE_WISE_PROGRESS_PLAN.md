@@ -56,14 +56,20 @@ Rule of thumb:
 
 Current reality from repo audit:
 
-- Backend has substantial implementation, but startup/test architecture needs stabilization.
-- Frontend SPA is mostly present, but route/module completeness and deploy validation still need work.
-- Documentation is rich but not fully aligned with actual code status.
-- Several features are foundation-level, not end-to-end production-complete.
+- Phase 7 implementation slices are now complete and the repo is undergoing closeout.
+- The current priority is documentation truth alignment, repo rebaseline, and publishing the next-cycle backlog.
+- `PHASE7_EXECUTION_BACKLOG.md` is now the historical Phase 7 execution record.
+- `NEXT_CYCLE_BACKLOG.md` is the active next-cycle backlog source for new work.
+- Next active slice: `P0-A: Phase 3 Productization Cleanup`
 
 Recommended active phase:
 
-- Phase 0: Stabilization and truth-alignment
+- Phase 7 Closeout / Next-Cycle Backlog Transition
+
+Current recommended next step:
+
+- Publish `NEXT_CYCLE_BACKLOG.md` as the active next-cycle execution backlog source and begin `P0-A: Phase 3 Productization Cleanup`.
+- In progress: implement automation execution metadata, service restart durability, and log persistence/search service consolidation.
 
 ---
 
@@ -403,6 +409,7 @@ Phase 6 completed reality:
 Current recommended next slice:
 
 - Refresh the repo-wide rebaseline and prepare the next-cycle backlog after Phase 7 closes.
+- Publish `NEXT_CYCLE_BACKLOG.md` as the active next-cycle execution backlog source.
 
 Phase 7 progress notes:
 

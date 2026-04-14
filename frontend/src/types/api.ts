@@ -440,6 +440,9 @@ export type AutomationWorkflow = {
   id: number;
   name: string;
   description?: string;
+  trigger_type?: string;
+  action_type?: string;
+  action_config?: Record<string, unknown>;
   service_name?: string;
   enabled?: boolean;
 };
