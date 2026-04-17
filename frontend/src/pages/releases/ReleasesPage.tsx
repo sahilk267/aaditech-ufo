@@ -141,10 +141,36 @@ export function ReleasesPage() {
   const policyError = policyQuery.isError ? extractErrorMessage(policyQuery.error) : "";
   const guideError = guideQuery.isError ? extractErrorMessage(guideQuery.error) : "";
 
+  const refreshReleases = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.releases });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.releasePolicy });
+    void queryClient.invalidateQueries({ queryKey: ["agent", "build", "status"] });
+  };
+
+  const resetReleasesView = () => {
+    setVersion("");
+    setFile(null);
+    setTargetVersion("");
+    setNotes("");
+    setCurrentVersionInput("");
+    setRequestedGuideVersion("");
+    setFeedback("");
+  };
+
   return (
     <ModulePage
       title="Agent Releases"
       description="Release upload, policy, and guide workflows are now API integrated."
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshReleases} disabled={releasesQuery.isFetching || policyQuery.isFetching || buildStatusQuery.isFetching}>
+            Refresh releases
+          </button>
+          <button type="button" onClick={resetReleasesView}>
+            Reset releases view
+          </button>
+        </div>
+      }
     >
       <div className="module-grid">
         <form className="module-card" onSubmit={handleUpload}>

@@ -13,6 +13,14 @@ const DashboardPage = lazy(() => import("../pages/dashboard/DashboardPage").then
 const SystemsPage = lazy(() => import("../pages/systems/SystemsPage").then((m) => ({ default: m.SystemsPage })));
 const HistoryPage = lazy(() => import("../pages/history/HistoryPage").then((m) => ({ default: m.HistoryPage })));
 const TenantsPage = lazy(() => import("../pages/tenants/TenantsPage").then((m) => ({ default: m.TenantsPage })));
+const TenantSettingsPage = lazy(() => import("../pages/tenant-settings/TenantSettingsPage").then((m) => ({ default: m.TenantSettingsPage })));
+const TenantControlsPage = lazy(() => import("../pages/tenant-controls/TenantControlsPage").then((m) => ({ default: m.TenantControlsPage })));
+const TenantQuotasPage = lazy(() => import("../pages/tenant-quotas/TenantQuotasPage").then((m) => ({ default: m.TenantQuotasPage })));
+const TenantCommercialPage = lazy(() => import("../pages/tenant-commercial/TenantCommercialPage").then((m) => ({ default: m.TenantCommercialPage })));
+const OidcProvidersPage = lazy(() => import("../pages/oidc-providers/OidcProvidersPage").then((m) => ({ default: m.OidcProvidersPage })));
+const TenantSecretsPage = lazy(() => import("../pages/tenant-secrets/TenantSecretsPage").then((m) => ({ default: m.TenantSecretsPage })));
+const AgentEnrollmentPage = lazy(() => import("../pages/agent-enrollment/AgentEnrollmentPage").then((m) => ({ default: m.AgentEnrollmentPage })));
+const IncidentsPage = lazy(() => import("../pages/incidents/IncidentsPage").then((m) => ({ default: m.IncidentsPage })));
 const UsersPage = lazy(() => import("../pages/users/UsersPage").then((m) => ({ default: m.UsersPage })));
 const AlertsPage = lazy(() => import("../pages/alerts/AlertsPage").then((m) => ({ default: m.AlertsPage })));
 const AutomationPage = lazy(() => import("../pages/automation/AutomationPage").then((m) => ({ default: m.AutomationPage })));
@@ -24,6 +32,7 @@ const UpdatesPage = lazy(() => import("../pages/updates/UpdatesPage").then((m) =
 const RemotePage = lazy(() => import("../pages/remote/RemotePage").then((m) => ({ default: m.RemotePage })));
 const PlatformPage = lazy(() => import("../pages/platform/PlatformPage").then((m) => ({ default: m.PlatformPage })));
 const BackupPage = lazy(() => import("../pages/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
+const BackupDrillPage = lazy(() => import("../pages/backup-drill/BackupDrillPage").then((m) => ({ default: m.BackupDrillPage })));
 const AuditPage = lazy(() => import("../pages/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
 
 function lazyElement(element: ReactNode) {
@@ -58,6 +67,38 @@ const appChildren: RouteObject[] = [
   {
     path: ROUTES.TENANTS.slice(1),
     element: guardedElement(ROUTES.TENANTS, <TenantsPage />),
+  },
+  {
+    path: ROUTES.TENANT_SETTINGS.slice(1),
+    element: guardedElement(ROUTES.TENANT_SETTINGS, <TenantSettingsPage />),
+  },
+  {
+    path: ROUTES.TENANT_CONTROLS.slice(1),
+    element: guardedElement(ROUTES.TENANT_CONTROLS, <TenantControlsPage />),
+  },
+  {
+    path: ROUTES.TENANT_QUOTAS.slice(1),
+    element: guardedElement(ROUTES.TENANT_QUOTAS, <TenantQuotasPage />),
+  },
+  {
+    path: ROUTES.TENANT_COMMERCIAL.slice(1),
+    element: guardedElement(ROUTES.TENANT_COMMERCIAL, <TenantCommercialPage />),
+  },
+  {
+    path: ROUTES.OIDC_PROVIDERS.slice(1),
+    element: guardedElement(ROUTES.OIDC_PROVIDERS, <OidcProvidersPage />),
+  },
+  {
+    path: ROUTES.INCIDENTS.slice(1),
+    element: guardedElement(ROUTES.INCIDENTS, <IncidentsPage />),
+  },
+  {
+    path: ROUTES.TENANT_SECRETS.slice(1),
+    element: guardedElement(ROUTES.TENANT_SECRETS, <TenantSecretsPage />),
+  },
+  {
+    path: ROUTES.AGENT_ENROLLMENT.slice(1),
+    element: guardedElement(ROUTES.AGENT_ENROLLMENT, <AgentEnrollmentPage />),
   },
   {
     path: ROUTES.USERS.slice(1),
@@ -102,6 +143,10 @@ const appChildren: RouteObject[] = [
   {
     path: ROUTES.BACKUP.slice(1),
     element: guardedElement(ROUTES.BACKUP, <BackupPage />),
+  },
+  {
+    path: ROUTES.BACKUP_DRILL.slice(1),
+    element: guardedElement(ROUTES.BACKUP_DRILL, <BackupDrillPage />),
   },
   {
     path: ROUTES.AUDIT.slice(1),

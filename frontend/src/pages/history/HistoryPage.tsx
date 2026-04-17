@@ -76,6 +76,20 @@ export function HistoryPage() {
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
   }, [historyRecords]);
 
+  const refreshHistory = () => {
+    if (!hostName) return;
+    historyMutation.mutate();
+  };
+
+  const resetHistoryView = () => {
+    setSearchText("");
+    setTimeWindow("all");
+    setSourceFilter("all");
+    setLatestResult(null);
+    setActionError(null);
+    setHostName(systemsQuery.data?.systems?.[0]?.hostname ?? "");
+  };
+
   const filteredRecords = useMemo(() => {
     const now = new Date();
     const normalizedSearch = searchText.trim().toLowerCase();
@@ -106,6 +120,16 @@ export function HistoryPage() {
       description="Reliability records history with host selection, filtering, and sortable tabular review."
       isLoading={systemsQuery.isLoading}
       error={systemsQuery.isError ? "Failed to load hosts for history view." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshHistory} disabled={!hostName || historyMutation.isPending || systemsQuery.isLoading}>
+            Refresh history
+          </button>
+          <button type="button" onClick={resetHistoryView}>
+            Reset history view
+          </button>
+        </div>
+      }
     >
       <ActionPanel title="History Filters">
         <div className="module-grid">

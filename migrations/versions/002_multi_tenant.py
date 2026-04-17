@@ -38,7 +38,7 @@ def upgrade():
     op.execute(
         """
         INSERT INTO organizations (name, slug, is_active, created_at, updated_at)
-        VALUES ('Default Organization', 'default', 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        VALUES ('Default Organization', 'default', TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         """
     )
     op.execute(

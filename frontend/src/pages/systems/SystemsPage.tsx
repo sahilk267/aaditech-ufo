@@ -1,5 +1,4 @@
-import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { JsonViewer } from "../../components/common/JsonViewer";
@@ -12,7 +11,6 @@ import { useAuthStore } from "../../store/authStore";
 export function SystemsPage() {
   const queryClient = useQueryClient();
   const userPermissions = useAuthStore((state) => state.user?.permissions || []);
-  const [searchParams, setSearchParams] = useSearchParams();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [message, setMessage] = useState("");
 
@@ -22,50 +20,12 @@ export function SystemsPage() {
     staleTime: 30_000,
   });
 
-  useEffect(() => {
-    if (selectedId || !systemsQuery.data?.systems?.length) {
-      return;
-    }
-
-    const serialNumber = searchParams.get("serial");
-    const matchedSystem = serialNumber
-      ? systemsQuery.data.systems.find((system) => system.serial_number === serialNumber)
-      : undefined;
-    const nextSystem = matchedSystem || systemsQuery.data.systems[0];
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedId(nextSystem.id);
-
-    if (serialNumber && !matchedSystem) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMessage(`System with serial ${serialNumber} was not found. Showing latest available system.`);
-    }
-  }, [selectedId, searchParams, systemsQuery.data]);
-
-  useEffect(() => {
-    if (!selectedId || !systemsQuery.data?.systems?.length) {
-      return;
-    }
-
-    const selectedSystem = systemsQuery.data.systems.find((system) => system.id === selectedId);
-    if (!selectedSystem) {
-      return;
-    }
-
-    const currentSerial = searchParams.get("serial");
-    if (currentSerial === selectedSystem.serial_number) {
-      return;
-    }
-
-    const nextParams = new URLSearchParams(searchParams);
-    nextParams.set("serial", selectedSystem.serial_number);
-    setSearchParams(nextParams, { replace: true });
-  }, [searchParams, selectedId, setSearchParams, systemsQuery.data]);
+  const effectiveSelectedId = selectedId ?? systemsQuery.data?.systems?.[0]?.id ?? null;
 
   const detailQuery = useQuery({
-    queryKey: queryKeys.system(selectedId || 0),
-    queryFn: () => getSystem(selectedId as number),
-    enabled: Boolean(selectedId),
+    queryKey: queryKeys.system(effectiveSelectedId || 0),
+    queryFn: () => getSystem(effectiveSelectedId as number),
+    enabled: Boolean(effectiveSelectedId),
   });
 
   const submitMutation = useMutation({
@@ -73,6 +33,9 @@ export function SystemsPage() {
     onSuccess: (data) => {
       setMessage(data.message || "Manual submit complete");
       queryClient.invalidateQueries({ queryKey: queryKeys.systems });
+      if (effectiveSelectedId) {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.system(effectiveSelectedId) });
+      }
     },
     onError: (err) => {
       setMessage(extractErrorMessage(err));
@@ -81,10 +44,39 @@ export function SystemsPage() {
 
   const canManualSubmit = userPermissions.includes(PERMISSIONS.SYSTEM_SUBMIT);
 
+  const refreshSystems = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.systems });
+    if (effectiveSelectedId) {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.system(effectiveSelectedId) });
+    }
+  };
+
+  const resetSystemsView = () => {
+    setMessage("");
+    if (systemsQuery.data?.systems?.length) {
+      const firstSystem = systemsQuery.data.systems[0];
+      setSelectedId(firstSystem.id);
+    } else {
+      setSelectedId(null);
+    }
+  };
+
   return (
     <ModulePage
       title="Systems"
       description="Inventory table, live details, and manual submit action are now API-wired."
+      isLoading={systemsQuery.isLoading}
+      error={systemsQuery.isError ? "Failed to load systems inventory." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshSystems} disabled={systemsQuery.isFetching}>
+            Refresh systems
+          </button>
+          <button type="button" onClick={resetSystemsView}>
+            Reset view
+          </button>
+        </div>
+      }
     >
       <div className="module-grid">
         <div className="module-card">
@@ -122,7 +114,7 @@ export function SystemsPage() {
                       setSelectedId(system.id);
                       setMessage("");
                     }}
-                    className={selectedId === system.id ? "selected-row" : ""}
+                    className={effectiveSelectedId === system.id ? "selected-row" : ""}
                   >
                     <td>{system.id}</td>
                     <td>{system.hostname}</td>
@@ -139,7 +131,7 @@ export function SystemsPage() {
 
         <div className="module-card">
           <h3>Selected System Detail</h3>
-          {selectedId && detailQuery.isLoading ? (
+          {effectiveSelectedId && detailQuery.isLoading ? (
             <div className="module-status loading">Loading system detail...</div>
           ) : detailQuery.error ? (
             <div className="module-status error-text">Failed to load system detail.</div>

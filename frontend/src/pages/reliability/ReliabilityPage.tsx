@@ -60,9 +60,22 @@ export function ReliabilityPage() {
 
   const refreshReliabilityQueries = async () => {
     await queryClient.invalidateQueries({ queryKey: queryKeys.reliabilityRuns });
+    await queryClient.invalidateQueries({ queryKey: [...queryKeys.reliabilityRuns, "report", hostName] });
     if (selectedRunId != null) {
       await queryClient.invalidateQueries({ queryKey: queryKeys.reliabilityRun(selectedRunId) });
     }
+  };
+
+  const resetReliabilityView = () => {
+    setHostName("localhost");
+    setDumpName("access-violation-app.dmp");
+    setDiagnosticFilter("");
+    setStatusFilter("");
+    setErrorReasonFilter("");
+    setLatestPerType(false);
+    setSelectedRunId(null);
+    setLatestResult(null);
+    setActionError(null);
   };
 
   const onOk = async (data: unknown) => {
@@ -106,6 +119,18 @@ export function ReliabilityPage() {
     <ModulePage
       title="Reliability"
       description="Operator-facing reliability diagnostics with durable execution history, crash workflows, and drill-down detail."
+      isLoading={runsQuery.isLoading || reportQuery.isLoading}
+      error={runsQuery.isError || reportQuery.isError ? "Failed to load reliability data." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshReliabilityQueries} disabled={runsQuery.isFetching || reportQuery.isFetching}>
+            Refresh reliability
+          </button>
+          <button type="button" onClick={resetReliabilityView}>
+            Reset view
+          </button>
+        </div>
+      }
     >
       <div className="module-grid">
         <StatCard label="Runs" value={report?.total_runs_considered ?? runs.length} detail="Persisted reliability diagnostic executions" />

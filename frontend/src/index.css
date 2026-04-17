@@ -176,6 +176,32 @@ a.button:hover {
   background: #ffffff;
 }
 
+.module-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.module-page-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.module-page-actions-group {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.module-page-actions button,
+.module-page-actions-group button {
+  min-width: 140px;
+}
+
 /* ---- StatCard ---- */
 .stat-card {
   padding: 16px;

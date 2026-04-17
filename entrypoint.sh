@@ -1,12 +1,19 @@
 #!/bin/bash
+set -e
+set -o pipefail
+
 # Wait for any services to be ready
 sleep 2
 
 # Apply migrations and seed baseline data
-flask --app server.app db upgrade
+if ! flask --app server.app db upgrade; then
+    echo "WARNING: Alembic upgrade failed or did not complete; falling back to schema initialization"
+fi
 
 python << 'PYTHON_EOF'
+from sqlalchemy import inspect, text
 from server.app import app
+from server.extensions import db
 from server.models import Organization, User, Role, Permission
 from server.auth import hash_password
 
@@ -19,6 +26,25 @@ required_permissions = [
 ]
 
 with app.app_context():
+    inspector = inspect(db.engine)
+    missing_schema = []
+    if not inspector.has_table('organizations'):
+        missing_schema.append('organizations')
+    if not inspector.has_table('alembic_version'):
+        missing_schema.append('alembic_version')
+    if missing_schema:
+        print(f"WARNING: Missing expected schema objects: {missing_schema}. Applying fallback create_all() and stamping Alembic head.")
+        db.create_all()
+        db.session.execute(text(
+            "CREATE TABLE IF NOT EXISTS alembic_version (version_num VARCHAR(255) NOT NULL)"
+        ))
+        db.session.execute(text("DELETE FROM alembic_version"))
+        db.session.execute(text(
+            "INSERT INTO alembic_version (version_num) VALUES ('025_oidc_external_maturity')"
+        ))
+        db.session.commit()
+        print("Fallback schema creation and Alembic stamp complete")
+
     # Check if default organization exists
     org = Organization.query.filter_by(slug='default').first()
     if not org:
@@ -29,7 +55,7 @@ with app.app_context():
         )
         db.session.add(org)
         db.session.commit()
-        print("✅ Created default organization")
+        print("Created default organization")
     
     # Create admin role if it doesn't exist (prefer canonical lowercase name)
     admin_role = Role.query.filter_by(name='admin', organization_id=org.id).first()
@@ -44,7 +70,7 @@ with app.app_context():
         )
         db.session.add(admin_role)
         db.session.commit()
-        print("✅ Created admin role")
+        print("Created admin role")
 
     # Ensure role has required permissions
     existing_codes = {permission.code for permission in admin_role.permissions}
@@ -60,7 +86,7 @@ with app.app_context():
             permissions_added += 1
     if permissions_added:
         db.session.commit()
-        print(f"✅ Added {permissions_added} admin permissions")
+        print(f"Added {permissions_added} admin permissions")
     
     # Create demo user if it doesn't exist
     user = User.query.filter_by(email='admin@toolboxgalaxy.local').first()
@@ -74,17 +100,17 @@ with app.app_context():
         )
         db.session.add(user)
         db.session.commit()
-        print("✅ Created admin user")
+        print("Created admin user")
 
     # Ensure user is linked to admin role
     if admin_role not in user.roles:
         user.roles.append(admin_role)
         db.session.commit()
-        print("✅ Linked admin role to admin user")
+        print("Linked admin role to admin user")
     
-    print("✅ Database initialization complete!")
+    print("Database initialization complete!")
 PYTHON_EOF
 
 # Start Flask
-echo "🚀 Starting Flask application..."
+echo "Starting Flask application..."
 exec flask --app server.app run --host 0.0.0.0 --port 5000

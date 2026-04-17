@@ -323,6 +323,23 @@ export function TenantsPage() {
     onError: (err) => setFeedback(`Error: ${extractErrorMessage(err)}`),
   });
 
+  const refreshTenants = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenants });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantSettings });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantQuotas });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantUsage });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantUsageReport });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantCommercial });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantCommercialProviderBoundary });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.oidcProviders });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.myTotp });
+  };
+
+  const resetCreateTenantForm = () => {
+    setFeedback("");
+    form.reset();
+  };
+
   const onSubmit = (data: CreateTenantInput) => {
     createMutation.mutate(data);
   };
@@ -331,6 +348,16 @@ export function TenantsPage() {
     <ModulePage
       title="Tenants"
       description="List, create, and status management mapped to tenant APIs."
+      actions={
+        <>
+          <button type="button" onClick={refreshTenants} disabled={tenantsQuery.isFetching || tenantSettingsQuery.isFetching}>
+            Refresh tenant data
+          </button>
+          <button type="button" onClick={resetCreateTenantForm}>
+            Reset form
+          </button>
+        </>
+      }
     >
       <div className="module-grid">
         <form className="module-card" onSubmit={form.handleSubmit(onSubmit)}>

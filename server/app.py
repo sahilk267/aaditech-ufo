@@ -19,7 +19,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .auth import init_auth_context
 from .blueprints import api_bp, web_bp
 from .config import get_config
-from .extensions import db, init_extensions
+from .extensions import db, init_extensions, limiter
 from .queue import init_queue
 from .services import PerformanceService
 from .tenant_context import init_tenant_context
@@ -157,6 +157,7 @@ def _register_error_handlers(app: Flask) -> None:
 
 def _register_healthcheck(app: Flask) -> None:
     @app.route("/health", methods=["GET"])
+    @limiter.exempt
     def health_check():
         """Health check endpoint."""
         from flask import jsonify

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { ActionPanel } from "../../components/common/ActionPanel";
 import { StatCard } from "../../components/common/StatCard";
@@ -43,6 +43,20 @@ export function DashboardPage() {
     staleTime: 45_000,
   });
 
+  const queryClient = useQueryClient();
+
+  const refreshDashboardData = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.apiStatus });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.systems });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStatus(hostName || "none") });
+  };
+
+  const resetDashboardView = () => {
+    setHostName(null);
+    setShowChart(false);
+    void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStatus("none") });
+  };
+
   const activeCount = useMemo(() => {
     const systems = systemsQuery.data?.systems || [];
     return systems.filter((s) => s.status === "active").length;
@@ -70,6 +84,20 @@ export function DashboardPage() {
       description="Live operational overview powered by /api/status, /api/systems, and /api/dashboard/status."
       isLoading={isLoading}
       error={error}
+      actions={
+        <div className="module-page-actions-group">
+          <button
+            type="button"
+            onClick={refreshDashboardData}
+            disabled={apiStatusQuery.isFetching || systemsQuery.isFetching || dashboardStatusQuery.isFetching}
+          >
+            Refresh dashboard
+          </button>
+          <button type="button" onClick={resetDashboardView}>
+            Reset host
+          </button>
+        </div>
+      }
     >
       <div className="grid-cards">
         <StatCard label="API" value={apiStatusQuery.data?.status || "loading"} detail={`Version: ${apiStatusQuery.data?.version || "-"}`} />

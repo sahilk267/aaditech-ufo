@@ -38,6 +38,17 @@ export function UpdatesPage() {
     }
   };
 
+  const resetUpdatesView = () => {
+    setHostName("localhost");
+    setReliabilityScore(0.8);
+    setStatusFilter("");
+    setSelectedRunId(null);
+    setLatestResult(null);
+    setActionError(null);
+    setLastUpdatesPayload([]);
+    setLastUpdateRunId(null);
+  };
+
   const onErr = (err: unknown) => setActionError(err);
 
   const monitorMutation = useMutation({
@@ -71,6 +82,16 @@ export function UpdatesPage() {
     <ModulePage
       title="Updates"
       description="Update monitoring with durable history, confidence linkage, and operator drill-down instead of one-shot snapshots."
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshUpdateQueries} disabled={runsQuery.isFetching || selectedRunQuery.isFetching}>
+            Refresh updates
+          </button>
+          <button type="button" onClick={resetUpdatesView}>
+            Reset updates view
+          </button>
+        </div>
+      }
     >
       <div className="module-grid">
         <StatCard label="Runs" value={runs.length} detail="Persisted update monitoring executions" />

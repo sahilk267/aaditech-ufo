@@ -187,6 +187,22 @@ export function AlertsPage() {
     createRuleMutation.mutate(data);
   };
 
+  const refreshAlertsData = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.alerts });
+    void queryClient.invalidateQueries({ queryKey: ["alerts", "silences"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.alertDeliveryHistory });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.incidents });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.tenantControls });
+  };
+
+  const resetAlertsView = () => {
+    setLatestResult(null);
+    setActionError(null);
+    setSelectedDeliveryId(null);
+    setSelectedIncidentId(null);
+    setIncidentCommentBody("");
+  };
+
   const rules = Array.isArray(rulesQuery.data?.rules) ? rulesQuery.data.rules : [];
   const silences = Array.isArray(silencesQuery.data?.silences) ? silencesQuery.data.silences : [];
   const deliveries = Array.isArray(deliveryHistoryQuery.data?.deliveries) ? deliveryHistoryQuery.data.deliveries : [];
@@ -237,6 +253,16 @@ export function AlertsPage() {
     <ModulePage
       title="Alerts"
       description="Live rule management and evaluation flow using /api/alerts/* endpoints."
+      actions={
+        <>
+          <button type="button" onClick={refreshAlertsData}>
+            Refresh alerts
+          </button>
+          <button type="button" onClick={resetAlertsView}>
+            Reset view
+          </button>
+        </>
+      }
     >
       <div className="module-grid">
         <StatCard label="Rules" value={rules.length} detail="Configured alert thresholds" />

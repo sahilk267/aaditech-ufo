@@ -14,6 +14,13 @@ export const apiClient = axios.create({
 apiClient.interceptors.request.use((config) => {
   const { tokens, tenantSlug } = useAuthStore.getState();
 
+  if (typeof config.url === "string") {
+    config.url = config.url.replace(/^\/api\/api\//, "/api/");
+    if (typeof config.baseURL === "string" && config.baseURL.endsWith("/api") && config.url.startsWith("/api/")) {
+      config.url = config.url.replace(/^\/api/, "");
+    }
+  }
+
   if (tokens?.access_token) {
     config.headers.Authorization = `Bearer ${tokens.access_token}`;
   }

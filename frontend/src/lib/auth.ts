@@ -50,6 +50,17 @@ export async function fetchMe(): Promise<MeResponse> {
   return response.data;
 }
 
+export async function fetchMeWithAuth(accessToken: string, tenantSlug: string): Promise<MeResponse> {
+  const headers: Record<string, string> = {};
+  headers.Authorization = `Bearer ${accessToken}`;
+  headers["X-Tenant-Slug"] = tenantSlug;
+
+  const response = await apiClient.get<MeResponse>("/api/auth/me", {
+    headers,
+  });
+  return response.data;
+}
+
 export async function logout(): Promise<void> {
   await apiClient.post("/api/auth/logout");
 }

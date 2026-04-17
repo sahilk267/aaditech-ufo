@@ -82,6 +82,7 @@ import type {
   UpdateRunDetailResponse,
   UpdateRunsResponse,
   UserRegistrationResponse,
+  UsersResponse,
   WorkflowRunDetailResponse,
   WorkflowRunsResponse,
   ApiStatusResponse,
@@ -187,6 +188,46 @@ export async function getTenantSettings() {
 
 export async function updateTenantSettings(payload: Record<string, unknown>) {
   const { data } = await apiClient.patch<TenantSettingsResponse>("/api/tenant-settings", payload);
+  return data;
+}
+
+export async function getTenantSecrets() {
+  const { data } = await apiClient.get<Record<string, unknown>>("/api/tenant-secrets");
+  return data;
+}
+
+export async function createTenantSecret(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<Record<string, unknown>>("/api/tenant-secrets", payload);
+  return data;
+}
+
+export async function rotateTenantSecret(secretId: number, payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<Record<string, unknown>>(`/api/tenant-secrets/${secretId}/rotate`, payload);
+  return data;
+}
+
+export async function revokeTenantSecret(secretId: number) {
+  const { data } = await apiClient.post<Record<string, unknown>>(`/api/tenant-secrets/${secretId}/revoke`);
+  return data;
+}
+
+export async function getAgentEnrollmentTokens() {
+  const { data } = await apiClient.post<Record<string, unknown>>("/api/agents/enrollment-tokens");
+  return data;
+}
+
+export async function enrollAgent(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<Record<string, unknown>>("/api/agents/enroll", payload);
+  return data;
+}
+
+export async function getUsers() {
+  const { data } = await apiClient.get<UsersResponse>("/api/users");
+  return data;
+}
+
+export async function updateUser(userId: number, payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch<UsersResponse>(`/api/users/${userId}`, payload);
   return data;
 }
 
@@ -703,6 +744,11 @@ export async function createBackup() {
 
 export async function restoreBackup(filename: string) {
   const { data } = await apiClient.post<BackupRestoreResponse>(`/api/backups/${filename}/restore`);
+  return data;
+}
+
+export async function runBackupRestoreDrill(filename: string) {
+  const { data } = await apiClient.post<BackupRestoreResponse>(`/api/backups/${filename}/restore-drill`);
   return data;
 }
 

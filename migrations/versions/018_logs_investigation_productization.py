@@ -24,7 +24,7 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_log_sources_host_name'), ['host_name'], unique=False)
         batch_op.create_index(batch_op.f('ix_log_sources_is_active'), ['is_active'], unique=False)
 
-    op.execute("UPDATE log_sources SET is_active = 1 WHERE is_active IS NULL")
+    op.execute("UPDATE log_sources SET is_active = TRUE WHERE is_active IS NULL")
 
     with op.batch_alter_table('log_sources', schema=None) as batch_op:
         batch_op.alter_column('is_active', server_default=None)

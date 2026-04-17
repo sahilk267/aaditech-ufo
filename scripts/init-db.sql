@@ -22,10 +22,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     outcome VARCHAR(20),
     reason TEXT,
     request_id VARCHAR(100),
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    INDEX ON (timestamp),
-    INDEX ON (actor_id),
-    INDEX ON (event_type)
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes for common queries

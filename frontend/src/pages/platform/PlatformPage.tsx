@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -23,13 +23,14 @@ import {
   type CacheManagementInput,
   type DatabaseOptimizeInput,
 } from "../../lib/schemas";
+import type { CacheStatusResponse } from "../../types/api";
 
 export function PlatformPage() {
   const queryClient = useQueryClient();
   const [latestResult, setLatestResult] = useState<unknown>(null);
   const [actionError, setActionError] = useState<unknown>(null);
 
-  const cacheStatusQuery = useQuery({
+  const cacheStatusQuery = useQuery<CacheStatusResponse>({
     queryKey: ["platform", "cache"],
     queryFn: getCacheStatus,
     staleTime: 30_000,
@@ -54,6 +55,21 @@ export function PlatformPage() {
       keyPattern: "",
     },
   });
+
+  const cacheSummary = useMemo(() => {
+    const cacheData = cacheStatusQuery.data?.cache;
+    if (!cacheData || typeof cacheData !== "object") {
+      return null;
+    }
+
+    const keys = Object.keys(cacheData);
+    return {
+      keyCount: keys.length,
+      entries: typeof cacheData.entries === "number" ? cacheData.entries : undefined,
+      memoryUsage: typeof cacheData.memory_usage === "number" ? cacheData.memory_usage : undefined,
+      raw: cacheData,
+    };
+  }, [cacheStatusQuery.data]);
 
   const onOk = (data: unknown) => {
     setLatestResult(data);
@@ -103,15 +119,56 @@ export function PlatformPage() {
     settingsMutation.mutate(data);
   };
 
+  const runQuickCacheAction = (action: "stats" | "clear" | "warm", keyPattern = "") => {
+    settingsMutation.mutate({ action, keyPattern });
+  };
+
+  const runOptimizationPreset = (payload: DatabaseOptimizeInput) => {
+    optimizeMutation.mutate(payload);
+  };
+
+  const refreshCacheStatus = () => {
+    void queryClient.invalidateQueries({ queryKey: ["platform", "cache"] });
+  };
+
   return (
     <ModulePage
       title="Platform Operations"
       description="System settings and maintenance controls with validated forms for cache and database operations."
       isLoading={cacheStatusQuery.isLoading}
       error={cacheStatusQuery.isError ? "Failed to load cache status." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshCacheStatus} disabled={cacheStatusQuery.isFetching}>
+            Refresh status
+          </button>
+          <button type="button" onClick={() => runQuickCacheAction("clear")}>Clear cache</button>
+          <button type="button" onClick={() => runQuickCacheAction("warm")}>Warm cache</button>
+        </div>
+      }
     >
       <ActionPanel title="Cache Status">
-        <JsonViewer data={cacheStatusQuery.data} />
+        {cacheSummary ? (
+          <div className="module-grid">
+            <div>
+              <p><strong>Status:</strong> {cacheStatusQuery.data?.status}</p>
+              <p><strong>Cache keys:</strong> {cacheSummary.keyCount}</p>
+              {cacheSummary.entries != null ? <p><strong>Entries:</strong> {cacheSummary.entries}</p> : null}
+              {cacheSummary.memoryUsage != null ? <p><strong>Memory:</strong> {cacheSummary.memoryUsage}</p> : null}
+            </div>
+          </div>
+        ) : (
+          <JsonViewer data={cacheStatusQuery.data} />
+        )}
+      </ActionPanel>
+
+      <ActionPanel title="Quick Platform Actions" style={{ marginTop: 12 }}>
+        <div className="row-between" style={{ gap: 8, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => runQuickCacheAction("stats")}>Refresh Cache</button>
+          <button type="button" onClick={() => runQuickCacheAction("clear")}>Clear Cache</button>
+          <button type="button" onClick={() => runQuickCacheAction("warm")}>Warm Cache</button>
+          <button type="button" onClick={() => runQuickCacheAction("clear", "tenant:*")}>Clear tenant:* cache</button>
+        </div>
       </ActionPanel>
 
       <form
@@ -186,6 +243,33 @@ export function PlatformPage() {
         >
           Run Optimization
         </FormSubmitButton>
+
+        <div style={{ marginTop: 16 }}>
+          <h4>Presets</h4>
+          <div className="row-between" style={{ gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => runOptimizationPreset({ dryRun: true, analyzeStatistics: true, rebuildIndexes: false, vacuumFull: false })}
+              disabled={optimizeMutation.isPending}
+            >
+              Analyze only
+            </button>
+            <button
+              type="button"
+              onClick={() => runOptimizationPreset({ dryRun: false, analyzeStatistics: true, rebuildIndexes: true, vacuumFull: false })}
+              disabled={optimizeMutation.isPending}
+            >
+              Rebuild indexes
+            </button>
+            <button
+              type="button"
+              onClick={() => runOptimizationPreset({ dryRun: false, analyzeStatistics: true, rebuildIndexes: true, vacuumFull: true })}
+              disabled={optimizeMutation.isPending}
+            >
+              Full maintenance
+            </button>
+          </div>
+        </div>
       </form>
 
       <ActionPanel title="Operation Result" style={{ marginTop: 12 }}>

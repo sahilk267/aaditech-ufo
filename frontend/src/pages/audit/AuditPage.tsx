@@ -26,6 +26,24 @@ export function AuditPage() {
     staleTime: 30_000,
   });
 
+  const refreshAuditData = async () => {
+    await queryClient.invalidateQueries({ queryKey: queryKeys.operationsTimeline });
+  };
+
+  const resetAuditFilters = () => {
+    setLatestResult(null);
+    setActionError(null);
+    setStreamStatus("connecting");
+    form.reset({
+      eventType: "",
+      searchText: "",
+      userId: undefined,
+      dateFrom: "",
+      dateTo: "",
+      limit: 50,
+    });
+  };
+
   const form = useForm<AuditFilterInput>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(auditFilterSchema) as any,
@@ -92,6 +110,18 @@ export function AuditPage() {
     <ModulePage
       title="Audit & Compliance"
       description="Filter and query audit activity using /api/audit-events with client-side validated filters."
+      isLoading={timelineQuery.isLoading}
+      error={timelineQuery.isError ? "Failed to load operations timeline." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshAuditData} disabled={timelineQuery.isFetching}>
+            Refresh timeline
+          </button>
+          <button type="button" onClick={resetAuditFilters}>
+            Reset filters
+          </button>
+        </div>
+      }
     >
       <form onSubmit={form.handleSubmit(onSubmit)} className="module-card">
         <h3 className="action-panel-title">Audit Filters</h3>

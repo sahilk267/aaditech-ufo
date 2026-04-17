@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { fetchMe, login, verifyTotpLogin } from "../../lib/auth";
+import { fetchMeWithAuth, login, verifyTotpLogin } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
 import { ROUTES } from "../../config/routes";
 
@@ -33,7 +33,7 @@ export function LoginPage() {
         throw new Error("Missing login tokens");
       }
       setTenantSlug(tenantSlug);
-      const me = await fetchMe();
+      const me = await fetchMeWithAuth(auth.tokens.access_token, tenantSlug);
       setAuth(auth.tokens, me.user);
       navigate(ROUTES.DASHBOARD, { replace: true });
     } catch {
@@ -53,7 +53,7 @@ export function LoginPage() {
         throw new Error("Missing login tokens");
       }
       setTenantSlug(tenantSlug);
-      const me = await fetchMe();
+      const me = await fetchMeWithAuth(auth.tokens.access_token, tenantSlug);
       setAuth(auth.tokens, me.user);
       navigate(ROUTES.DASHBOARD, { replace: true });
     } catch {

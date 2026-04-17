@@ -9,14 +9,17 @@ import {
   FormInput,
   FormSubmitButton,
 } from "../../components/forms/FormComponents";
-import { registerUser } from "../../lib/api";
+import { getUsers, registerUser, updateUser } from "../../lib/api";
 import { fetchMe } from "../../lib/auth";
 import { queryKeys } from "../../lib/queryKeys";
 import { createUserSchema, type CreateUserInput } from "../../lib/schemas";
+import type { User } from "../../types/api";
 
 export function UsersPage() {
   const queryClient = useQueryClient();
   const [latestResult, setLatestResult] = useState<unknown>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editedFullName, setEditedFullName] = useState("");
 
   const form = useForm<CreateUserInput>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -26,6 +29,12 @@ export function UsersPage() {
       fullName: "",
       password: "",
     },
+  });
+
+  const usersQuery = useQuery({
+    queryKey: queryKeys.users,
+    queryFn: getUsers,
+    staleTime: 60_000,
   });
 
   const meQuery = useQuery({ queryKey: queryKeys.me, queryFn: fetchMe, staleTime: 60_000 });
@@ -40,7 +49,23 @@ export function UsersPage() {
     onSuccess: (data) => {
       setLatestResult(data);
       form.reset();
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
       void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    },
+    onError: (err) => {
+      form.setError("root", { message: String(err) });
+    },
+  });
+
+  const updateUserMutation = useMutation({
+    mutationFn: (payload: { id: number; full_name: string }) => updateUser(payload.id, { full_name: payload.full_name }),
+    onSuccess: () => {
+      if (editingUser) {
+        setLatestResult({ message: "User updated", user: { ...editingUser, full_name: editedFullName } });
+      }
+      setEditingUser(null);
+      setEditedFullName("");
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
     },
     onError: (err) => {
       form.setError("root", { message: String(err) });
@@ -51,10 +76,41 @@ export function UsersPage() {
     createUserMutation.mutate(data);
   };
 
+  const onBeginEdit = (user: User) => {
+    setEditingUser(user);
+    setEditedFullName(user.full_name ?? "");
+  };
+
+  const onSaveEdit = () => {
+    if (!editingUser) return;
+    updateUserMutation.mutate({ id: editingUser.id, full_name: editedFullName });
+  };
+
+  const refreshUsers = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.users });
+  };
+
+  const resetUserForm = () => {
+    form.reset();
+    setLatestResult(null);
+    setEditingUser(null);
+    setEditedFullName("");
+  };
+
   return (
     <ModulePage
       title="Users"
-      description="Tenant-scoped user provisioning using /api/users with current identity context from /api/auth/me."
+      description="Tenant-scoped user provisioning and management using /api/users."
+      actions={
+        <>
+          <button type="button" onClick={refreshUsers} disabled={usersQuery.isFetching}>
+            Refresh users
+          </button>
+          <button type="button" onClick={resetUserForm}>
+            Reset form
+          </button>
+        </>
+      }
     >
       <ActionPanel title="Current Session User">
         {meQuery.isLoading ? (
@@ -68,13 +124,67 @@ export function UsersPage() {
         )}
       </ActionPanel>
 
-      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card" style={{ marginTop: 12 }}>
-        <h3 className="action-panel-title">Create User</h3>
-        
-        {form.formState.errors.root && (
-          <div className="form-error-banner">
-            {form.formState.errors.root.message}
+      <div className="panel" style={{ marginTop: 16 }}>
+        <h2>User Directory</h2>
+        {usersQuery.isLoading ? (
+          <div className="module-status loading">Loading users...</div>
+        ) : usersQuery.error ? (
+          <div className="module-status error-text">Failed to load users list.</div>
+        ) : (
+          <div className="table-scroll">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Email</th>
+                  <th>Full Name</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usersQuery.data?.users?.map((user: User) => (
+                  <tr key={user.id}>
+                    <td>{user.id}</td>
+                    <td>{user.email}</td>
+                    <td>{user.full_name || "-"}</td>
+                    <td>
+                      <button className="button button--secondary" type="button" onClick={() => onBeginEdit(user)}>
+                        Edit
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        )}
+      </div>
+
+      {editingUser ? (
+        <div className="module-card" style={{ marginTop: 16 }}>
+          <h3>Edit User</h3>
+          <div className="form-field">
+            <label className="form-label">Email</label>
+            <input value={editingUser.email} disabled className="form-input" />
+          </div>
+          <div className="form-field">
+            <label className="form-label">Full Name</label>
+            <input value={editedFullName} onChange={(e) => setEditedFullName(e.target.value)} className="form-input" />
+          </div>
+          <button className="button button--primary" type="button" onClick={onSaveEdit} disabled={updateUserMutation.status === "pending"}>
+            {updateUserMutation.status === "pending" ? "Saving..." : "Save changes"}
+          </button>
+          <button className="button button--secondary" type="button" onClick={() => setEditingUser(null)} style={{ marginLeft: 8 }}>
+            Cancel
+          </button>
+        </div>
+      ) : null}
+
+      <form onSubmit={form.handleSubmit(onSubmit)} className="module-card" style={{ marginTop: 16 }}>
+        <h3 className="action-panel-title">Create User</h3>
+
+        {form.formState.errors.root && (
+          <div className="form-error-banner">{form.formState.errors.root.message}</div>
         )}
 
         <div className="module-grid">
@@ -124,3 +234,4 @@ export function UsersPage() {
     </ModulePage>
   );
 }
+

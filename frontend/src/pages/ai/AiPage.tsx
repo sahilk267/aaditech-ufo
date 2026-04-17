@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { ActionPanel } from "../../components/common/ActionPanel";
 import { JsonViewer } from "../../components/common/JsonViewer";
@@ -41,8 +41,23 @@ export function AiPage() {
     onError: onErr,
   });
 
+  const queryClient = useQueryClient();
   const isPending = inferenceMutation.isPending || rootCauseMutation.isPending || recommendationsMutation.isPending;
   const report = aiOperationsQuery.data?.report;
+
+  const refreshAiData = () => {
+    void queryClient.invalidateQueries({ queryKey: queryKeys.aiOperationsReport });
+  };
+
+  const resetAiView = () => {
+    setLatestResult(null);
+    setActionError(null);
+    setPrompt("Summarize possible root causes for high CPU spikes");
+    setSymptomSummary("CPU usage spikes above 95% every 5 minutes");
+    setProbableCause("Scheduled task overloading worker service");
+    setEvidenceText("task scheduler logs show repeating trigger\nservice restart loop");
+  };
+
   const latestObservability = useMemo(() => {
     if (!latestResult || typeof latestResult !== "object") {
       return null;
@@ -72,6 +87,16 @@ export function AiPage() {
       description="Inference, root-cause analysis, recommendations, and operator diagnostics using /api/ai/* endpoints."
       isLoading={aiOperationsQuery.isLoading}
       error={aiOperationsQuery.isError ? "Unable to load AI operations report." : undefined}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshAiData} disabled={aiOperationsQuery.isFetching}>
+            Refresh AI report
+          </button>
+          <button type="button" onClick={resetAiView}>
+            Reset AI inputs
+          </button>
+        </div>
+      }
     >
       <div className="stats-grid">
         <StatCard

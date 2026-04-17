@@ -3,6 +3,8 @@
 services:
   postgres:
     restart: always
+    env_file:
+      - .env
     environment:
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=en_US.UTF-8"
     volumes:
@@ -15,16 +17,13 @@ services:
 
   redis:
     restart: always
+    env_file:
+      - .env
     command:
-      - redis-server
-      - "--appendonly"
-      - "yes"
-      - "--requirepass"
-      - "${REDIS_PASSWORD:-redis123}"
-      - "--maxmemory"
-      - "512mb"
-      - "--maxmemory-policy"
-      - "allkeys-lru"
+      - sh
+      - -c
+      - |
+        redis-server --appendonly yes --requirepass "$REDIS_PASSWORD" --maxmemory 512mb --maxmemory-policy allkeys-lru
     logging:
       driver: "json-file"
       options:
@@ -41,20 +40,41 @@ services:
     env_file:
       - .env.prod
     environment:
-      FLASK_DEBUG: "False"
-      FLASK_ENV: production
-      DATABASE_URL: postgresql://${DB_USER:-aaditech}:${DB_PASSWORD:?error}@postgres:5432/${DB_NAME:-aaditech_ufo}
-      REDIS_URL: redis://:${REDIS_PASSWORD:?error}@redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:?error}
-      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?error}
-      ENABLE_PROXY_FIX: "True"
-      PROXY_FIX_X_FOR: "1"
-      PROXY_FIX_X_PROTO: "1"
-      PROXY_FIX_X_HOST: "1"
-      PROXY_FIX_X_PORT: "1"
-      PROXY_FIX_X_PREFIX: "1"
+      - FLASK_DEBUG
+      - FLASK_ENV
+      - DATABASE_URL
+      - REDIS_URL
+      - SECRET_KEY
+      - JWT_SECRET_KEY
+      - ENABLE_PROXY_FIX
+      - PROXY_FIX_X_FOR
+      - PROXY_FIX_X_PROTO
+      - PROXY_FIX_X_HOST
+      - PROXY_FIX_X_PORT
+      - PROXY_FIX_X_PREFIX
     expose:
       - "5000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+      args:
+        NODE_ENV: "production"
+    container_name: aaditech-frontend
+    environment:
+      VITE_API_BASE_URL: /api
+      NODE_ENV: production
+    expose:
+      - "3000"
+    restart: always
+    networks:
+      - aaditech-network
     logging:
       driver: "json-file"
       options:

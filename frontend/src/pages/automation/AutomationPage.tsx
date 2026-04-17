@@ -145,6 +145,19 @@ export function AutomationPage() {
     createWorkflowMutation.mutate(data);
   };
 
+  const refreshAutomationData = () => {
+    void queryClient.invalidateQueries({ queryKey: ["automation", "workflows"] });
+    void queryClient.invalidateQueries({ queryKey: ["automation", "scheduled-jobs"] });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.workflowRuns });
+  };
+
+  const resetAutomationForm = () => {
+    form.reset();
+    setLatestResult(null);
+    setActionError(null);
+    setSelectedWorkflowId(null);
+  };
+
   const workflows = Array.isArray(workflowsQuery.data?.workflows) ? workflowsQuery.data.workflows : [];
   const scheduledJobs = Array.isArray(scheduledJobsQuery.data?.scheduled_jobs)
     ? scheduledJobsQuery.data.scheduled_jobs
@@ -155,6 +168,21 @@ export function AutomationPage() {
     <ModulePage
       title="Automation"
       description="Workflow execution, service checks, and self-healing via /api/automation/* endpoints."
+      isLoading={workflowsQuery.isLoading || scheduledJobsQuery.isLoading}
+      error={workflowsQuery.error || scheduledJobsQuery.error ? "Failed to load automation dashboard." : null}
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshAutomationData} disabled={workflowsQuery.isFetching || scheduledJobsQuery.isFetching || workflowRunsQuery.isFetching}>
+            Refresh automation state
+          </button>
+          <button type="button" onClick={resetAutomationForm}>
+            Reset form
+          </button>
+          <button type="button" onClick={() => selfHealMutation.mutate()} disabled={selfHealMutation.isPending}>
+            Self-Heal dry run
+          </button>
+        </div>
+      }
     >
       <div className="module-grid">
         <StatCard label="Workflows" value={workflows.length} detail="Tenant automation definitions" />

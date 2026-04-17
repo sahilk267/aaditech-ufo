@@ -77,10 +77,31 @@ export function BackupPage() {
     form.setValue('filename', selectedFilename, { shouldDirty: true, shouldValidate: true });
   };
 
+  const refreshBackupList = () => {
+    void queryClient.invalidateQueries({ queryKey: ['backups'] });
+  };
+
+  const resetBackupView = () => {
+    setLatestResult(null);
+    setActionError(null);
+    setSelectedFilename('');
+    form.reset();
+  };
+
   return (
     <ModulePage
       title="Backup Management"
       description="Manage database backups and restore operations. Create, view, and restore backup snapshots."
+      actions={
+        <div className="module-page-actions-group">
+          <button type="button" onClick={refreshBackupList} disabled={backupsQuery.isFetching}>
+            Refresh backups
+          </button>
+          <button type="button" onClick={resetBackupView}>
+            Reset backup view
+          </button>
+        </div>
+      }
       isLoading={backupsQuery.isLoading}
       error={backupsQuery.isError ? 'Failed to load backup list.' : null}
     >
