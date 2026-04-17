@@ -84,6 +84,30 @@ def test_agent_release_api_round_trip_matches_deployment_update_flow(client, app
     assert 'aaditech-agent-3.4.5.exe' in (download.headers.get('Content-Disposition') or '')
 
 
+def test_agent_release_download_uses_dashboard_view_permission(client, app_fixture, tmp_path):
+    release_dir = tmp_path / 'agent_releases'
+    release_dir.mkdir(parents=True)
+    app_fixture.config['AGENT_RELEASES_DIR'] = str(release_dir)
+
+    binary_bytes = b'downloadable-agent-binary'
+    response = client.post(
+        '/api/agent/releases/upload',
+        headers=_headers(),
+        data={
+            'version': '4.5.6',
+            'release_file': (BytesIO(binary_bytes), 'agent.exe'),
+        },
+        content_type='multipart/form-data',
+    )
+    assert response.status_code == 201
+
+    download = client.get('/api/agent/releases/download/aaditech-agent-4.5.6.exe', headers=_headers())
+    assert download.status_code == 200
+    assert download.data == binary_bytes
+    assert 'attachment' in (download.headers.get('Content-Disposition') or '').lower()
+    assert 'aaditech-agent-4.5.6.exe' in (download.headers.get('Content-Disposition') or '')
+
+
 def test_agent_release_guide_supports_server_side_downgrade_target(client, app_fixture, tmp_path):
     release_dir = tmp_path / 'agent_releases'
     release_dir.mkdir(parents=True)

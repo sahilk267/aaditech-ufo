@@ -1552,7 +1552,7 @@ def list_agent_releases_api():
     release_payload = []
     for release in releases:
         item = release.to_dict()
-        item['download_url'] = url_for('api.download_agent_release_api', filename=release.filename, _external=True)
+        item['download_url'] = url_for('api.download_agent_release_api', filename=release.filename)
         release_payload.append(item)
 
     log_audit_event('agent.release.list', outcome='success', release_count=len(release_payload))
@@ -1592,7 +1592,7 @@ def upload_agent_release_api():
         return jsonify({'error': 'Upload failed', 'details': str(exc)}), 500
 
     payload = release.to_dict()
-    payload['download_url'] = url_for('api.download_agent_release_api', filename=release.filename, _external=True)
+    payload['download_url'] = url_for('api.download_agent_release_api', filename=release.filename)
     log_audit_event('agent.release.upload.api', outcome='success', version=release.version, filename=release.filename)
     return jsonify({'status': 'success', 'release': payload}), 201
 
@@ -1648,7 +1648,7 @@ def download_built_agent_binary_api():
 
 
 @api_bp.route('/agent/releases/download/<path:filename>', methods=['GET'])
-@require_api_key
+@require_api_key_or_permission('dashboard.view')
 def download_agent_release_api(filename):
     """Download versioned agent release for agent/self-update flows."""
     file_path = AgentReleaseService.resolve_download_path(filename, current_app.config, current_app.instance_path)
@@ -1700,9 +1700,9 @@ def get_agent_release_guide_api():
     guide = AgentReleaseService.build_update_guide(current_version, current_app.config, current_app.instance_path)
 
     for release in guide.get('releases', []):
-        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''), _external=True)
+        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''))
     for release in guide.get('downgrade_candidates', []):
-        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''), _external=True)
+        release['download_url'] = url_for('api.download_agent_release_api', filename=release.get('filename', ''))
 
     recommended = str(guide.get('recommended_version') or '').strip()
     recommended_release = next((item for item in guide.get('releases', []) if item.get('version') == recommended), None)

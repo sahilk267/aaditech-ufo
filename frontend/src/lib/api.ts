@@ -298,6 +298,13 @@ export async function downloadBuiltAgentBinary() {
   return response.data as Blob;
 }
 
+export async function downloadAgentReleaseBinary(filename: string) {
+  const response = await apiClient.get(`/api/agent/releases/download/${encodeURIComponent(filename)}`, {
+    responseType: "blob",
+  });
+  return response.data as Blob;
+}
+
 export async function getAgentReleasePolicy() {
   const { data } = await apiClient.get<ReleasePolicyResponse>("/api/agent/releases/policy");
   return data;

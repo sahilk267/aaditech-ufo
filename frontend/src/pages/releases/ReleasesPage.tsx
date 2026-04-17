@@ -7,6 +7,7 @@ import { extractErrorMessage } from "../../lib/errorUtils";
 import {
   buildAgentBinary,
   downloadBuiltAgentBinary,
+  downloadAgentReleaseBinary,
   getAgentBuildStatus,
   getAgentReleaseGuide,
   getAgentReleasePolicy,
@@ -97,6 +98,23 @@ export function ReleasesPage() {
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
       setFeedback("Built agent binary downloaded");
+    } catch (err) {
+      setFeedback(extractErrorMessage(err));
+    }
+  }
+
+  async function handleDownloadRelease(filename: string) {
+    try {
+      const blob = await downloadAgentReleaseBinary(filename);
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      window.URL.revokeObjectURL(url);
+      setFeedback(`Release downloaded: ${filename}`);
     } catch (err) {
       setFeedback(extractErrorMessage(err));
     }
@@ -346,9 +364,13 @@ export function ReleasesPage() {
                   <td>{release.filename}</td>
                   <td>{(release.size_bytes / (1024 * 1024)).toFixed(2)} MB</td>
                   <td>
-                    <a href={release.download_url || `/api/agent/releases/download/${encodeURIComponent(release.filename)}`} target="_blank" rel="noreferrer">
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadRelease(release.filename)}
+                      disabled={!release.filename}
+                    >
                       Download EXE
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}
