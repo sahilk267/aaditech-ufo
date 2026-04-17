@@ -7,6 +7,7 @@ import ast
 import json
 import logging
 import os
+import platform
 import re
 import time
 from urllib.parse import urlencode, urlparse
@@ -105,6 +106,17 @@ from ..services import (
 from marshmallow import ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+def _build_artifact_metadata(binary_path) -> dict[str, str]:
+    runtime_platform = (platform.system() or 'unknown').lower()
+    artifact_extension = binary_path.suffix.lower() if getattr(binary_path, 'suffix', None) else ''
+    artifact_kind = 'windows_executable' if artifact_extension == '.exe' else 'native_binary'
+    return {
+        'runtime_platform': runtime_platform,
+        'artifact_extension': artifact_extension,
+        'artifact_kind': artifact_kind,
+    }
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -1590,9 +1602,11 @@ def upload_agent_release_api():
 def get_agent_build_status_api():
     """Report whether a server-built agent binary is currently available."""
     binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
+    metadata = _build_artifact_metadata(binary_path)
     payload = {
         'binary_available': binary_path.exists() and binary_path.is_file(),
         'binary_name': binary_path.name,
+        **metadata,
     }
     return jsonify({'status': 'success', 'build': payload}), 200
 
@@ -1614,7 +1628,9 @@ def build_agent_binary_api():
         return jsonify({'error': 'Build failed', 'details': result}), 500
 
     log_audit_event('agent.build.api', outcome='success', binary_path=result.get('binary_path'))
-    return jsonify({'status': 'success', 'build': result}), 200
+    binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
+    metadata = _build_artifact_metadata(binary_path)
+    return jsonify({'status': 'success', 'build': {**result, **metadata}}), 200
 
 
 @api_bp.route('/agent/build/download', methods=['GET'])

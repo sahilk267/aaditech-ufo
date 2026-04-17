@@ -11,3 +11,6 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+
+# ignore server-side agent build artifacts
+agent/dist/

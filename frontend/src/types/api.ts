@@ -307,6 +307,9 @@ export type AgentBuildStatusResponse = {
   build: {
     binary_available: boolean;
     binary_name: string;
+    runtime_platform?: string;
+    artifact_extension?: string;
+    artifact_kind?: string;
   };
 };
 
@@ -319,6 +322,9 @@ export type AgentBuildResponse = {
     returncode?: number;
     binary_available?: boolean;
     binary_path?: string;
+    runtime_platform?: string;
+    artifact_extension?: string;
+    artifact_kind?: string;
     stdout_tail?: string;
     stderr_tail?: string;
   };

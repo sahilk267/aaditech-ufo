@@ -258,7 +258,11 @@ export function ReleasesPage() {
             Control-panel parity: trigger server-side PyInstaller build and download latest built binary directly from SPA.
           </p>
           <div className="row-between" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
-            <button onClick={() => buildMutation.mutate()} disabled={buildMutation.isPending || !canManagePolicy}>
+            <button
+              onClick={() => buildMutation.mutate()}
+              disabled={buildMutation.isPending || !canManagePolicy}
+              title={!canManagePolicy ? `Missing permission: ${PERMISSIONS.TENANT_MANAGE}` : undefined}
+            >
               {buildMutation.isPending ? "Building..." : "Build Agent Binary"}
             </button>
             <button
@@ -270,6 +274,15 @@ export function ReleasesPage() {
             <small>
               Built binary: {buildStatusQuery.data?.build?.binary_available ? "available" : "not available"}
             </small>
+            <small>
+              Runtime: {buildStatusQuery.data?.build?.runtime_platform || "unknown"} | Artifact: {buildStatusQuery.data?.build?.artifact_kind || "native_binary"}
+            </small>
+            {buildStatusQuery.data?.build?.runtime_platform && buildStatusQuery.data.build.runtime_platform !== "windows" ? (
+              <small>
+                Server build generates a non-Windows artifact on this runtime. Use Upload Release with a .exe for Windows rollout.
+              </small>
+            ) : null}
+            {!canManagePolicy ? <small>Build operation requires {PERMISSIONS.TENANT_MANAGE}.</small> : null}
           </div>
         </div>
         <div className="row-between" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>

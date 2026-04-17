@@ -1,6 +1,7 @@
 """Tests for API-based agent release lifecycle (upload/list/guide/policy/download)."""
 
 from io import BytesIO
+from pathlib import Path
 
 from server.auth import get_api_key
 
@@ -134,3 +135,49 @@ def test_agent_release_policy_rejects_unknown_target_version(client, app_fixture
     assert response.status_code == 400
     payload = response.get_json()
     assert payload['error'] == 'Validation failed'
+
+
+def test_agent_build_status_includes_artifact_metadata(client, app_fixture, tmp_path):
+    agent_dist_dir = Path(app_fixture.root_path).resolve().parent / 'agent' / 'dist'
+    agent_dist_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = agent_dist_dir / 'aaditech-agent.exe'
+    artifact_path.write_bytes(b'fake-agent-binary')
+
+    status = client.get('/api/agent/build/status', headers=_headers())
+    assert status.status_code == 200
+    payload = status.get_json()
+    assert payload['status'] == 'success'
+    assert payload['build']['binary_available'] is True
+    assert payload['build']['binary_name'] == 'aaditech-agent.exe'
+    assert payload['build']['runtime_platform'] in {'linux', 'darwin', 'windows', 'unknown'}
+    assert payload['build']['artifact_kind'] == 'windows_executable'
+    assert payload['build']['artifact_extension'] == '.exe'
+
+
+def test_agent_build_api_includes_artifact_metadata(client, app_fixture, tmp_path, monkeypatch):
+    artifact_path = tmp_path / 'agent' / 'dist' / 'aaditech-agent.exe'
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_bytes(b'fake-agent-binary')
+
+    def fake_build(root_path, timeout_seconds=180):
+        return {
+            'success': True,
+            'returncode': 0,
+            'binary_available': True,
+            'binary_path': str(artifact_path),
+            'stdout_tail': '',
+            'stderr_tail': '',
+        }
+
+    monkeypatch.setattr('server.blueprints.api.AgentReleaseService.build_agent_binary', fake_build)
+    monkeypatch.setattr('server.blueprints.api.AgentReleaseService.resolve_built_binary_path', lambda root_path: artifact_path)
+
+    response = client.post('/api/agent/build', headers=_headers())
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload['status'] == 'success'
+    assert payload['build']['binary_available'] is True
+    assert payload['build']['binary_path'] == str(artifact_path)
+    assert payload['build']['artifact_kind'] == 'windows_executable'
+    assert payload['build']['artifact_extension'] == '.exe'
+    assert payload['build']['runtime_platform'] in {'linux', 'darwin', 'windows', 'unknown'}
