@@ -1,0 +1,40 @@
+modules = ["python-3.12", "nodejs-20", "web", "bash", "postgresql-16"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Server"
+
+[[workflows.workflow]]
+name = "Server"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python -m server.app"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["bash", "-lc", "python -c 'from server.app import app, apply_database_migrations; apply_database_migrations(app)' && gunicorn --bind=0.0.0.0:5000 --workers=2 --timeout=60 server.app:app"]
+build = ["bash", "-lc", "pip install -r requirements.txt && cd frontend && npm install && npx vite build"]

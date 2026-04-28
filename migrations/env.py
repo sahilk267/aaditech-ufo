@@ -60,6 +60,7 @@ def run_migrations_online() -> None:
         connection.execute(text(
             "ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(255)"
         ))
+        connection.commit()
 
         context.configure(
             connection=connection,
@@ -69,6 +70,7 @@ def run_migrations_online() -> None:
 
         with context.begin_transaction():
             context.run_migrations()
+        connection.commit()
 
 
 if context.is_offline_mode():
