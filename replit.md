@@ -51,3 +51,11 @@ Configured for **autoscale** deployment:
 - Redis is **not** provisioned by default. Celery and rate-limiting fall back to in-memory storage; the `/health` endpoint reports Redis as `disconnected`, which is expected in this environment.
 - The SPA is served at `/app` and `/app/*`; the legacy server-rendered UI (login, dashboard, admin) is at `/`.
 - The default tenant slug is `default`; tenants are auto-created on first request.
+
+## Agent Release / .exe Build Pipeline
+
+PyInstaller cannot cross-compile a Windows `.exe` from the Linux server, so a dedicated pipeline is in place. Full operator documentation lives at `docs/AGENT_RELEASE_BUILD.md`.
+
+- **Server endpoint** `POST /api/agent/build` returns `windows_compatible` (bool) + `guidance` (string) so the SPA can warn operators when a non-Windows build runs. Status is `success` on Windows runtimes and `success_non_windows` elsewhere.
+- **SPA Releases page** (`frontend/src/pages/releases/ReleasesPage.tsx`) now shows a "How to obtain a Windows .exe" panel, inline version-regex/file-extension/size validation on the upload form, and a yellow runtime-mismatch banner above the server-build button.
+- **GitHub Actions workflow** `.github/workflows/agent-release-publish.yml` runs on `windows-latest`, builds via `scripts/build_agent_windows.ps1`, attaches the `.exe` to a GitHub Release, and (when secrets `AGENT_RELEASE_UPLOAD_URL` + `AGENT_RELEASE_API_KEY` are set, plus optional `AGENT_RELEASE_TENANT_SLUG`) auto-uploads it to the running server. A job-summary step records what was published.

@@ -310,6 +310,8 @@ export type AgentBuildStatusResponse = {
     runtime_platform?: string;
     artifact_extension?: string;
     artifact_kind?: string;
+    windows_compatible?: boolean;
+    guidance?: string;
   };
 };
 
@@ -325,6 +327,8 @@ export type AgentBuildResponse = {
     runtime_platform?: string;
     artifact_extension?: string;
     artifact_kind?: string;
+    windows_compatible?: boolean;
+    guidance?: string;
     stdout_tail?: string;
     stderr_tail?: string;
   };

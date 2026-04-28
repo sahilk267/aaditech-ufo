@@ -108,14 +108,30 @@ from marshmallow import ValidationError
 logger = logging.getLogger(__name__)
 
 
-def _build_artifact_metadata(binary_path) -> dict[str, str]:
+def _build_artifact_metadata(binary_path) -> dict[str, object]:
     runtime_platform = (platform.system() or 'unknown').lower()
     artifact_extension = binary_path.suffix.lower() if getattr(binary_path, 'suffix', None) else ''
     artifact_kind = 'windows_executable' if artifact_extension == '.exe' else 'native_binary'
+    windows_compatible = runtime_platform == 'windows' and artifact_extension == '.exe'
+    if runtime_platform == 'windows':
+        guidance = (
+            'Server is running on Windows. Native build produces a deployable .exe.'
+        )
+    else:
+        guidance = (
+            'PyInstaller cannot cross-compile a Windows .exe from this runtime. '
+            'The artifact above is a native binary for the server platform only. '
+            'To produce a Windows .exe: run the GitHub Actions workflow '
+            '"Agent Release Build and Publish" (windows-latest runner), or execute '
+            'scripts/build_agent_windows.ps1 on a Windows machine, then upload the '
+            'resulting .exe via the Releases page.'
+        )
     return {
         'runtime_platform': runtime_platform,
         'artifact_extension': artifact_extension,
         'artifact_kind': artifact_kind,
+        'windows_compatible': windows_compatible,
+        'guidance': guidance,
     }
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -1630,7 +1646,8 @@ def build_agent_binary_api():
     log_audit_event('agent.build.api', outcome='success', binary_path=result.get('binary_path'))
     binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
     metadata = _build_artifact_metadata(binary_path)
-    return jsonify({'status': 'success', 'build': {**result, **metadata}}), 200
+    response_status = 'success' if metadata.get('windows_compatible') else 'success_non_windows'
+    return jsonify({'status': response_status, 'build': {**result, **metadata}}), 200
 
 
 @api_bp.route('/agent/build/download', methods=['GET'])

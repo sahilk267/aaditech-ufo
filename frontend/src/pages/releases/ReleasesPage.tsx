@@ -32,6 +32,22 @@ export function ReleasesPage() {
   const [requestedGuideVersion, setRequestedGuideVersion] = useState("");
   const [feedback, setFeedback] = useState("");
 
+  const VERSION_PATTERN = /^[A-Za-z0-9._-]{1,64}$/;
+  const MAX_UPLOAD_MB = 256;
+  const versionError = version.length > 0 && !VERSION_PATTERN.test(version)
+    ? "Version may only contain letters, numbers, dot, underscore, hyphen (1-64 chars)."
+    : "";
+  const fileError = (() => {
+    if (!file) return "";
+    if (!file.name.toLowerCase().endsWith(".exe")) {
+      return "Selected file is not a .exe — only Windows executables are accepted.";
+    }
+    if (file.size > MAX_UPLOAD_MB * 1024 * 1024) {
+      return `File is larger than ${MAX_UPLOAD_MB} MB.`;
+    }
+    return "";
+  })();
+
   const releasesQuery = useQuery({
     queryKey: queryKeys.releases,
     queryFn: getAgentReleases,
@@ -157,6 +173,14 @@ export function ReleasesPage() {
       setFeedback("Version and file are required");
       return;
     }
+    if (versionError) {
+      setFeedback(versionError);
+      return;
+    }
+    if (fileError) {
+      setFeedback(fileError);
+      return;
+    }
     uploadMutation.mutate({ uploadFile: file, uploadVersion: version });
   }
 
@@ -216,32 +240,86 @@ export function ReleasesPage() {
         </div>
       }
     >
+      <div className="module-card" style={{ marginTop: 8, borderLeft: "4px solid #2563eb" }}>
+        <h3>How to obtain a Windows .exe</h3>
+        <p style={{ marginBottom: 8 }}>
+          PyInstaller cannot cross-compile a Windows executable from a Linux server. Pick one of the
+          three supported paths below to produce a real <code>.exe</code>, then upload it here.
+        </p>
+        <ol style={{ marginLeft: 18 }}>
+          <li>
+            <strong>GitHub Actions (recommended).</strong> Push a tag matching{" "}
+            <code>agent-v&lt;version&gt;</code> (e.g. <code>git tag agent-v1.0.0 &amp;&amp; git push --tags</code>),
+            or trigger the <em>Agent Release Build and Publish</em> workflow manually from the
+            Actions tab. The workflow runs on <code>windows-latest</code>, attaches the{" "}
+            <code>.exe</code> to a GitHub Release, and (if{" "}
+            <code>AGENT_RELEASE_UPLOAD_URL</code> + <code>AGENT_RELEASE_API_KEY</code> secrets are
+            set) auto-uploads it to this server.
+          </li>
+          <li>
+            <strong>Local Windows machine.</strong> Run{" "}
+            <code>powershell -ExecutionPolicy Bypass -File .\scripts\build_agent_windows.ps1 -Version 1.0.0</code>{" "}
+            on a Windows host with Python 3.12 installed. The output appears in{" "}
+            <code>agent\dist\aaditech-agent-1.0.0.exe</code>.
+          </li>
+          <li>
+            <strong>Manual upload.</strong> Use the <em>Upload Release</em> form below. The file is
+            renamed to <code>aaditech-agent-&lt;version&gt;.exe</code> and becomes immediately
+            downloadable by enrolled agents.
+          </li>
+        </ol>
+        <small>
+          See <code>docs/AGENT_RELEASE_BUILD.md</code> for full build/upload documentation.
+        </small>
+      </div>
+
       <div className="module-grid">
         <form className="module-card" onSubmit={handleUpload}>
-          <h3>Upload Release</h3>
+          <h3>Upload Release (.exe)</h3>
           <label>
             Version
-            <input value={version} onChange={(e) => setVersion(e.target.value)} required />
+            <input
+              value={version}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder="e.g. 1.0.0 or 1.2.0-beta"
+              required
+            />
           </label>
+          {versionError ? <small className="error-text">{versionError}</small> : null}
           <label>
             EXE File
             <input
               type="file"
-              accept=".exe"
+              accept=".exe,application/x-msdownload,application/octet-stream"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
               required
             />
           </label>
+          {file ? (
+            <small>
+              Selected: <code>{file.name}</code> — {(file.size / (1024 * 1024)).toFixed(2)} MB
+            </small>
+          ) : null}
+          {fileError ? <small className="error-text">{fileError}</small> : null}
           <button
             type="submit"
-            disabled={uploadMutation.isPending || !canManagePolicy}
+            disabled={
+              uploadMutation.isPending ||
+              !canManagePolicy ||
+              !!versionError ||
+              !!fileError ||
+              !file ||
+              !version
+            }
             title={!canManagePolicy ? `Missing permission: ${PERMISSIONS.TENANT_MANAGE}` : undefined}
           >
-            {uploadMutation.isPending ? "Uploading..." : "Upload"}
+            {uploadMutation.isPending ? "Uploading..." : "Upload .exe"}
           </button>
           {!canManagePolicy ? <small>Release uploads require {PERMISSIONS.TENANT_MANAGE}.</small> : null}
           <small>
-            Uploaded files are normalized to <code>aaditech-agent-&lt;version&gt;.exe</code> and available for authenticated SPA download.
+            Uploaded files are normalized to <code>aaditech-agent-&lt;version&gt;.exe</code> and
+            served to enrolled agents via the authenticated download endpoint. Max size:{" "}
+            {MAX_UPLOAD_MB} MB.
           </small>
           {uploadMutation.isError ? (
             <div className="error-text" style={{ marginTop: 8 }}>
@@ -298,17 +376,41 @@ export function ReleasesPage() {
           Legacy portals remain optional for admin fallback only.
         </p>
         <div className="module-card" style={{ marginTop: 12 }}>
-          <h4>Server Build Operations</h4>
+          <h4>Server Build Operations (advanced)</h4>
           <p>
-            Control-panel parity: trigger server-side PyInstaller build and download latest built binary directly from SPA.
+            Triggers a PyInstaller build on this server. On a non-Windows server this produces a
+            native Linux/macOS binary, <strong>not</strong> a Windows <code>.exe</code>. For
+            production Windows rollout use the GitHub Actions workflow above and then upload here.
           </p>
+          {buildStatusQuery.data?.build?.runtime_platform &&
+          buildStatusQuery.data.build.runtime_platform !== "windows" ? (
+            <div
+              className="error-text"
+              style={{
+                background: "#fef3c7",
+                color: "#78350f",
+                padding: "8px 12px",
+                borderRadius: 6,
+                marginBottom: 8,
+              }}
+            >
+              ⚠ This server runs <strong>{buildStatusQuery.data.build.runtime_platform}</strong>.
+              The <em>Build Agent Binary</em> button will produce a{" "}
+              <code>{buildStatusQuery.data.build.artifact_kind || "native_binary"}</code> artifact —
+              not a deployable Windows <code>.exe</code>.
+            </div>
+          ) : null}
           <div className="row-between" style={{ justifyContent: "flex-start", flexWrap: "wrap" }}>
             <button
               onClick={() => buildMutation.mutate()}
               disabled={buildMutation.isPending || !canManagePolicy}
               title={!canManagePolicy ? `Missing permission: ${PERMISSIONS.TENANT_MANAGE}` : undefined}
             >
-              {buildMutation.isPending ? "Building..." : "Build Agent Binary"}
+              {buildMutation.isPending
+                ? "Building..."
+                : buildStatusQuery.data?.build?.runtime_platform === "windows"
+                ? "Build Windows .exe"
+                : "Build Native Binary (non-Windows)"}
             </button>
             <button
               onClick={handleDownloadBuiltBinary}
@@ -320,11 +422,18 @@ export function ReleasesPage() {
               Built binary: {buildStatusQuery.data?.build?.binary_available ? "available" : "not available"}
             </small>
             <small>
-              Runtime: {buildStatusQuery.data?.build?.runtime_platform || "unknown"} | Artifact: {buildStatusQuery.data?.build?.artifact_kind || "native_binary"}
+              Runtime: {buildStatusQuery.data?.build?.runtime_platform || "unknown"} | Artifact:{" "}
+              {buildStatusQuery.data?.build?.artifact_kind || "native_binary"}
+              {buildStatusQuery.data?.build?.binary_name
+                ? ` | File: ${buildStatusQuery.data.build.binary_name}`
+                : ""}
             </small>
-            {buildStatusQuery.data?.build?.runtime_platform && buildStatusQuery.data.build.runtime_platform !== "windows" ? (
-              <small>
-                Server build generates a non-Windows artifact on this runtime. Use Upload Release with a .exe for Windows rollout.
+            {buildStatusQuery.data?.build?.guidance ? (
+              <small style={{ display: "block" }}>{buildStatusQuery.data.build.guidance}</small>
+            ) : null}
+            {buildMutation.data?.build?.guidance ? (
+              <small style={{ display: "block" }}>
+                Last build: {buildMutation.data.build.guidance}
               </small>
             ) : null}
             {!canManagePolicy ? <small>Build operation requires {PERMISSIONS.TENANT_MANAGE}.</small> : null}

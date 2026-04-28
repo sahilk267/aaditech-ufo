@@ -77,11 +77,45 @@ jobs:
       - name: Auto-publish to server release API (optional)
         if: ${{ secrets.AGENT_RELEASE_UPLOAD_URL != '' && secrets.AGENT_RELEASE_API_KEY != '' }}
         shell: bash
+        env:
+          UPLOAD_URL: ${{ secrets.AGENT_RELEASE_UPLOAD_URL }}
+          UPLOAD_API_KEY: ${{ secrets.AGENT_RELEASE_API_KEY }}
+          UPLOAD_TENANT_SLUG: ${{ secrets.AGENT_RELEASE_TENANT_SLUG }}
+          UPLOAD_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
+          tenant_slug="${UPLOAD_TENANT_SLUG:-default}"
+          artifact="agent/dist/aaditech-agent-${UPLOAD_VERSION}.exe"
+          if [[ ! -f "$artifact" ]]; then
+            echo "::error::Built artifact not found at $artifact"
+            exit 1
+          fi
+          echo "Uploading $artifact to $UPLOAD_URL (tenant=$tenant_slug)"
           curl --fail --show-error --silent \
-            -X POST "${{ secrets.AGENT_RELEASE_UPLOAD_URL }}" \
-            -H "X-API-Key: ${{ secrets.AGENT_RELEASE_API_KEY }}" \
-            -H "X-Tenant-Slug: ${AGENT_RELEASE_TENANT_SLUG:-default}" \
-            -F "version=${{ steps.version.outputs.version }}" \
-            -F "release_file=@agent/dist/aaditech-agent-${{ steps.version.outputs.version }}.exe"
+            -X POST "$UPLOAD_URL" \
+            -H "X-API-Key: $UPLOAD_API_KEY" \
+            -H "X-Tenant-Slug: $tenant_slug" \
+            -F "version=${UPLOAD_VERSION}" \
+            -F "release_file=@${artifact}"
+          echo "Upload completed."
+
+      - name: Job summary
+        if: always()
+        shell: bash
+        env:
+          UPLOAD_URL: ${{ secrets.AGENT_RELEASE_UPLOAD_URL }}
+          UPLOAD_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          {
+            echo "## Agent Release v${UPLOAD_VERSION}"
+            echo ""
+            echo "- **Artifact:** \`aaditech-agent-${UPLOAD_VERSION}.exe\`"
+            echo "- **CI artifact:** uploaded"
+            echo "- **GitHub Release:** \`agent-v${UPLOAD_VERSION}\`"
+            if [[ -n "${UPLOAD_URL:-}" ]]; then
+              echo "- **Server upload:** attempted to \`${UPLOAD_URL}\`"
+            else
+              echo "- **Server upload:** skipped (set \`AGENT_RELEASE_UPLOAD_URL\` and \`AGENT_RELEASE_API_KEY\` secrets to enable)"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
