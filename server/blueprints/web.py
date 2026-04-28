@@ -420,15 +420,13 @@ def features_build_agent():
 @require_web_permission('dashboard.view')
 def features_download_built_agent():
     """Download the most recently compiled agent binary."""
-    dist_binary = os.path.realpath(
-        os.path.join(current_app.root_path, '..', 'agent', 'dist', 'aaditech-agent')
-    )
-    if not os.path.exists(dist_binary):
+    binary_path = AgentReleaseService.resolve_built_binary_path(current_app.root_path)
+    if not binary_path.exists() or not binary_path.is_file():
         flash('No built binary found. Build the agent first.', 'warning')
         return redirect(url_for('web.features_hub') + '#tab-agent')
 
     log_audit_event('agent.build.download', outcome='success', downloaded_by=g.current_user.id)
-    return send_file(dist_binary, as_attachment=True, download_name='aaditech-agent')
+    return send_file(binary_path, as_attachment=True, download_name=binary_path.name)
 
 
 @web_bp.route('/user')

@@ -63,6 +63,20 @@ describe('Axios Interceptor Logic', () => {
       expect(config.headers.Authorization).toBeUndefined();
     });
 
+    it('should not add authorization header when a retry explicitly skips auth', () => {
+      const accessToken = 'test-access-token-123';
+      const config = {
+        headers: {} as Record<string, string>,
+        _skipAuthHeader: true,
+      };
+
+      if (accessToken && !config._skipAuthHeader) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      expect(config.headers.Authorization).toBeUndefined();
+    });
+
     it('should not add tenant header when tenant slug is missing', () => {
       const config = {
         headers: {} as Record<string, string>,
@@ -132,6 +146,44 @@ describe('Axios Interceptor Logic', () => {
 
       const shouldRetry = error.response?.status === 401;
       expect(shouldRetry).toBe(false);
+    });
+
+    it('should allow a one-time session fallback retry for 403 responses with bearer auth', () => {
+      const error = {
+        response: { status: 403, data: { error: 'Forbidden' } },
+        config: {
+          url: '/api/agent/releases',
+          headers: { Authorization: 'Bearer stale-token' },
+          _sessionRetry: false,
+        },
+      } as unknown as AxiosError & { config?: RetryableConfig & { headers?: Record<string, string>; _sessionRetry?: boolean } };
+
+      const shouldRetryWithSession =
+        error.response?.status === 403 &&
+        Boolean(error.config?.headers?.Authorization) &&
+        !error.config?._sessionRetry &&
+        !error.config?.url?.includes('/api/auth/');
+
+      expect(shouldRetryWithSession).toBe(true);
+    });
+
+    it('should not session-retry auth endpoints on 403 responses', () => {
+      const error = {
+        response: { status: 403, data: { error: 'Forbidden' } },
+        config: {
+          url: '/api/auth/me',
+          headers: { Authorization: 'Bearer token' },
+          _sessionRetry: false,
+        },
+      } as unknown as AxiosError & { config?: RetryableConfig & { headers?: Record<string, string>; _sessionRetry?: boolean } };
+
+      const shouldRetryWithSession =
+        error.response?.status === 403 &&
+        Boolean(error.config?.headers?.Authorization) &&
+        !error.config?._sessionRetry &&
+        !error.config?.url?.includes('/api/auth/');
+
+      expect(shouldRetryWithSession).toBe(false);
     });
 
     it('should redirect to login on auth endpoint 401', () => {

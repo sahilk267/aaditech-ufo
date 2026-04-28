@@ -9,10 +9,18 @@ export const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true,
 });
+
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+  _sessionRetry?: boolean;
+  _skipAuthHeader?: boolean;
+};
 
 apiClient.interceptors.request.use((config) => {
   const { tokens, tenantSlug } = useAuthStore.getState();
+  const retryableConfig = config as RetryableRequestConfig;
 
   if (typeof config.url === "string") {
     config.url = config.url.replace(/^\/api\/api\//, "/api/");
@@ -21,7 +29,7 @@ apiClient.interceptors.request.use((config) => {
     }
   }
 
-  if (tokens?.access_token) {
+  if (tokens?.access_token && !retryableConfig._skipAuthHeader) {
     config.headers.Authorization = `Bearer ${tokens.access_token}`;
   }
 
@@ -31,10 +39,6 @@ apiClient.interceptors.request.use((config) => {
 
   return config;
 });
-
-type RetryableRequestConfig = InternalAxiosRequestConfig & {
-  _retry?: boolean;
-};
 
 let refreshPromise: Promise<string | null> | null = null;
 
@@ -75,6 +79,25 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config as RetryableRequestConfig | undefined;
     const responseStatus = error.response?.status;
     const requestUrl = originalRequest?.url || "";
+    const hasAuthorizationHeader = Boolean(originalRequest?.headers?.Authorization);
+
+    if (
+      originalRequest &&
+      responseStatus === 403 &&
+      hasAuthorizationHeader &&
+      !originalRequest._sessionRetry &&
+      !requestUrl.includes("/api/auth/")
+    ) {
+      const nextRequest: RetryableRequestConfig = {
+        ...originalRequest,
+        _sessionRetry: true,
+        _skipAuthHeader: true,
+        headers: { ...originalRequest.headers },
+      };
+
+      delete nextRequest.headers.Authorization;
+      return apiClient(nextRequest);
+    }
 
     if (!originalRequest || responseStatus !== 401 || originalRequest._retry) {
       if (responseStatus === 401 && requestUrl.includes("/api/auth/")) {

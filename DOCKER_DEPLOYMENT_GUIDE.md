@@ -74,13 +74,13 @@ NAME                    STATUS              PORTS
 aaditech-postgres       Up (healthy)        5432/tcp
 aaditech-redis          Up (healthy)        6379/tcp
 aaditech-app            Up (healthy)        5000/tcp
-aaditech-gateway        Up (healthy)        8080/tcp
+aaditech-gateway        Up (healthy)        9773/tcp
 ```
 
 ### 5. Access the Application
-- **Frontend SPA**: http://localhost:8080/app
-- **API Documentation**: http://localhost:8080/api/docs (if Swagger enabled)
-- **Gateway Health**: http://localhost:8080/gateway/health
+- **Frontend SPA**: http://UFOMUM-MAS.ufomoviez.com:9773/app
+- **API Documentation**: http://UFOMUM-MAS.ufomoviez.com:9773/api/docs (if Swagger enabled)
+- **Gateway Health**: http://UFOMUM-MAS.ufomoviez.com:9773/gateway/health
 
 ---
 
@@ -234,10 +234,10 @@ docker-compose logs app
 ┌─────────┐
 │ Browser │
 └────┬────┘
-     │ http://localhost:8080
+     │ http://UFOMUM-MAS.ufomoviez.com:9773
      ▼
 ┌────────────────────────────────────────┐
-│  Nginx Gateway (Port 8080)             │
+│  Nginx Gateway (Port 9773)             │
 │  - Reverse proxy                       │
 │  - SSL/TLS termination                 │
 │  - Load balancing                      │
@@ -466,7 +466,7 @@ lsof -i :8080
 
 # Either:
 # 1. Stop the conflicting service
-# 2. Change port in .env file: NGINX_PORT=8081
+# 2. Change port in .env file: NGINX_PORT=9773
 # 3. Free up port: kill -9 <PID>
 ```
 
@@ -531,9 +531,9 @@ docker-compose.prod.yml:
 
 ```bash
 # Check all health endpoints
-curl http://localhost:8080/gateway/health
+curl http://UFOMUM-MAS.ufomoviez.com:9773/gateway/health
 curl http://localhost:5000/health
-curl http://localhost:8080/api/status
+curl http://UFOMUM-MAS.ufomoviez.com:9773/api/status
 ```
 
 ### View Logs

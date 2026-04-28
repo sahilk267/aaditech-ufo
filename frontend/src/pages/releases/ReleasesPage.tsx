@@ -1,4 +1,4 @@
-import { lazy, Suspense, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
@@ -49,6 +49,14 @@ export function ReleasesPage() {
     queryFn: getAgentReleasePolicy,
     staleTime: 60_000,
   });
+
+  useEffect(() => {
+    const policy = policyQuery.data?.policy;
+    if (policy && targetVersion === "" && notes === "") {
+      setTargetVersion(policy.target_version || "");
+      setNotes(policy.notes || "");
+    }
+  }, [policyQuery.data?.policy, targetVersion, notes]);
 
   const guideQuery = useQuery({
     queryKey: queryKeys.releaseGuide(requestedGuideVersion || "none"),
@@ -115,6 +123,24 @@ export function ReleasesPage() {
       document.body.removeChild(anchor);
       window.URL.revokeObjectURL(url);
       setFeedback(`Release downloaded: ${filename}`);
+    } catch (err) {
+      setFeedback(extractErrorMessage(err));
+    }
+  }
+
+  async function handleCopyReleaseUrl(downloadUrl: string | undefined) {
+    if (!downloadUrl) {
+      setFeedback("No download URL available for this release.");
+      return;
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(downloadUrl);
+        setFeedback("Release download URL copied to clipboard.");
+      } else {
+        setFeedback("Clipboard copy is not supported by this browser.");
+      }
     } catch (err) {
       setFeedback(extractErrorMessage(err));
     }
@@ -215,7 +241,7 @@ export function ReleasesPage() {
           </button>
           {!canManagePolicy ? <small>Release uploads require {PERMISSIONS.TENANT_MANAGE}.</small> : null}
           <small>
-            Download is available via legacy session route links shown below.
+            Uploaded files are normalized to <code>aaditech-agent-&lt;version&gt;.exe</code> and available for authenticated SPA download.
           </small>
           {uploadMutation.isError ? (
             <div className="error-text" style={{ marginTop: 8 }}>
@@ -228,6 +254,7 @@ export function ReleasesPage() {
           <h3>Release Policy</h3>
           <small>
             Current target: {policyQuery.data?.policy?.target_version || "(not set)"}
+            {policyQuery.data?.policy?.updated_at ? ` | Updated: ${new Date(policyQuery.data.policy.updated_at).toLocaleString()}` : ""}
           </small>
           <label>
             Target Version
@@ -355,6 +382,7 @@ export function ReleasesPage() {
                 <th>Filename</th>
                 <th>Size</th>
                 <th>Download</th>
+                <th>Link</th>
               </tr>
             </thead>
             <tbody>
@@ -370,6 +398,15 @@ export function ReleasesPage() {
                       disabled={!release.filename}
                     >
                       Download EXE
+                    </button>
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyReleaseUrl(release.download_url)}
+                      disabled={!release.download_url}
+                    >
+                      Copy URL
                     </button>
                   </td>
                 </tr>

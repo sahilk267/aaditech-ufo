@@ -70,6 +70,7 @@ services:
     environment:
       VITE_API_BASE_URL: /api
       NODE_ENV: production
+    working_dir: /app
     expose:
       - "3000"
     restart: always

@@ -205,3 +205,17 @@ def test_agent_build_api_includes_artifact_metadata(client, app_fixture, tmp_pat
     assert payload['build']['artifact_kind'] == 'windows_executable'
     assert payload['build']['artifact_extension'] == '.exe'
     assert payload['build']['runtime_platform'] in {'linux', 'darwin', 'windows', 'unknown'}
+
+
+def test_agent_build_download_uses_dashboard_view_permission(client, app_fixture, tmp_path, monkeypatch):
+    artifact_path = tmp_path / 'agent' / 'dist' / 'aaditech-agent.exe'
+    artifact_path.parent.mkdir(parents=True, exist_ok=True)
+    artifact_path.write_bytes(b'built-agent-binary')
+
+    monkeypatch.setattr('server.blueprints.api.AgentReleaseService.resolve_built_binary_path', lambda root_path: artifact_path)
+
+    download = client.get('/api/agent/build/download', headers=_headers())
+    assert download.status_code == 200
+    assert download.data == b'built-agent-binary'
+    assert 'attachment' in (download.headers.get('Content-Disposition') or '').lower()
+    assert 'aaditech-agent.exe' in (download.headers.get('Content-Disposition') or '')

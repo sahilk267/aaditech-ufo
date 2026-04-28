@@ -1,17 +1,15 @@
--- Initial PostgreSQL setup
--- This file runs on the postgres container during initialization
+#!/bin/sh
+set -e
 
--- Create UUID extension (useful for generating IDs)
+: "${POSTGRES_DB:?POSTGRES_DB is required}"
+: "${POSTGRES_USER:?POSTGRES_USER is required}"
+
+psql --set=ON_ERROR_STOP=1 -v db="$POSTGRES_DB" --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<'EOSQL'
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- Create ltree extension (useful for hierarchical queries)
 CREATE EXTENSION IF NOT EXISTS "ltree";
+ALTER DATABASE :"db" SET statement_timeout = '30s';
+ALTER DATABASE :"db" SET lock_timeout = '10s';
 
--- Enable log sampling for debugging (can be disabled in production)
-ALTER DATABASE aaditech_ufo SET statement_timeout = '30s';
-ALTER DATABASE aaditech_ufo SET lock_timeout = '10s';
-
--- Create a basic audit log table
 CREATE TABLE IF NOT EXISTS audit_log (
     id SERIAL PRIMARY KEY,
     event_type VARCHAR(100) NOT NULL,
@@ -25,7 +23,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for common queries
 CREATE INDEX IF NOT EXISTS idx_audit_log_timestamp ON audit_log(timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_log_actor_id ON audit_log(actor_id);
 CREATE INDEX IF NOT EXISTS idx_audit_log_event_type ON audit_log(event_type);
+EOSQL

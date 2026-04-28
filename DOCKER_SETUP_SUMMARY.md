@@ -27,7 +27,7 @@ I've set up a complete Docker deployment infrastructure for your AADITECH UFO ap
 
 | File | Purpose |
 | --- | --- |
-| **scripts/init-db.sql** | PostgreSQL initialization (extensions, audit tables) |
+| **scripts/init-db.sh** | PostgreSQL initialization (extensions, audit tables) |
 | **scripts/seed-data.sql** | Optional seed data for development |
 
 ### Helper Scripts
