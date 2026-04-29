@@ -26,13 +26,13 @@ args = "Server"
 name = "Server"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "python -m server.app"
-waitForPort = 5000
-
 [workflows.workflow.metadata]
 outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "SPA_WAVE_1_ENABLED=true python -m server.app"
+waitForPort = 5000
 
 [deployment]
 deploymentTarget = "autoscale"

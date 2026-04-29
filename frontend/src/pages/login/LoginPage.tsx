@@ -10,8 +10,8 @@ export function LoginPage() {
   const setAuth = useAuthStore((state) => state.setAuth);
   const setTenantSlug = useAuthStore((state) => state.setTenantSlug);
   const [tenantSlug, setTenantSlugInput] = useState("default");
-  const [email, setEmail] = useState("admin@toolboxgalaxy.local");
-  const [password, setPassword] = useState("Admin123!");
+  const [email, setEmail] = useState("admin@example.com");
+  const [password, setPassword] = useState("ChangeMe123!");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mfaCode, setMfaCode] = useState("");

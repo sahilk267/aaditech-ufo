@@ -184,20 +184,23 @@ def forbidden_page():
 
 
 @web_bp.route('/')
-@require_web_permission('dashboard.view')
 def index():
     """
-    Home page with dashboard.
-    
-    Conducts Wave 1 redirect if SPA_WAVE_1_ENABLED is true.
-    
-    Returns:
-        Rendered dashboard template or redirect to SPA when wave-1 is active
+    Home page.
+
+    When SPA_WAVE_1_ENABLED is true, unconditionally redirect to the React SPA
+    so the SPA's own login screen handles unauthenticated users (instead of
+    bouncing through the legacy Jinja /login page). Otherwise fall through to
+    the legacy dashboard, which is gated by the dashboard.view permission.
     """
-    # Wave 1 redirect: redirect to SPA if enabled
     if current_app.config.get('SPA_WAVE_1_ENABLED', False):
         return redirect('/app/dashboard', code=302)
-    
+    return _legacy_index()
+
+
+@require_web_permission('dashboard.view')
+def _legacy_index():
+    """Legacy Jinja-rendered dashboard (only reachable when SPA wave-1 is off)."""
     try:
         recent_limit = int(current_app.config.get('QUERY_RECENT_SYSTEMS_LIMIT', 10))
         if current_app.config.get('QUERY_OPTIMIZER_ENABLED', True):
