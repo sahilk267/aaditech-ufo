@@ -10,6 +10,7 @@ from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
 from flask import Blueprint, render_template, jsonify, g, request, redirect, url_for, flash, current_app, send_file, abort, send_from_directory, make_response
+from jinja2 import TemplateNotFound
 from werkzeug.utils import secure_filename
 from ..auth import (
     clear_web_session,
@@ -123,6 +124,14 @@ def login():
         destination = next_url if _is_safe_redirect_target(next_url) else url_for('web.index')
         return redirect(destination)
 
+    # If SPA is enabled, redirect browser-login flows to the SPA login route.
+    if current_app.config.get('SPA_WAVE_1_ENABLED', False):
+        # Let the SPA handle the browser login UI. Keep legacy POST handling disabled when SPA is active.
+        if request.method == 'POST':
+            # Disallow legacy POST when SPA is active; encourage API-based auth.
+            return jsonify({'error': 'use SPA login'}), 405
+        return redirect('/app/login')
+
     if request.method == 'POST':
         tenant_slug = (request.form.get('tenant_slug') or '').strip().lower()
         email = (request.form.get('email') or '').strip().lower()
@@ -132,30 +141,45 @@ def login():
         if not tenant_slug or not email or not password:
             log_audit_event('web.login', outcome='failure', reason='required_fields_missing', email=email, tenant_slug=tenant_slug)
             flash('Tenant slug, email, and password are required.', 'danger')
-            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 400
+            try:
+                return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 400
+            except TemplateNotFound:
+                return jsonify({'error': 'legacy login archived'}), 400
 
         tenant = Organization.query.filter_by(slug=tenant_slug, is_active=True).first()
         if tenant is None:
             log_audit_event('web.login', outcome='failure', reason='tenant_not_found', email=email, tenant_slug=tenant_slug)
             flash('Tenant not found or inactive.', 'danger')
-            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            try:
+                return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            except TemplateNotFound:
+                return jsonify({'error': 'tenant not found or legacy login archived'}), 401
 
         user = User.query.filter_by(organization_id=tenant.id, email=email).first()
         if user is None or not user.is_active:
             log_audit_event('web.login', outcome='failure', reason='invalid_credentials', email=email, tenant_slug=tenant_slug)
             flash('Invalid credentials.', 'danger')
-            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            try:
+                return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            except TemplateNotFound:
+                return jsonify({'error': 'invalid credentials'}), 401
 
         if is_user_locked_out(user):
             log_audit_event('web.login', outcome='failure', reason='lockout_active', email=email, tenant_slug=tenant_slug, user_id=user.id)
             flash('Account temporarily locked.', 'danger')
-            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            try:
+                return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            except TemplateNotFound:
+                return jsonify({'error': 'account locked'}), 401
 
         if not verify_password(password, user.password_hash):
             record_failed_login(user)
             log_audit_event('web.login', outcome='failure', reason='invalid_credentials', email=email, tenant_slug=tenant_slug)
             flash('Invalid credentials.', 'danger')
-            return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            try:
+                return render_template('login.html', next_url=next_url, tenant_slug=tenant_slug), 401
+            except TemplateNotFound:
+                return jsonify({'error': 'invalid credentials'}), 401
 
         reset_login_state(user)
         start_web_session(user)
@@ -165,7 +189,11 @@ def login():
         destination = next_url if _is_safe_redirect_target(next_url) else url_for('web.index')
         return redirect(destination)
 
-    return render_template('login.html', next_url=next_url, tenant_slug='')
+    try:
+        return render_template('login.html', next_url=next_url, tenant_slug='')
+    except TemplateNotFound:
+        # Legacy templates archived — instruct users to use the SPA.
+        return jsonify({'error': 'legacy login archived, use SPA at /app/login'}), 503
 
 
 @web_bp.route('/logout', methods=['GET', 'POST'])

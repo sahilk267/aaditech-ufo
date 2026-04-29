@@ -32,6 +32,13 @@ For current execution truth, use:
 - `NEXT_CYCLE_BACKLOG.md`
 - `FEATURE_COVERAGE_MAP.md`
 
+Deployment note (frontend): The repository now serves the built SPA from the `gateway` (nginx) container. The `frontend` component is a build-time artifact (`frontend/dist`) mounted into the gateway at runtime; there is no separate production `frontend` service required. To deploy:
+
+ 1. Build the frontend: run `cd frontend && npm ci && npm run build` (this produces `frontend/dist`).
+ 2. Start services: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` — the gateway will serve `/app/` from the mounted `frontend/dist`.
+
+If you prefer an alternate deployment (embedding the dist in a custom gateway image or running a dedicated node frontend), adjust `docker-compose` accordingly. This change removes the risk of orphaned/old frontend containers during production deploys.
+
 Current repo reality is materially ahead of the older stabilization wording at the top of this file. The repository now includes stabilized startup/migrations, a validated SPA deployment path, stronger tenant/admin controls, auth hardening, TOTP MFA, OIDC maturity work, quota/commercial controls, and deeper operator workflows across logs, reliability, AI, updates, and related admin surfaces.
 
 ## Overview
