@@ -6,17 +6,45 @@ portal/API-friendly listing + download access.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import json
 import shutil
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from werkzeug.utils import secure_filename
+
+
+_SHA256_CACHE: dict[tuple[str, float, int], str] = {}
+
+
+def _compute_sha256(path: Path) -> str:
+    try:
+        stat = path.stat()
+    except OSError:
+        return ''
+
+    cache_key = (str(path), stat.st_mtime, stat.st_size)
+    cached = _SHA256_CACHE.get(cache_key)
+    if cached:
+        return cached
+
+    hasher = hashlib.sha256()
+    try:
+        with path.open('rb') as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b''):
+                hasher.update(chunk)
+    except OSError:
+        return ''
+
+    digest = hasher.hexdigest()
+    _SHA256_CACHE[cache_key] = digest
+    return digest
 
 
 @dataclass
@@ -25,6 +53,7 @@ class AgentRelease:
     version: str
     size_bytes: int
     modified_at: str
+    sha256: str = field(default='')
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -32,6 +61,7 @@ class AgentRelease:
             'version': self.version,
             'size_bytes': self.size_bytes,
             'modified_at': self.modified_at,
+            'sha256': self.sha256,
         }
 
 
@@ -166,6 +196,7 @@ class AgentReleaseService:
                     version=cls._extract_version(item.name),
                     size_bytes=int(stat.st_size),
                     modified_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    sha256=_compute_sha256(item),
                 )
             )
 

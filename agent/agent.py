@@ -11,6 +11,8 @@ Environment variables:
 - TENANT_SLUG (optional)
 - AGENT_REPORT_INTERVAL_SECONDS (default: 60)
 - AGENT_REQUEST_TIMEOUT_SECONDS (default: 10)
+- AGENT_UPDATE_CHECK_INTERVAL_SECONDS (default: 3600; <=0 disables)
+- AGENT_UPDATE_ENABLED (default: 1; set to 0 to disable self-update)
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import os
 import platform
 import socket
 import subprocess
+import sys
 import time
 from datetime import datetime
 from urllib.parse import urljoin
@@ -28,6 +31,13 @@ from urllib.parse import urljoin
 import psutil
 import requests
 from dotenv import load_dotenv
+
+try:
+    from agent.updater import check_and_apply_update
+    from agent.version import AGENT_VERSION
+except ImportError:  # pragma: no cover - PyInstaller flattens packages
+    from updater import check_and_apply_update  # type: ignore[no-redef]
+    from version import AGENT_VERSION  # type: ignore[no-redef]
 
 
 load_dotenv()
@@ -53,6 +63,9 @@ TENANT_HEADER = os.getenv('TENANT_HEADER', 'X-Tenant-Slug').strip() or 'X-Tenant
 TENANT_SLUG = os.getenv('TENANT_SLUG', '').strip().lower()
 REPORT_INTERVAL = _env_int('AGENT_REPORT_INTERVAL_SECONDS', 60, 15, 86400)
 REQUEST_TIMEOUT = _env_int('AGENT_REQUEST_TIMEOUT_SECONDS', 10, 3, 60)
+UPDATE_CHECK_INTERVAL = _env_int('AGENT_UPDATE_CHECK_INTERVAL_SECONDS', 3600, 0, 86400)
+UPDATE_REQUEST_TIMEOUT = _env_int('AGENT_UPDATE_REQUEST_TIMEOUT_SECONDS', 120, 10, 600)
+UPDATE_ENABLED = os.getenv('AGENT_UPDATE_ENABLED', '1').strip().lower() not in ('0', 'false', 'no', 'off', '')
 
 
 def _run_wmic_value(command: str, default: str) -> str:
@@ -187,12 +200,63 @@ def build_payload() -> dict:
     payload.update(run_benchmark())
     payload['last_update'] = datetime.now().isoformat()
     payload['status'] = 'active'
+    payload['agent_version'] = AGENT_VERSION
     return payload
 
 
+def _maybe_self_update() -> None:
+    """Run one update check; restart the process when a new version is staged."""
+    if not UPDATE_ENABLED or UPDATE_CHECK_INTERVAL <= 0:
+        return
+    try:
+        new_version = check_and_apply_update(
+            current_version=AGENT_VERSION,
+            server_base_url=SERVER_BASE_URL,
+            api_key=AGENT_API_KEY,
+            tenant_header=TENANT_HEADER,
+            tenant_slug=TENANT_SLUG,
+            request_timeout=UPDATE_REQUEST_TIMEOUT,
+            enabled=UPDATE_ENABLED,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning('Self-update check failed unexpectedly: %s', exc)
+        return
+
+    if not new_version:
+        return
+
+    logger.info(
+        'Self-update applied: %s -> %s. Restarting process to load the new binary.',
+        AGENT_VERSION,
+        new_version,
+    )
+    try:
+        os.execv(sys.executable, [sys.executable] + sys.argv[1:])
+    except OSError as exc:
+        logger.error(
+            'Self-update binary swapped but exec failed (%s). Exiting so the supervisor restarts us.',
+            exc,
+        )
+        sys.exit(0)
+
+
 def main() -> None:
-    logger.info('Starting Aaditech agent | submit_url=%s | interval=%ss', SUBMIT_URL, REPORT_INTERVAL)
+    logger.info(
+        'Starting Aaditech agent v%s | submit_url=%s | interval=%ss | update_check=%ss%s',
+        AGENT_VERSION,
+        SUBMIT_URL,
+        REPORT_INTERVAL,
+        UPDATE_CHECK_INTERVAL,
+        '' if UPDATE_ENABLED else ' (disabled)',
+    )
+
+    last_update_check = 0.0
     while True:
+        now = time.monotonic()
+        if UPDATE_ENABLED and UPDATE_CHECK_INTERVAL > 0 and (now - last_update_check) >= UPDATE_CHECK_INTERVAL:
+            _maybe_self_update()
+            last_update_check = now
+
         payload = build_payload()
         send_data(payload)
         time.sleep(REPORT_INTERVAL)

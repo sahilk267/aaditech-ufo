@@ -125,15 +125,24 @@ A built `.exe` includes:
 - Hostname / serial-number / IP / model collection (Windows uses `wmic`)
 - Live CPU + RAM + per-core + per-partition disk metrics via `psutil`
 - Lightweight benchmark calculation
-- HTTP submission to the server's `/api/submit_data`
-- Configurable via `SERVER_BASE_URL`, `AGENT_API_KEY`, `TENANT_SLUG` env vars
+- HTTP submission to the server's `/api/submit_data` (now also reports `agent_version`)
+- **Self-update:** the agent polls `/api/agent/releases/guide` on a configurable interval,
+  verifies the recommended `.exe` against the server-supplied SHA-256, atomically swaps it in
+  place of the running binary, and re-execs itself. Only runs when the agent is a frozen
+  PyInstaller build with a real (non-default) API key. See `agent/updater.py`.
+- Configurable via `SERVER_BASE_URL`, `AGENT_API_KEY`, `TENANT_SLUG`,
+  `AGENT_REPORT_INTERVAL_SECONDS`, `AGENT_UPDATE_CHECK_INTERVAL_SECONDS`,
+  `AGENT_UPDATE_ENABLED`, `AGENT_UPDATE_REQUEST_TIMEOUT_SECONDS` env vars.
+
+The build pipeline (`scripts/build_agent_windows.ps1` and the GitHub Actions workflow) stamps
+the version into `agent/version.py` before invoking PyInstaller, so the running `.exe` always
+reports its packaged version to the server.
 
 Capabilities **not yet** in the agent (server APIs exist, agent client logic does not):
 
 - Log forwarding
 - Remote command execution / self-healing actions
 - Local alert-rule evaluation
-- Self-update (the guide endpoint exists, the agent does not yet act on it)
 - Service start/stop/restart management
 - TLS/cert pinning, exponential-backoff retries, offline buffering
 - Packaged Windows installer / uninstaller (`agent/uninstaller.nsi` exists but is not wired into
