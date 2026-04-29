@@ -46,6 +46,18 @@ Configured for **autoscale** deployment:
 1. **`migrations/env.py`** — Added explicit `connection.commit()` calls so Alembic migrations actually persist under SQLAlchemy 2.0 (the previous transactional-DDL block was being rolled back, leaving the schema empty).
 2. **`frontend/src/pages/logs/LogsPage.tsx`** — Added a placeholder module page; the file was referenced by the SPA router but missing from the import, breaking the Vite build.
 
+## Default Admin Seed
+
+Run `python -m scripts.seed_default_admin` to (re)create a default admin in the `default` tenant.
+
+Default credentials (override with CLI flags or `SEED_ADMIN_*` env vars):
+
+- Tenant Slug: `default`
+- Email: `admin@example.com`
+- Password: `ChangeMe123!`
+
+The script is idempotent: it will reuse the existing tenant/role and reset the user's password if the user already exists. The user is granted the built-in `admin` role with `tenant.manage`, `dashboard.view`, `system.submit`, `backup.manage`, and `automation.manage` permissions.
+
 ## Notes
 
 - Redis is **not** provisioned by default. Celery and rate-limiting fall back to in-memory storage; the `/health` endpoint reports Redis as `disconnected`, which is expected in this environment.
