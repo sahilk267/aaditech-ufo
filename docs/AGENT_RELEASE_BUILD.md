@@ -130,9 +130,18 @@ A built `.exe` includes:
   verifies the recommended `.exe` against the server-supplied SHA-256, atomically swaps it in
   place of the running binary, and re-execs itself. Only runs when the agent is a frozen
   PyInstaller build with a real (non-default) API key. See `agent/updater.py`.
+- **Log forwarding (opt-in):** tails configured file paths and (on Windows) one or more
+  Event Log channels via `wevtutil`, formats each entry as
+  `<timestamp>|<severity>|<event_id>|<source>|<message>` and ships batches to
+  `/api/logs/parse`. Per-file byte offsets and per-channel `EventRecordID` cursors are
+  persisted in a JSON state file so restarts never re-send historical lines, and rotation
+  / truncation reset the cursor automatically. See `agent/log_forwarder.py`.
 - Configurable via `SERVER_BASE_URL`, `AGENT_API_KEY`, `TENANT_SLUG`,
   `AGENT_REPORT_INTERVAL_SECONDS`, `AGENT_UPDATE_CHECK_INTERVAL_SECONDS`,
-  `AGENT_UPDATE_ENABLED`, `AGENT_UPDATE_REQUEST_TIMEOUT_SECONDS` env vars.
+  `AGENT_UPDATE_ENABLED`, `AGENT_UPDATE_REQUEST_TIMEOUT_SECONDS`,
+  `AGENT_LOG_FORWARD_ENABLED`, `AGENT_LOG_FORWARD_PATHS`,
+  `AGENT_LOG_FORWARD_WINDOWS_EVENT_LOGS`, `AGENT_LOG_FORWARD_INTERVAL_SECONDS`,
+  `AGENT_LOG_FORWARD_STATE_DIR`, `AGENT_LOG_FORWARD_REQUEST_TIMEOUT_SECONDS` env vars.
 
 The build pipeline (`scripts/build_agent_windows.ps1` and the GitHub Actions workflow) stamps
 the version into `agent/version.py` before invoking PyInstaller, so the running `.exe` always
@@ -140,7 +149,6 @@ reports its packaged version to the server.
 
 Capabilities **not yet** in the agent (server APIs exist, agent client logic does not):
 
-- Log forwarding
 - Remote command execution / self-healing actions
 - Local alert-rule evaluation
 - Service start/stop/restart management

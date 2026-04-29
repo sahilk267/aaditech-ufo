@@ -13,6 +13,11 @@ Environment variables:
 - AGENT_REQUEST_TIMEOUT_SECONDS (default: 10)
 - AGENT_UPDATE_CHECK_INTERVAL_SECONDS (default: 3600; <=0 disables)
 - AGENT_UPDATE_ENABLED (default: 1; set to 0 to disable self-update)
+- AGENT_LOG_FORWARD_ENABLED (default: 0; set to 1 to enable)
+- AGENT_LOG_FORWARD_PATHS (comma-separated file paths to tail)
+- AGENT_LOG_FORWARD_WINDOWS_EVENT_LOGS (comma-separated channels e.g. System,Application)
+- AGENT_LOG_FORWARD_INTERVAL_SECONDS (default: 60)
+- AGENT_LOG_FORWARD_STATE_DIR (default: alongside the .exe)
 """
 
 from __future__ import annotations
@@ -35,9 +40,11 @@ from dotenv import load_dotenv
 try:
     from agent.updater import check_and_apply_update
     from agent.version import AGENT_VERSION
+    from agent.log_forwarder import forward_logs_once
 except ImportError:  # pragma: no cover - PyInstaller flattens packages
     from updater import check_and_apply_update  # type: ignore[no-redef]
     from version import AGENT_VERSION  # type: ignore[no-redef]
+    from log_forwarder import forward_logs_once  # type: ignore[no-redef]
 
 
 load_dotenv()
@@ -66,6 +73,13 @@ REQUEST_TIMEOUT = _env_int('AGENT_REQUEST_TIMEOUT_SECONDS', 10, 3, 60)
 UPDATE_CHECK_INTERVAL = _env_int('AGENT_UPDATE_CHECK_INTERVAL_SECONDS', 3600, 0, 86400)
 UPDATE_REQUEST_TIMEOUT = _env_int('AGENT_UPDATE_REQUEST_TIMEOUT_SECONDS', 120, 10, 600)
 UPDATE_ENABLED = os.getenv('AGENT_UPDATE_ENABLED', '1').strip().lower() not in ('0', 'false', 'no', 'off', '')
+
+LOG_FORWARD_ENABLED = os.getenv('AGENT_LOG_FORWARD_ENABLED', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+LOG_FORWARD_PATHS = [item.strip() for item in os.getenv('AGENT_LOG_FORWARD_PATHS', '').split(',') if item.strip()]
+LOG_FORWARD_EVENT_LOGS = [item.strip() for item in os.getenv('AGENT_LOG_FORWARD_WINDOWS_EVENT_LOGS', '').split(',') if item.strip()]
+LOG_FORWARD_INTERVAL = _env_int('AGENT_LOG_FORWARD_INTERVAL_SECONDS', 60, 15, 3600)
+LOG_FORWARD_STATE_DIR = os.getenv('AGENT_LOG_FORWARD_STATE_DIR', '').strip()
+LOG_FORWARD_REQUEST_TIMEOUT = _env_int('AGENT_LOG_FORWARD_REQUEST_TIMEOUT_SECONDS', 15, 3, 120)
 
 
 def _run_wmic_value(command: str, default: str) -> str:
@@ -240,22 +254,62 @@ def _maybe_self_update() -> None:
         sys.exit(0)
 
 
+def _maybe_forward_logs() -> None:
+    """Run one log-forward cycle. Errors are swallowed."""
+    if not LOG_FORWARD_ENABLED:
+        return
+    if not LOG_FORWARD_PATHS and not LOG_FORWARD_EVENT_LOGS:
+        return
+    try:
+        stats = forward_logs_once(
+            server_base_url=SERVER_BASE_URL,
+            api_key=AGENT_API_KEY,
+            tenant_header=TENANT_HEADER,
+            tenant_slug=TENANT_SLUG,
+            file_paths=LOG_FORWARD_PATHS,
+            event_log_channels=LOG_FORWARD_EVENT_LOGS,
+            state_dir=LOG_FORWARD_STATE_DIR,
+            request_timeout=LOG_FORWARD_REQUEST_TIMEOUT,
+            enabled=True,
+        )
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning('Log forwarding cycle failed unexpectedly: %s', exc)
+        return
+
+    if stats.get('lines_uploaded') or stats.get('batches_failed'):
+        logger.info(
+            'Log forward: uploaded=%s collected=%s files=%s channels=%s failed_batches=%s',
+            stats.get('lines_uploaded', 0),
+            stats.get('lines_collected', 0),
+            stats.get('files_seen', 0),
+            stats.get('event_channels_seen', 0),
+            stats.get('batches_failed', 0),
+        )
+
+
 def main() -> None:
     logger.info(
-        'Starting Aaditech agent v%s | submit_url=%s | interval=%ss | update_check=%ss%s',
+        'Starting Aaditech agent v%s | submit_url=%s | interval=%ss | update_check=%ss%s | log_forward=%s',
         AGENT_VERSION,
         SUBMIT_URL,
         REPORT_INTERVAL,
         UPDATE_CHECK_INTERVAL,
         '' if UPDATE_ENABLED else ' (disabled)',
+        f'every {LOG_FORWARD_INTERVAL}s ({len(LOG_FORWARD_PATHS)} files, {len(LOG_FORWARD_EVENT_LOGS)} channels)' if LOG_FORWARD_ENABLED else 'disabled',
     )
 
     last_update_check = 0.0
+    last_log_forward = 0.0
     while True:
         now = time.monotonic()
+
         if UPDATE_ENABLED and UPDATE_CHECK_INTERVAL > 0 and (now - last_update_check) >= UPDATE_CHECK_INTERVAL:
             _maybe_self_update()
             last_update_check = now
+
+        if LOG_FORWARD_ENABLED and (now - last_log_forward) >= LOG_FORWARD_INTERVAL:
+            _maybe_forward_logs()
+            last_log_forward = now
 
         payload = build_payload()
         send_data(payload)
