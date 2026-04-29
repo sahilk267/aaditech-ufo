@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { logout } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
@@ -6,6 +6,7 @@ import { ROUTES } from "../../config/routes";
 import { NAV_ITEMS } from "../../config/navigation";
 import { hasPermission } from "../../lib/rbac";
 import { prefetchRoute } from "../../app/routePrefetch";
+import { ChangePasswordModal } from "../account/ChangePasswordModal";
 
 export function AppShell() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ export function AppShell() {
   const user = useAuthStore((state) => state.user);
   const clearAuth = useAuthStore((state) => state.clearAuth);
   const userPermissions = user?.permissions || [];
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
   const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(userPermissions, item.permission));
   const blockedNavItems = NAV_ITEMS.filter((item) => !hasPermission(userPermissions, item.permission));
@@ -82,13 +84,20 @@ export function AppShell() {
             <strong>{user?.full_name || "Unknown User"}</strong>
             <div className="meta">{user?.email || "No session"}</div>
           </div>
-          <button onClick={onLogout}>Logout</button>
+          <div style={{ display: "flex", gap: 8 }}>
+            <button type="button" onClick={() => setChangePasswordOpen(true)}>
+              Change password
+            </button>
+            <button type="button" onClick={onLogout}>Logout</button>
+          </div>
         </header>
 
         <div className="content-wrap">
           <Outlet />
         </div>
       </main>
+
+      <ChangePasswordModal open={changePasswordOpen} onClose={() => setChangePasswordOpen(false)} />
     </div>
   );
 }

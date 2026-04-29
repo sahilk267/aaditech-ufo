@@ -1814,6 +1814,39 @@ def queue_agent_command_api():
     return jsonify({'status': 'success', 'command': cmd.to_dict()}), 201
 
 
+@api_bp.route('/agent/commands', methods=['GET'])
+@require_api_key_or_permission('automation.manage')
+def list_agent_commands_api():
+    """Admin lists queued/dispatched/completed commands. No side-effects."""
+    org_id = _resolve_org_id_from_context()
+    if org_id is None:
+        return jsonify({'commands': [], 'allowed_command_types': sorted(ALLOWED_COMMAND_TYPES)}), 200
+
+    status_filter = (request.args.get('status') or '').strip().lower() or None
+    type_filter = (request.args.get('command_type') or '').strip() or None
+    serial_filter = (request.args.get('target_serial_number') or '').strip() or None
+
+    try:
+        limit = max(1, min(int(request.args.get('limit') or 50), 200))
+    except (TypeError, ValueError):
+        limit = 50
+
+    query = AgentCommand.query.filter(AgentCommand.organization_id == org_id)
+    if status_filter:
+        query = query.filter(AgentCommand.status == status_filter)
+    if type_filter:
+        query = query.filter(AgentCommand.command_type == type_filter)
+    if serial_filter:
+        query = query.filter(AgentCommand.target_serial_number == serial_filter)
+
+    rows = query.order_by(AgentCommand.created_at.desc()).limit(limit).all()
+    return jsonify({
+        'commands': [cmd.to_dict() for cmd in rows],
+        'allowed_command_types': sorted(ALLOWED_COMMAND_TYPES),
+        'count': len(rows),
+    }), 200
+
+
 @api_bp.route('/agent/commands/pending', methods=['GET'])
 @require_api_key_or_permission('dashboard.view')
 def list_pending_agent_commands_api():
@@ -3623,6 +3656,57 @@ def login_user():
             'full_name': user.full_name,
             'roles': [role.name for role in user.roles],
         }
+    }), 200
+
+
+@api_bp.route('/auth/change-password', methods=['POST'])
+@limiter.limit("10 per hour")
+@require_jwt_auth
+def change_my_password_api():
+    """Authenticated user changes own password (current_password + new_password)."""
+    payload = request.get_json(silent=True) or {}
+    current_password = (payload.get('current_password') or '').strip()
+    new_password = (payload.get('new_password') or '').strip()
+
+    user = g.current_user
+    if not current_password or not new_password:
+        return jsonify({
+            'error': 'Validation failed',
+            'details': {'required': ['current_password', 'new_password']},
+        }), 400
+
+    if not verify_password(current_password, user.password_hash):
+        log_audit_event('auth.change_password', outcome='failure', reason='invalid_current_password',
+                        user_id=user.id, user_email=user.email)
+        return jsonify({'error': 'Unauthorized', 'message': 'Current password is incorrect.'}), 401
+
+    if new_password == current_password:
+        return jsonify({
+            'error': 'Validation failed',
+            'details': {'new_password': ['Must differ from the current password.']},
+        }), 400
+
+    policy = get_effective_auth_policy(user.organization_id)
+    password_errors = validate_password_against_policy(new_password, policy)
+    if password_errors:
+        log_audit_event('auth.change_password', outcome='failure', reason='password_policy_failed',
+                        user_id=user.id, user_email=user.email)
+        return jsonify({'error': 'Validation failed', 'details': {'new_password': password_errors}}), 400
+
+    user.password_hash = hash_password(new_password)
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.auth_token_version = int(user.auth_token_version or 1) + 1
+    db.session.commit()
+
+    revoke_token(g.jwt_payload)
+    tokens = issue_jwt_tokens(user)
+    log_audit_event('auth.change_password', outcome='success',
+                    user_id=user.id, user_email=user.email)
+    return jsonify({
+        'status': 'success',
+        'message': 'Password changed; existing sessions revoked.',
+        'tokens': tokens,
     }), 200
 
 

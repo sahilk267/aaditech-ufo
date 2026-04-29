@@ -30,6 +30,7 @@ const AiPage = lazy(() => import("../pages/ai/AiPage").then((m) => ({ default: m
 const ReleasesPage = lazy(() => import("../pages/releases/ReleasesPage").then((m) => ({ default: m.ReleasesPage })));
 const UpdatesPage = lazy(() => import("../pages/updates/UpdatesPage").then((m) => ({ default: m.UpdatesPage })));
 const RemotePage = lazy(() => import("../pages/remote/RemotePage").then((m) => ({ default: m.RemotePage })));
+const AgentCommandsPage = lazy(() => import("../pages/agent-commands/AgentCommandsPage").then((m) => ({ default: m.AgentCommandsPage })));
 const PlatformPage = lazy(() => import("../pages/platform/PlatformPage").then((m) => ({ default: m.PlatformPage })));
 const BackupPage = lazy(() => import("../pages/backup/BackupPage").then((m) => ({ default: m.BackupPage })));
 const BackupDrillPage = lazy(() => import("../pages/backup-drill/BackupDrillPage").then((m) => ({ default: m.BackupDrillPage })));
@@ -135,6 +136,10 @@ const appChildren: RouteObject[] = [
   {
     path: ROUTES.REMOTE.slice(1),
     element: guardedElement(ROUTES.REMOTE, <RemotePage />),
+  },
+  {
+    path: ROUTES.AGENT_COMMANDS.slice(1),
+    element: guardedElement(ROUTES.AGENT_COMMANDS, <AgentCommandsPage />),
   },
   {
     path: ROUTES.PLATFORM.slice(1),

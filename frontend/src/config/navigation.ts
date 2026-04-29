@@ -22,6 +22,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Releases", route: ROUTES.RELEASES, permission: ROUTE_PERMISSIONS[ROUTES.RELEASES] },
   { label: "Updates", route: ROUTES.UPDATES, permission: ROUTE_PERMISSIONS[ROUTES.UPDATES] },
   { label: "Remote", route: ROUTES.REMOTE, permission: ROUTE_PERMISSIONS[ROUTES.REMOTE] },
+  { label: "Remote Commands", route: ROUTES.AGENT_COMMANDS, permission: ROUTE_PERMISSIONS[ROUTES.AGENT_COMMANDS] },
   { label: "Platform", route: ROUTES.PLATFORM, permission: ROUTE_PERMISSIONS[ROUTES.PLATFORM] },
   { label: "Backup Drill", route: ROUTES.BACKUP_DRILL, permission: ROUTE_PERMISSIONS[ROUTES.BACKUP_DRILL] },
   { label: "Tenant Settings", route: ROUTES.TENANT_SETTINGS, permission: ROUTE_PERMISSIONS[ROUTES.TENANT_SETTINGS] },

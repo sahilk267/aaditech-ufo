@@ -21,6 +21,7 @@ export const ROUTES = {
   RELEASES: "/releases",
   UPDATES: "/updates",
   REMOTE: "/remote",
+  AGENT_COMMANDS: "/agent-commands",
   PLATFORM: "/platform",
   BACKUP: "/backup",
   BACKUP_DRILL: "/backup-drill",

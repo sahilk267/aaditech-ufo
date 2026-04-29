@@ -58,6 +58,12 @@ Default credentials (override with CLI flags or `SEED_ADMIN_*` env vars):
 
 The script is idempotent: it will reuse the existing tenant/role and reset the user's password if the user already exists. The user is granted the built-in `admin` role with `tenant.manage`, `dashboard.view`, `system.submit`, `backup.manage`, and `automation.manage` permissions.
 
+## Added in this session
+
+- **Remote Commands SPA page** (`/app/agent-commands`, requires `automation.manage`) — queue whitelisted commands, filter by status / type / target serial, auto-refresh every 5s. Backed by new admin endpoint `GET /api/agent/commands` (read-only list, no side-effects).
+- **Self-service Change Password** — modal accessible from the topbar in every authenticated SPA page. Backed by new endpoint `POST /api/auth/change-password` which requires `current_password`, validates the new password against the tenant's auth policy, bumps `auth_token_version` (revoking other sessions), and returns a fresh token pair.
+- **`frontend/src/pages/logs/LogsPage.tsx`** — placeholder restored after it went missing; SPA build was failing on the lazy import.
+
 ## Notes
 
 - Redis is **not** provisioned by default. Celery and rate-limiting fall back to in-memory storage; the `/health` endpoint reports Redis as `disconnected`, which is expected in this environment.

@@ -722,6 +722,82 @@ export async function executeRemoteCommand(host: string, command: string) {
   return data;
 }
 
+// Agent command queue (T5)
+export type AgentCommandRecord = {
+  id: number;
+  organization_id: number;
+  agent_id: number | null;
+  target_serial_number: string | null;
+  command_type: string;
+  payload: Record<string, unknown> | null;
+  status: string;
+  result: unknown;
+  error_message: string | null;
+  requested_by_user_id: number | null;
+  created_at: string;
+  dispatched_at: string | null;
+  completed_at: string | null;
+  expires_at: string | null;
+};
+
+export type AgentCommandsListResponse = {
+  commands: AgentCommandRecord[];
+  allowed_command_types: string[];
+  count: number;
+};
+
+export type AgentCommandsListFilters = {
+  status?: string;
+  command_type?: string;
+  target_serial_number?: string;
+  limit?: number;
+};
+
+export async function listAgentCommands(filters: AgentCommandsListFilters = {}) {
+  const params: Record<string, string | number> = {};
+  if (filters.status) params.status = filters.status;
+  if (filters.command_type) params.command_type = filters.command_type;
+  if (filters.target_serial_number) params.target_serial_number = filters.target_serial_number;
+  if (filters.limit) params.limit = filters.limit;
+  const { data } = await apiClient.get<AgentCommandsListResponse>("/api/agent/commands", { params });
+  return data;
+}
+
+export type QueueAgentCommandPayload = {
+  command_type: string;
+  target_serial_number?: string;
+  payload?: Record<string, unknown>;
+  expires_in_seconds?: number;
+};
+
+export async function queueAgentCommand(payload: QueueAgentCommandPayload) {
+  const { data } = await apiClient.post<{ status: string; command: AgentCommandRecord }>(
+    "/api/agent/commands",
+    payload,
+  );
+  return data;
+}
+
+// Self-service password change
+export type ChangePasswordResponse = {
+  status: string;
+  message: string;
+  tokens: {
+    access_token: string;
+    refresh_token: string;
+    token_type: string;
+    expires_in: number;
+  };
+};
+
+export async function changeMyPassword(currentPassword: string, newPassword: string) {
+  const { data } = await apiClient.post<ChangePasswordResponse>("/api/auth/change-password", {
+    current_password: currentPassword,
+    new_password: newPassword,
+  });
+  return data;
+}
+
 // Platform APIs
 export async function getCacheStatus() {
   const { data } = await apiClient.get<CacheStatusResponse>("/api/performance/cache/status");
