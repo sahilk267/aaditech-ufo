@@ -37,7 +37,7 @@ describe("Integration: Critical User Flows", () => {
       const result = await login({ tenantSlug: "default", email: "user@example.com", password: "password" });
 
       expect(result).toHaveProperty("tokens");
-      expect(result.tokens.access_token).toBe("mock-jwt-token");
+      expect(result.tokens?.access_token).toBe("mock-jwt-token");
       expect(result.user).toHaveProperty("email");
       expect(apiClient.post).toHaveBeenCalled();
     });

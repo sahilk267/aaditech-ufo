@@ -15,7 +15,7 @@ describe("route permission matrix", () => {
 
   it("keeps navigation permissions sourced from the shared route matrix", () => {
     for (const item of NAV_ITEMS) {
-      expect(item.permission).toBe(ROUTE_PERMISSIONS[item.route]);
+      expect(item.permission).toBe(ROUTE_PERMISSIONS[item.route as keyof typeof ROUTE_PERMISSIONS]);
     }
   });
 });

@@ -1256,3 +1256,67 @@ class SystemData(db.Model):
             'status': self.status,
             'current_user': self.current_user
         }
+
+
+class AgentCommand(db.Model):
+    """Server-issued command queued for an agent to poll, execute and report back."""
+
+    __tablename__ = 'agent_commands'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    agent_id = db.Column(db.Integer, db.ForeignKey('agents.id'), nullable=True, index=True)
+    target_serial_number = db.Column(db.String(255), nullable=True, index=True)
+    command_type = db.Column(db.String(64), nullable=False, index=True)
+    payload = db.Column(db.JSON, nullable=True)
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    result = db.Column(db.JSON, nullable=True)
+    error_message = db.Column(db.Text, nullable=True)
+    requested_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    dispatched_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'agent_id': self.agent_id,
+            'target_serial_number': self.target_serial_number,
+            'command_type': self.command_type,
+            'payload': self.payload or {},
+            'status': self.status,
+            'result': self.result,
+            'error_message': self.error_message,
+            'requested_by_user_id': self.requested_by_user_id,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'dispatched_at': self.dispatched_at.isoformat() if self.dispatched_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'expires_at': self.expires_at.isoformat() if self.expires_at else None,
+        }
+
+
+class AgentServerPin(db.Model):
+    """Pinned server-cert SHA-256 fingerprint advertised to enrolled agents."""
+
+    __tablename__ = 'agent_server_pins'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    cert_sha256 = db.Column(db.String(128), nullable=False)
+    label = db.Column(db.String(128), nullable=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    rotated_at = db.Column(db.DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'cert_sha256': self.cert_sha256,
+            'label': self.label,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'rotated_at': self.rotated_at.isoformat() if self.rotated_at else None,
+        }

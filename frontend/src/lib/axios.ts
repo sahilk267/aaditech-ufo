@@ -1,4 +1,4 @@
-import axios from "axios";
+import axios, { AxiosHeaders } from "axios";
 import type { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { API_BASE_URL, DEFAULT_TENANT_HEADER } from "../config/env";
 import { ROUTES } from "../config/routes";
@@ -88,14 +88,14 @@ apiClient.interceptors.response.use(
       !originalRequest._sessionRetry &&
       !requestUrl.includes("/api/auth/")
     ) {
+      const clonedHeaders = AxiosHeaders.from(originalRequest.headers);
+      clonedHeaders.delete("Authorization");
       const nextRequest: RetryableRequestConfig = {
         ...originalRequest,
         _sessionRetry: true,
         _skipAuthHeader: true,
-        headers: { ...originalRequest.headers },
+        headers: clonedHeaders,
       };
-
-      delete nextRequest.headers.Authorization;
       return apiClient(nextRequest);
     }
 
@@ -125,8 +125,10 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    originalRequest.headers = originalRequest.headers || {};
-    originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
+    if (!originalRequest.headers) {
+      originalRequest.headers = new AxiosHeaders();
+    }
+    originalRequest.headers.set("Authorization", `Bearer ${nextAccessToken}`);
     return apiClient(originalRequest);
   }
 );

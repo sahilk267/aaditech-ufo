@@ -1,0 +1,22 @@
+ Production-blocker / High value (पहले ये)
+Agent self-update wire करना — /api/agent/releases/guide endpoint already काम कर रहा है, policy भी UI से set हो जाती है, लेकिन agent/agent.py startup पर इसे call नहीं करता। मतलब rollout policy "set" तो हो रही है पर actual agents पुराने version पर ही चलते रहते हैं। इसे जोड़ने से release pipeline का loop पूरा होगा।
+
+Agent में log forwarding जोड़ना — पूरी app का नाम "Universal Observability" है पर agent अभी सिर्फ़ CPU/RAM/disk metrics भेजता है। Server-side /api/logs endpoints मौजूद हैं, बस agent client missing है। ये observability platform का असली core है।
+
+Production में Redis attach करना — अभी Celery और rate-limiter in-memory fallback पर हैं। Autoscale deployment पर हर instance का अलग counter होगा, मतलब rate-limits effectively बायपास हो जाते हैं और background jobs lost हो सकते हैं। Replit-managed Redis या external (Upstash) connect कर देना चाहिए।
+
+🟡 Reliability / quality (इसके बाद)
+Agent में retry + offline buffer — अभी network hiccup पर metrics drop हो जाते हैं। Exponential backoff + local SQLite/file queue add करने से outages के दौरान data loss नहीं होगा।
+
+TypeScript strict build ठीक करना — src/lib/axios.ts और tsconfig.test.json में legacy type errors हैं, इसलिए हम tsc -b skip करके सिर्फ़ vite build चला रहे हैं। मतलब real TS bugs production तक पहुँच सकते हैं। एक बार साफ़ करना चाहिए।
+
+Automated test pipeline — अभी कुछ नहीं है। API के लिए pytest और frontend के लिए Vitest setup होना चाहिए, खास कर release/upload/build flow जैसी sensitive चीज़ों के लिए।
+
+🟢 Nice-to-have (जब फ़ुरसत मिले)
+Remote command execution + self-heal — Server-side hooks already हैं (alerts, automation blueprints), agent में execution layer add करना बाकी है। Service start/stop/restart भी इसी का हिस्सा।
+
+TLS pinning + API key rotation — Agent अभी plain bearer-style key भेजता है। Pinning और periodic key rotation enterprise customers के लिए ज़रूरी है।
+
+Windows installer (NSIS) wiring — agent/uninstaller.nsi फ़ाइल पड़ी है पर build pipeline में हुक नहीं है। MSI/NSIS installer बनने से deployment IT teams के लिए आसान हो जाएगा।
+
+Production deploy + smoke test — Setup तो complete है पर actually deploy करके verify नहीं किया कि migrations clean चलती हैं और SPA serve हो रहा है।

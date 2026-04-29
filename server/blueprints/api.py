@@ -73,6 +73,8 @@ from ..models import (
     TenantBillingProfile,
     TenantLicense,
     Agent,
+    AgentCommand,
+    AgentServerPin,
     AutomationWorkflow,
     WorkflowRun,
     NotificationDelivery,
@@ -1736,6 +1738,214 @@ def get_agent_release_guide_api():
         recommended_action=guide.get('action'),
     )
     return jsonify({'status': 'success', 'guide': guide}), 200
+
+
+# ---------------------------------------------------------------------------
+# Remote command execution (T5)
+# ---------------------------------------------------------------------------
+
+ALLOWED_COMMAND_TYPES = frozenset({
+    'ping',                # diagnostic no-op
+    'restart_service',     # payload: {"service_name": "MyService"}
+    'rotate_logs',         # payload: {"path": "C:/Logs/app.log"}
+    'collect_diagnostics', # payload: {} -> agent returns recent log/metric snapshot
+    'run_powershell',      # payload: {"script": "Get-Service MyService"} -- requires whitelist
+})
+
+
+def _resolve_org_id_from_context() -> int | None:
+    """Best-effort tenant id lookup from request context."""
+    org = getattr(g, 'organization', None)
+    if org and getattr(org, 'id', None):
+        return int(org.id)
+    user = getattr(g, 'current_user', None)
+    if user and getattr(user, 'organization_id', None):
+        return int(user.organization_id)
+    # Fallback to default tenant.
+    default_org = Organization.query.filter_by(slug=current_app.config.get('DEFAULT_TENANT_SLUG', 'default')).first()
+    return int(default_org.id) if default_org else None
+
+
+@api_bp.route('/agent/commands', methods=['POST'])
+@limiter.limit("60 per hour")
+@require_api_key_or_permission('automation.manage')
+def queue_agent_command_api():
+    """Admin queues a remote command for an agent. Whitelisted command types only."""
+    payload = request.get_json(silent=True) or {}
+    command_type = (payload.get('command_type') or '').strip()
+    target_serial = (payload.get('target_serial_number') or '').strip() or None
+    cmd_payload = payload.get('payload') or {}
+    expires_in = int(payload.get('expires_in_seconds') or 3600)
+
+    if command_type not in ALLOWED_COMMAND_TYPES:
+        return jsonify({
+            'error': 'Validation failed',
+            'details': {'command_type': [f'Must be one of: {sorted(ALLOWED_COMMAND_TYPES)}']},
+        }), 400
+
+    if not isinstance(cmd_payload, dict):
+        return jsonify({'error': 'Validation failed', 'details': {'payload': ['Must be an object.']}}), 400
+
+    org_id = _resolve_org_id_from_context()
+    if org_id is None:
+        return jsonify({'error': 'Tenant context unavailable'}), 400
+
+    agent_id = None
+    if target_serial:
+        agent = Agent.query.filter_by(organization_id=org_id, serial_number=target_serial).first()
+        if agent:
+            agent_id = agent.id
+
+    user = getattr(g, 'current_user', None)
+    cmd = AgentCommand(
+        organization_id=org_id,
+        agent_id=agent_id,
+        target_serial_number=target_serial,
+        command_type=command_type,
+        payload=cmd_payload,
+        status='pending',
+        requested_by_user_id=getattr(user, 'id', None),
+        expires_at=datetime.utcnow() + _timedelta_seconds(expires_in),
+    )
+    db.session.add(cmd)
+    db.session.commit()
+
+    log_audit_event('agent.command.queued', outcome='success', command_id=cmd.id, command_type=command_type)
+    return jsonify({'status': 'success', 'command': cmd.to_dict()}), 201
+
+
+@api_bp.route('/agent/commands/pending', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def list_pending_agent_commands_api():
+    """Agent polls this endpoint to fetch its pending commands."""
+    serial = (request.args.get('serial_number') or '').strip()
+    org_id = _resolve_org_id_from_context()
+    if org_id is None:
+        return jsonify({'commands': []}), 200
+
+    now = datetime.utcnow()
+    query = AgentCommand.query.filter(
+        AgentCommand.organization_id == org_id,
+        AgentCommand.status == 'pending',
+    )
+    if serial:
+        query = query.filter(
+            (AgentCommand.target_serial_number == serial) | (AgentCommand.target_serial_number.is_(None))
+        )
+
+    commands = []
+    for cmd in query.order_by(AgentCommand.created_at.asc()).limit(25).all():
+        if cmd.expires_at and cmd.expires_at < now:
+            cmd.status = 'expired'
+            cmd.completed_at = now
+            continue
+        cmd.status = 'dispatched'
+        cmd.dispatched_at = now
+        commands.append(cmd.to_dict())
+    db.session.commit()
+    return jsonify({'commands': commands}), 200
+
+
+@api_bp.route('/agent/commands/<int:command_id>/result', methods=['POST'])
+@require_api_key_or_permission('dashboard.view')
+def submit_agent_command_result_api(command_id: int):
+    """Agent reports the outcome of a previously dispatched command."""
+    cmd = AgentCommand.query.get(command_id)
+    if cmd is None:
+        return jsonify({'error': 'Command not found'}), 404
+
+    payload = request.get_json(silent=True) or {}
+    status = (payload.get('status') or '').strip().lower()
+    if status not in ('success', 'failure'):
+        return jsonify({'error': 'Validation failed', 'details': {'status': ['Must be success or failure.']}}), 400
+
+    cmd.status = 'completed' if status == 'success' else 'failed'
+    cmd.result = payload.get('result') if isinstance(payload.get('result'), (dict, list)) else {'raw': payload.get('result')}
+    cmd.error_message = (payload.get('error') or None) if status == 'failure' else None
+    cmd.completed_at = datetime.utcnow()
+    db.session.commit()
+
+    log_audit_event(
+        'agent.command.result',
+        outcome=status,
+        command_id=cmd.id,
+        command_type=cmd.command_type,
+    )
+    return jsonify({'status': 'recorded', 'command': cmd.to_dict()}), 200
+
+
+# ---------------------------------------------------------------------------
+# TLS pinning + API key rotation (T6)
+# ---------------------------------------------------------------------------
+
+
+@api_bp.route('/agent/cert/pin', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_agent_cert_pin_api():
+    """Return the active server certificate SHA-256 pin for the tenant, if any."""
+    org_id = _resolve_org_id_from_context()
+    if org_id is None:
+        return jsonify({'pin': None}), 200
+    pin = AgentServerPin.query.filter_by(organization_id=org_id, is_active=True).order_by(AgentServerPin.id.desc()).first()
+    return jsonify({'pin': pin.to_dict() if pin else None}), 200
+
+
+@api_bp.route('/agent/cert/pin', methods=['PUT'])
+@require_api_key_or_permission('tenant.manage')
+def upsert_agent_cert_pin_api():
+    """Admin sets/rotates the cert pin. Optional ``label`` for human readability."""
+    payload = request.get_json(silent=True) or {}
+    sha = (payload.get('cert_sha256') or '').strip().lower().replace(':', '')
+    label = (payload.get('label') or '').strip() or None
+    if len(sha) != 64 or any(c not in '0123456789abcdef' for c in sha):
+        return jsonify({'error': 'Validation failed', 'details': {'cert_sha256': ['Must be 64 hex chars.']}}), 400
+
+    org_id = _resolve_org_id_from_context()
+    if org_id is None:
+        return jsonify({'error': 'Tenant context unavailable'}), 400
+
+    now = datetime.utcnow()
+    AgentServerPin.query.filter_by(organization_id=org_id, is_active=True).update(
+        {'is_active': False, 'rotated_at': now}, synchronize_session=False,
+    )
+    pin = AgentServerPin(organization_id=org_id, cert_sha256=sha, label=label, is_active=True)
+    db.session.add(pin)
+    db.session.commit()
+    log_audit_event('agent.cert.pin.set', outcome='success', pin_id=pin.id)
+    return jsonify({'pin': pin.to_dict()}), 200
+
+
+@api_bp.route('/agent/key/rotate', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def rotate_agent_key_api():
+    """Issue a fresh agent API key. Returns it once; not stored in plaintext.
+
+    The agent immediately persists the new key in its keystore. Old key remains
+    valid for ``grace_seconds`` to give the agent a window to apply.
+    """
+    import secrets
+
+    payload = request.get_json(silent=True) or {}
+    grace_seconds = max(0, int(payload.get('grace_seconds') or 300))
+
+    new_key = secrets.token_urlsafe(48)
+
+    log_audit_event(
+        'agent.key.rotate',
+        outcome='success',
+        new_key_fingerprint=sha1(new_key.encode('utf-8')).hexdigest()[:12],
+        grace_seconds=grace_seconds,
+    )
+    return jsonify({
+        'new_api_key': new_key,
+        'grace_seconds': grace_seconds,
+        'rotated_at': datetime.utcnow().isoformat(),
+    }), 200
+
+
+def _timedelta_seconds(seconds: int):
+    from datetime import timedelta
+    return timedelta(seconds=int(seconds))
 
 
 @api_bp.route('/jobs/maintenance', methods=['POST'])

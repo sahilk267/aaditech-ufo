@@ -41,10 +41,14 @@ try:
     from agent.updater import check_and_apply_update
     from agent.version import AGENT_VERSION
     from agent.log_forwarder import forward_logs_once
+    from agent.transport import AgentTransport, default_state_path
+    from agent.commands import poll_and_execute as poll_and_execute_commands
 except ImportError:  # pragma: no cover - PyInstaller flattens packages
     from updater import check_and_apply_update  # type: ignore[no-redef]
     from version import AGENT_VERSION  # type: ignore[no-redef]
     from log_forwarder import forward_logs_once  # type: ignore[no-redef]
+    from transport import AgentTransport, default_state_path  # type: ignore[no-redef]
+    from commands import poll_and_execute as poll_and_execute_commands  # type: ignore[no-redef]
 
 
 load_dotenv()
@@ -80,6 +84,30 @@ LOG_FORWARD_EVENT_LOGS = [item.strip() for item in os.getenv('AGENT_LOG_FORWARD_
 LOG_FORWARD_INTERVAL = _env_int('AGENT_LOG_FORWARD_INTERVAL_SECONDS', 60, 15, 3600)
 LOG_FORWARD_STATE_DIR = os.getenv('AGENT_LOG_FORWARD_STATE_DIR', '').strip()
 LOG_FORWARD_REQUEST_TIMEOUT = _env_int('AGENT_LOG_FORWARD_REQUEST_TIMEOUT_SECONDS', 15, 3, 120)
+
+OUTBOX_STATE_DIR = os.getenv('AGENT_OUTBOX_STATE_DIR', '').strip()
+OUTBOX_MAX_QUEUE = _env_int('AGENT_OUTBOX_MAX_QUEUE', 5000, 100, 100000)
+TRANSPORT_MAX_ATTEMPTS = _env_int('AGENT_TRANSPORT_MAX_ATTEMPTS', 3, 1, 10)
+
+COMMAND_POLL_ENABLED = os.getenv('AGENT_COMMAND_POLL_ENABLED', '1').strip().lower() not in ('0', 'false', 'no', 'off', '')
+COMMAND_POLL_INTERVAL = _env_int('AGENT_COMMAND_POLL_INTERVAL_SECONDS', 30, 10, 3600)
+COMMAND_POLL_TIMEOUT = _env_int('AGENT_COMMAND_POLL_TIMEOUT_SECONDS', 15, 3, 60)
+
+
+_transport_instance: AgentTransport | None = None
+
+
+def _get_transport() -> AgentTransport:
+    global _transport_instance
+    if _transport_instance is None:
+        frozen_exe = sys.executable if getattr(sys, 'frozen', False) else None
+        path = default_state_path(OUTBOX_STATE_DIR or None, frozen_exe)
+        _transport_instance = AgentTransport(
+            db_path=path,
+            max_queue=OUTBOX_MAX_QUEUE,
+            max_attempts_per_call=TRANSPORT_MAX_ATTEMPTS,
+        )
+    return _transport_instance
 
 
 def _run_wmic_value(command: str, default: str) -> str:
@@ -197,14 +225,30 @@ def send_data(payload: dict) -> None:
     if TENANT_SLUG:
         headers[TENANT_HEADER] = TENANT_SLUG
 
-    try:
-        response = requests.post(SUBMIT_URL, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
-        if response.status_code >= 400:
-            logger.error('Server rejected payload: status=%s body=%s', response.status_code, response.text[:400])
-            return
-        logger.info('Data submitted successfully to %s', SUBMIT_URL)
-    except requests.RequestException as exc:
-        logger.error('Data submission failed: %s', exc)
+    transport = _get_transport()
+    result = transport.post(SUBMIT_URL, json=payload, headers=headers, timeout=REQUEST_TIMEOUT)
+
+    if result.success:
+        if result.drained:
+            logger.info(
+                'Data submitted to %s (also drained %s queued payloads)',
+                SUBMIT_URL,
+                result.drained,
+            )
+        else:
+            logger.info('Data submitted successfully to %s', SUBMIT_URL)
+    elif result.queued:
+        logger.warning(
+            'Data submission failed (%s); queued for retry. Outbox size=%s',
+            result.error or 'transient error',
+            transport.queue_size(),
+        )
+    else:
+        logger.error(
+            'Data submission permanently rejected (%s status=%s). Payload dropped.',
+            result.error,
+            result.status_code,
+        )
 
 
 def build_payload() -> dict:
@@ -300,6 +344,8 @@ def main() -> None:
 
     last_update_check = 0.0
     last_log_forward = 0.0
+    last_command_poll = 0.0
+    cached_serial: str | None = None
     while True:
         now = time.monotonic()
 
@@ -312,8 +358,34 @@ def main() -> None:
             last_log_forward = now
 
         payload = build_payload()
+        if cached_serial is None:
+            cached_serial = str(payload.get('serial_number') or '').strip() or None
         send_data(payload)
+
+        if COMMAND_POLL_ENABLED and (now - last_command_poll) >= COMMAND_POLL_INTERVAL:
+            _maybe_poll_commands(cached_serial)
+            last_command_poll = now
+
         time.sleep(REPORT_INTERVAL)
+
+
+def _maybe_poll_commands(serial_number: str | None) -> None:
+    try:
+        stats = poll_and_execute_commands(
+            server_base_url=SERVER_BASE_URL,
+            api_key=AGENT_API_KEY,
+            tenant_header=TENANT_HEADER,
+            tenant_slug=TENANT_SLUG,
+            serial_number=serial_number or '',
+            request_timeout=COMMAND_POLL_TIMEOUT,
+        )
+        if stats.get('fetched'):
+            logger.info(
+                'Remote commands processed: fetched=%d executed=%d reported=%d failures=%d',
+                stats['fetched'], stats['executed'], stats['reported'], stats['failures'],
+            )
+    except Exception as exc:
+        logger.warning('Command poll cycle failed: %s', exc)
 
 
 if __name__ == '__main__':

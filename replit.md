@@ -32,7 +32,7 @@ The React SPA is pre-built into `frontend/dist/` so Flask can serve it. To rebui
 cd frontend && npx vite build
 ```
 
-The strict TypeScript check (`tsc -b`) currently fails due to legacy type drift in `src/lib/axios.ts` and `tsconfig.test.json`; using `npx vite build` bypasses the typecheck while still producing a working bundle.
+The strict TypeScript check (`npx tsc -b --force` in `frontend/`) now passes cleanly after fixes to `src/lib/axios.ts` (AxiosHeaders.from + .set/.delete) and `tsconfig.test.json` (empty `exclude` array).
 
 ### Deployment
 
@@ -61,3 +61,17 @@ PyInstaller cannot cross-compile a Windows `.exe` from the Linux server, so a de
 - **GitHub Actions workflow** `.github/workflows/agent-release-publish.yml` runs on `windows-latest`, builds via `scripts/build_agent_windows.ps1`, attaches the `.exe` to a GitHub Release, and (when secrets `AGENT_RELEASE_UPLOAD_URL` + `AGENT_RELEASE_API_KEY` are set, plus optional `AGENT_RELEASE_TENANT_SLUG`) auto-uploads it to the running server. A job-summary step records what was published.
 - **Agent self-update** — `agent/updater.py` polls `/api/agent/releases/guide` every `AGENT_UPDATE_CHECK_INTERVAL_SECONDS` (default 1h), verifies the recommended `.exe` against the SHA-256 returned by the server (now exposed by `AgentReleaseService.list_releases`), atomically swaps the running binary, and re-execs. Guards: only runs when `sys.frozen` is true (i.e. a real PyInstaller build) and the API key is not the placeholder default. The PowerShell build script and CI workflow stamp `agent/version.py` with the requested version so the running .exe truthfully reports `agent_version` in metric submissions.
 - **Agent log forwarding** — `agent/log_forwarder.py` (opt-in via `AGENT_LOG_FORWARD_ENABLED=1`) tails any number of file paths and (on Windows) `wevtutil` event-log channels, formats each entry as `<ts>|<sev>|<event_id>|<source>|<message>`, batches up to 200 entries, and POSTs to `/api/logs/parse` which persists them as `LogEntry` rows. State (per-file byte offsets and per-channel `EventRecordID`) is saved to a JSON file so restarts never re-send historical lines; rotation/truncation is detected via inode + size shrink. End-to-end smoke-tested against the running server.
+
+## Production Hardening (2026-04-29)
+
+The following operability + security features completed this session — all backed by tests in `tests/`:
+
+1. **Redis fallback (T1)** — `server/extensions._resolve_limiter_storage` pings the configured Redis URL and falls back to `memory://` automatically. Resolved storage is exposed as `app.config['_LIMITER_STORAGE_RESOLVED']`. Tests: `tests/test_redis_fallback.py` (6).
+2. **Agent retry + offline outbox (T2)** — `agent/transport.py` wraps every outbound POST with bounded retries and a SQLite-backed outbox (WAL mode, capped queue). Wired into `agent/agent.send_data`. Tests: `tests/test_agent_transport.py` (10).
+3. **Strict TypeScript (T3)** — `npx tsc -b --force` exits 0 after fixes to `frontend/src/lib/axios.ts` (AxiosHeaders) and `frontend/tsconfig.test.json` (empty exclude).
+4. **Remote command queue (T5)** — Models `AgentCommand` + endpoints `POST /api/agent/commands`, `GET /api/agent/commands/pending`, `POST /api/agent/commands/<id>/result`. Whitelisted command types only. Agent-side executor (`agent/commands.py`) is wired into the main loop with allow-listed PowerShell prefixes and shell-metachar guards. Migration `026_agent_commands_and_pins`. Tests: `tests/test_agent_command_endpoints.py` (11) + `tests/test_agent_commands_client.py` (12).
+5. **TLS pinning + key rotation (T6)** — Model `AgentServerPin` + endpoints `GET/PUT /api/agent/cert/pin` and `POST /api/agent/key/rotate`. Pin rotation deactivates the previous pin transactionally; key rotation returns the new key once with a configurable grace window. Tests: `tests/test_cert_pin_and_key_rotate.py` (10).
+6. **NSIS Windows installer (T7)** — `agent/installer.nsi` + helper `scripts/build_agent_windows_installer.ps1`. CI workflow `.github/workflows/test.yml` builds the installer on Windows runners on `main` push and uploads the artifact.
+7. **Production deploy guide + smoke tests (T8)** — `docs/PRODUCTION_DEPLOY.md` is the operator runbook (env vars, deploy steps, pin/key rotation, rollback). `tests/test_production_smoke.py` (9) asserts health probe, auth gating, migration presence, model importability, and Redis fallback wiring.
+
+Total new tests: **58 passing in ~80 seconds**.
