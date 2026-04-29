@@ -1,0 +1,104 @@
+0zssf~jg7q-i~.js:21 
+      /////////////////////
+   ///////////////////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////        Curious and driven?
+  ///////////////@@@@@@@///////        Work with us!
+  ///////////////@@@@@@@///////
+  ///////////////@@@@@@@///////        https://join.replit.com/hack.with.us
+  ////////@@@@@@@//////////////
+  ////////@@@@@@@//////////////
+  ////////@@@@@@#//////////////
+   ///////////////////////////
+      /////////////////////
+      
+0zssf~jg7q-i~.js:21 Download the Apollo DevTools for a better development experience: https://chrome.google.com/webstore/detail/apollo-client-developer-t/jdkknkkbebbapilgoeccciglkfbmbnfm
+0zssf~jg7q-i~.js:21 [LaunchDarkly] LaunchDarkly client initialized
+/~:1 Banner not shown: beforeinstallpromptevent.preventDefault() called. The page must call beforeinstallpromptevent.prompt() to show the banner.
+stallwart.build.js:1 stallwart: failed ping 1
+dotdevproxy.spock.replit.dev/__reachability:1  Failed to load resource: net::ERR_TIMED_OUT
+stallwart.build.js:1 stallwart: failed ping 1
+stallwart.build.js:1 stallwart: failed ping 2
+stallwart.build.js:1 stallwart: failed ping 3
+stallwart.build.js:1 stallwart: failed ping 4
+stallwart.build.js:1 stallwart: failed ping 5
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+Error while parsing the 'sandbox' attribute: 'allow-downloads-without-user-activation' is an invalid sandbox flag.
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'ambient-light-sensor'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'battery'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'execution-while-not-rendered'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'execution-while-out-of-viewport'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'layout-animations'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'legacy-image-formats'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'navigation-override'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'oversized-images'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'publickey-credentials'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'speaker-selection'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'unoptimized-images'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'unsized-media'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Unrecognized feature: 'pointer-lock'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Allow attribute will take precedence over 'allowfullscreen'.
+C @ 0i8wy8tbht2ow.js:2
+0i8wy8tbht2ow.js:2 Allow attribute will take precedence over 'allowpaymentrequest'.
+C @ 0i8wy8tbht2ow.js:2
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+r.stripe.com/b:1  Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED
+r.stripe.com/b:1  Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED
+059efycqszhhx.js:2 WebSocket connection to 'wss://eval.riker.platform.replit.com/wsv2/v2.public.Q2dZSW5Kbkp6d1lTQmdpN3RjblBCaUlGY21sclpYSXdBRHJ6QVFva1pESTBPVE5sWWpRdE1ETTNaaTAwWm1ReExUa3lNRGt0WVRWaVlqUmxPVGs0TmpSaUVnTnVhWGdhRjNKbGNHeHBkQzF5WlhCc0xXWnBiR1Z6TFhKcGEyVnlJZ3hoWVdScGRHVmphQzExWm04cURHaDFjM05oYVc1ek1qWTNNVUpSQ2hoeVpYQnNhWFF0Y21Wd2JDMWliRzlqYTNNdGNtbHJaWElTRm5KbGNHeHBkQzF5WlhCc0xXMWxkR0V0Y21sclpYSWFIWEpsY0d4cGRDMXRZWEpuWVhKcGJtVXRZbXh2WTJ0ekxYSnBhMlZ5U2djSWtvZmVHeEFCVUFCNEFJSUJGV052Ym01bFkzUnZjbk11Y21Wd2JHbDBMbU52YllvQkdBb1FSRTlmVTBWRFZWSkpWRmxmVTBOQlRoSUVkSEoxWlZJbENBRVFnSUNBZ0NBWkFBQUFBQUFBRUVBaEFBQUFBQUFBRUVBb2dJQ0FnTWdCTUFJNEFHQUFhaE1Ja29mZUd4SU1hSFZ6YzJGcGJuTXlOamN4bWdFS0NnZ3dMakF1TlRjd05LQUJBQT09HMZyBFerl9Y8SCAvVW3pCeIVO4tvPMtzKqeki9kE9my5DnTHZ-0iKCCdt5ii-u_Lui2ZFw5bfdtOHYZJCIfFDQ.Q2dad2NtOWtPak1pQ25KbGNHeHBkQzVqYjIwPQ' failed: 
+connect @ 059efycqszhhx.js:2
+logs.browser-intake-us5-datadoghq.com/api/v2/logs?ddsource=browser&ddtags=sdk_version%3A4.46.0%2Capi%3Afetch%2Cenv%3Aproduction%2Cservice%3Awebsite%2Cversion%3Abb6af417&dd-api-key=pub31a5047a3a4692afb84a423db984dc57&dd-evp-origin-version=4.46.0&dd-evp-origin=browser&dd-request-id=457b1ea3-56d7-4612-ba37-14a0535e12ca:1  Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED
+/data/repls/d2493eb4-037f-4fd1-9209-a5bb4e99864b/get_connection_metadata:1  Failed to load resource: net::ERR_NETWORK_IO_SUSPENDED
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+0zssf~jg7q-i~.js:21 Haven't heard from the server in a while, resetting connection...
+(anonymous) @ 0zssf~jg7q-i~.js:21
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'ambient-light-sensor'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'battery'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'execution-while-not-rendered'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'execution-while-out-of-viewport'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'layout-animations'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'legacy-image-formats'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'navigation-override'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'oversized-images'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'publickey-credentials'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'speaker-selection'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'unoptimized-images'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Unrecognized feature: 'unsized-media'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Allow attribute will take precedence over 'allowfullscreen'.
+workspace_iframe.html?initialPath=%2F&id=default-server:32 Allow attribute will take precedence over 'allowpaymentrequest'.
+DashboardPage-DlJ_pB_A.js:1  Failed to load resource: the server responded with a status of 404 (Not Found)
+injected.js:37 Error handled by React Router default ErrorBoundary: TypeError: Failed to fetch dynamically imported module: https://d2493eb4-037f-4fd1-9209-a5bb4e99864b-00-3bl8odxlhhe3d.riker.replit.dev/app/assets/DashboardPage-DlJ_pB_A.js
+(anonymous) @ injected.js:37
+injected.js:37 Error handled by React Router default ErrorBoundary: TypeError: Failed to fetch dynamically imported module: https://d2493eb4-037f-4fd1-9209-a5bb4e99864b-00-3bl8odxlhhe3d.riker.replit.dev/app/assets/DashboardPage-DlJ_pB_A.js
+(anonymous) @ injected.js:37
+injected.js:37 TypeError: Failed to fetch dynamically imported module: https://d2493eb4-037f-4fd1-9209-a5bb4e99864b-00-3bl8odxlhhe3d.riker.replit.dev/app/assets/DashboardPage-DlJ_pB_A.js
+(anonymous) @ injected.js:37
+injected.js:37 React Router caught the following error during render TypeError: Failed to fetch dynamically imported module: https://d2493eb4-037f-4fd1-9209-a5bb4e99864b-00-3bl8odxlhhe3d.riker.replit.dev/app/assets/DashboardPage-DlJ_pB_A.js
+(anonymous) @ injected.js:37

@@ -16,9 +16,13 @@ This project is an enterprise-grade **Infrastructure Observability, Monitoring, 
 
 ### Workflow
 
-- **Server** — `python -m server.app` on port `5000` (webview)
+- **Server** — `SPA_WAVE_1_ENABLED=true python -m server.app` on port `5000` (webview)
   - Flask binds `0.0.0.0:5000` and applies Alembic migrations on startup.
   - Serves API, Jinja templates, and the built SPA from `frontend/dist`.
+  - The `SPA_WAVE_1_ENABLED=true` env var is **required** so the root URL (`/`)
+    redirects to the React SPA at `/app/dashboard` instead of falling through
+    to the legacy Jinja dashboard / `/login` page. Without it the Replit
+    preview iframe (which loads `/`) shows the old "ToolBoxGalaxy" UI.
 
 ### Database
 
