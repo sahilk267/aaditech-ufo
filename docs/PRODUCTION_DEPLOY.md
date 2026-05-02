@@ -98,6 +98,59 @@ Never commit them to git.
      `AGENT_COMMAND_POLL_INTERVAL_SECONDS` (default 30s) and execute
      whitelisted remote commands (T5).
 
+   ### 4.1 Agent self-update behaviour & troubleshooting
+
+   - The agent supports a server-driven self-update flow. When configured and
+      running as a packaged PyInstaller executable the agent will periodically
+      call `GET /api/agent/releases/guide` to learn whether an upgrade or
+      downgrade is recommended.
+   - Downloads are streamed to a temporary file and validated via SHA-256
+      checksum when the release manifest supplies one. The swap is atomic on
+      Windows (previous binary renamed to `*.old` then replaced) to avoid
+      partial upgrades.
+   - Recent hardening: the agent now performs transient retries on the
+      download step, logs transient network errors at warning/debug level, and
+      preserves the old binary under `<exe>.old` on Windows if the swap is
+      staged.
+
+   Troubleshooting tips:
+
+   - If self-update appears to be failing, check agent logs for messages from
+      the `aaditech-agent.updater` logger; look for `Update download attempt` or
+      `sha256 mismatch` messages.
+   - Verify the release guide JSON at `/api/agent/releases/guide` includes a
+      `recommended_download_url` and, if possible, a `sha256` property for the
+      release. Missing or unsafe filenames are refused by the agent.
+   - On Windows, if an update was staged but the agent did not restart,
+      the previous binary will be present as `<exe>.old` in the same folder.
+      Inspect it and roll back by reinstalling the previous installer if needed.
+
+   Security note:
+
+   - The updater will refuse downloads if the server-supplied filename does not
+      match the allowed pattern (prevents path-traversal / unexpected files).
+
+   ### 4.2 Notification delivery behaviour & auditing
+
+   - The server's notification delivery pipeline performs retries for both
+      email and webhook channels. By default the platform attempts 2 retries for
+      each channel (configurable via `email_retries` and `webhook_retries`).
+   - Delivery attempts that ultimately fail produce structured audit events
+      (`alerts.dispatch.delivery`) and a `notification_deliveries` row capturing
+      failure counts and channels attempted. This ensures operators can trace
+      failed deliveries back to the originating alert job.
+
+   Operational checks:
+
+   - To validate retries and audit events, exercise `/api/alerts/dispatch` with
+      a mocked delivery endpoint or misconfigured SMTP settings and inspect the
+      most-recent `audit_events` and `notification_deliveries` rows.
+   - The `server.notification` logger emits delivery successes and failures —
+      configure your log aggregation to capture these for incident investigation.
+
+   See also: [REMAINING_TASKS.md](../REMAINING_TASKS.md) for outstanding
+   implementation items and recent changes.
+
 ---
 
 ## 5. TLS pinning + key rotation

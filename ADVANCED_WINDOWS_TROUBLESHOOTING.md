@@ -204,7 +204,9 @@ class CrashDumpAnalyzer:
                             'created': os.path.getctime(full_path)
                         })
             except:
-                pass
+                # illustrative example: ignore inaccessible locations in docs
+                # (real code should catch specific exceptions and log)
+                continue
         return dumps
     
     def analyze_dump(self, dump_file):
@@ -391,7 +393,9 @@ class ServiceMonitor:
 # Agent: Windows Update Monitoring
 class WindowsUpdateMonitor:
     def __init__(self):
-        pass
+        # illustrative constructor for documentation only
+        # real implementation omitted
+        return
     
     def get_update_status(self):
         """Get Windows Update status"""

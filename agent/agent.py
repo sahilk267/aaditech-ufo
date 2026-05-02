@@ -116,8 +116,8 @@ def _run_wmic_value(command: str, default: str) -> str:
         lines = [line.strip() for line in output.splitlines() if line.strip()]
         if len(lines) >= 2:
             return lines[1]
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.debug('WMIC command failed (%s): %s', command, exc)
     return default
 
 

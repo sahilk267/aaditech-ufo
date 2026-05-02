@@ -35,9 +35,31 @@ For current execution truth, use:
 Deployment note (frontend): The repository now serves the built SPA from the `gateway` (nginx) container. The `frontend` component is a build-time artifact (`frontend/dist`) mounted into the gateway at runtime; there is no separate production `frontend` service required. To deploy:
 
  1. Build the frontend: run `cd frontend && npm ci && npm run build` (this produces `frontend/dist`).
- 2. Start services: `docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d` — the gateway will serve `/app/` from the mounted `frontend/dist`.
+ 2. Confirm `frontend/dist/index.html` exists.
+ 3. Start services (staging/prod):
 
-If you prefer an alternate deployment (embedding the dist in a custom gateway image or running a dedicated node frontend), adjust `docker-compose` accordingly. This change removes the risk of orphaned/old frontend containers during production deploys.
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build gateway
+```
+
+ 4. Alternatively for staging testing only, enable the SPA wave redirect flag so the backend redirects to the SPA shell where configured:
+
+```powershell
+$env:SPA_WAVE_1_ENABLED = 'true'
+docker compose up -d --build gateway
+```
+
+Smoke tests (once gateway is up):
+
+```powershell
+curl http://localhost:9773/app/        # should return index.html
+curl http://localhost:9773/api/status # should proxy to backend
+```
+
+Notes:
+- If CI/CD places built assets elsewhere, ensure the gateway service mounts that location or copies artifacts into the gateway image at build time.
+- Decide whether to keep minimal placeholder Jinja templates in `server/templates/` (kept temporarily for tests) or remove them and refactor tests that depend on server-rendered pages.
+- Document `SPA_WAVE_1_ENABLED` in deployment runbooks so operators can toggle the SPA rollout safely.
 
 Current repo reality is materially ahead of the older stabilization wording at the top of this file. The repository now includes stabilized startup/migrations, a validated SPA deployment path, stronger tenant/admin controls, auth hardening, TOTP MFA, OIDC maturity work, quota/commercial controls, and deeper operator workflows across logs, reliability, AI, updates, and related admin surfaces.
 

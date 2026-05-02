@@ -116,11 +116,21 @@ def _download_binary(
     if tenant_slug:
         headers[tenant_header] = tenant_slug
 
-    try:
-        response = requests.get(url, headers=headers, stream=True, timeout=timeout)
-    except requests.RequestException as exc:
-        logger.warning('Update download failed: %s', exc)
-        return None
+    # Best-effort transient retry for downloads
+    max_attempts = 3
+    attempt = 0
+    response = None
+    while attempt < max_attempts:
+        attempt += 1
+        try:
+            response = requests.get(url, headers=headers, stream=True, timeout=timeout)
+            break
+        except requests.RequestException as exc:
+            logger.warning('Update download attempt %d/%d failed: %s', attempt, max_attempts, exc)
+            if attempt >= max_attempts:
+                return None
+            import time
+            time.sleep(0.5 * attempt)
 
     if response.status_code != 200:
         logger.warning(
@@ -151,7 +161,7 @@ def _download_binary(
         try:
             os.unlink(tmp_path)
         except OSError:
-            pass
+            logger.debug('Failed to remove temp download file %s after write failure', tmp_path)
         return None
 
     digest = hasher.hexdigest()
@@ -163,7 +173,7 @@ def _download_binary(
             try:
                 os.unlink(tmp_path)
             except OSError:
-                pass
+                logger.debug('Failed to remove temp download file %s after checksum mismatch', tmp_path)
             return None
         logger.info('Update sha256 verified (%s)', digest[:16])
     else:
@@ -186,7 +196,7 @@ def _replace_running_executable(new_binary_path: str, current_executable_path: s
     try:
         os.chmod(new_binary_path, os.stat(new_binary_path).st_mode | stat.S_IEXEC | stat.S_IRUSR)
     except OSError:
-        pass
+        logger.debug('Failed to set execute bit on downloaded binary %s', new_binary_path)
 
     if sys.platform.startswith('win'):
         try:
@@ -194,7 +204,7 @@ def _replace_running_executable(new_binary_path: str, current_executable_path: s
                 try:
                     os.unlink(backup_path)
                 except OSError:
-                    pass
+                    logger.debug('Failed to remove old update backup %s', backup_path)
             os.replace(current_executable_path, backup_path)
             shutil.move(new_binary_path, current_executable_path)
         except OSError as exc:
@@ -313,14 +323,14 @@ def check_and_apply_update(
         try:
             os.unlink(tmp_binary)
         except OSError:
-            pass
+            logger.debug('Failed to remove update temp file %s after abort', tmp_binary)
         return None
 
     if not _replace_running_executable(tmp_binary, current_executable_path):
         try:
             os.unlink(tmp_binary)
         except OSError:
-            pass
+            logger.debug('Failed to remove update temp file %s after failed swap', tmp_binary)
         return None
 
     return recommended

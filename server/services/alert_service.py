@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, UTC
+import logging
 from statistics import mean, pstdev
 from typing import Any
 
@@ -14,6 +15,8 @@ from ..models import AlertRule, AlertSilence, SystemData
 
 class AlertService:
     """Business logic for tenant-scoped alert rules."""
+
+    logger = logging.getLogger('server.alert')
 
     ALLOWED_METRICS = {
         'cpu_usage',
@@ -351,7 +354,7 @@ class AlertService:
                 parsed = datetime.fromisoformat(str(starts_at_raw).replace('Z', '+00:00'))
                 starts_at = parsed.replace(tzinfo=None)
             except ValueError:
-                pass
+                AlertService.logger.debug('Failed to parse starts_at=%r; using now', starts_at_raw)
 
         silence = AlertSilence(
             organization_id=organization_id,

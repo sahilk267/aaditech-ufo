@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import smtplib
 from email.message import EmailMessage
 from typing import Any
@@ -11,6 +12,8 @@ from urllib import request as urllib_request
 
 class NotificationService:
     """Deliver alert notifications to email and webhook channels with retries."""
+
+    logger = logging.getLogger('server.notification')
 
     @classmethod
     def dispatch_notifications(
@@ -204,9 +207,16 @@ class NotificationService:
             )
         message.set_content('\n'.join(lines))
 
-        with smtplib.SMTP(config.get('smtp_host'), int(config.get('smtp_port'))):
-            # Intentionally no auth in initial foundation; can be added in hardening.
-            pass
+        try:
+            with smtplib.SMTP(config.get('smtp_host'), int(config.get('smtp_port'))) as smtp:
+                # Intentionally no auth in initial foundation; can be added in hardening.
+                smtp.send_message(message)
+            NotificationService.logger.info(
+                'Email notification sent to %s (alerts=%d)', recipients, len(alerts)
+            )
+        except Exception:
+            NotificationService.logger.exception('Failed to send email notification')
+            raise
 
     @staticmethod
     def send_webhook_notification(alerts: list[dict[str, Any]], webhook_url: str):
@@ -218,5 +228,11 @@ class NotificationService:
             headers={'Content-Type': 'application/json'},
             method='POST',
         )
-        with urllib_request.urlopen(req, timeout=5):
-            pass
+        try:
+            with urllib_request.urlopen(req, timeout=5) as resp:
+                # read response to ensure any network errors surface
+                _ = resp.read()
+            NotificationService.logger.info('Webhook notification posted to %s (alerts=%d)', webhook_url, len(alerts))
+        except Exception:
+            NotificationService.logger.exception('Failed to post webhook notification to %s', webhook_url)
+            raise

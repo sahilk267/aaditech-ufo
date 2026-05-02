@@ -64,8 +64,8 @@ def _ping_redis(url: str, timeout: float = 1.0) -> bool:
         client.ping()
         try:
             client.close()
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug('Redis client close failed for %s: %s', _safe_url(url), exc)
         return True
     except Exception as exc:  # pragma: no cover - network sensitive
         logger.debug("Redis ping failed for %s: %s", _safe_url(url), exc)

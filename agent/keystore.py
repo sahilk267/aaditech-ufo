@@ -54,11 +54,12 @@ class AgentKeystore:
             with os.fdopen(fd, 'w', encoding='utf-8') as fh:
                 json.dump(self._data, fh)
             os.replace(tmp_path, self._path)
-        except Exception:
+        except Exception as exc:
             try:
                 os.remove(tmp_path)
-            except OSError:
-                pass
+            except OSError as remove_exc:
+                logger.debug('Failed to remove keystore temp file %s: %s', tmp_path, remove_exc)
+            logger.exception('Failed to write keystore to %s: %s', self._path, exc)
             raise
 
     # ---- API key -----------------------------------------------------

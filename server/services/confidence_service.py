@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import re
 from typing import Any
+import logging
 
 from .ai_service import AIService
 
 
 class ConfidenceService:
     """Business logic for AI confidence scoring of system reliability updates."""
+
+    logger = logging.getLogger('server.confidence')
 
     SAFE_HOST_PATTERN = re.compile(r'^[a-zA-Z0-9_.-]{1,64}$')
     ALLOWED_ADAPTERS = {'ollama_http', 'linux_test_double'}
@@ -259,8 +262,8 @@ class ConfidenceService:
                     if value > 1:
                         value = value / 100.0  # Convert percentage to decimal
                     return max(0.0, min(value, 1.0))
-                except (ValueError, IndexError):
-                    pass
+                except (ValueError, IndexError) as exc:
+                    ConfidenceService.logger.debug('Failed to parse confidence value from %r: %s', match.group(1), exc)
 
         # Fallback: infer from sentiment keywords
         negative_keywords = ['risk', 'vulnerab', 'critical', 'high', 'unstable', 'concern']

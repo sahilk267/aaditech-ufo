@@ -323,6 +323,31 @@ GET    /api/system/<int:system_id>  - Get system detail
 
 **Progress: 0/6 (0%)**
 
+**Action:** See created tracking tickets for concrete steps and reproducible validation guidance:
+
+- [PHASE_0_AUDIT_DATABASE_TODO](issues/PHASE_0_AUDIT_DATABASE_TODO.md) — contains proposed steps, example commands, and acceptance criteria.
+
+Quick validation commands (developer):
+
+```bash
+# generate SQL for review
+flask --app server.app db upgrade --sql
+
+# apply migrations to a disposable SQLite DB
+DATABASE_URL=sqlite:///./phase0_validation.db flask --app server.app db upgrade
+
+# run smoke queries via python REPL or script
+python - <<'PY'
+from server.app import create_app
+app = create_app({'TESTING': True, 'DATABASE_URL': 'sqlite:///./phase0_validation.db'})
+with app.app_context():
+	from server.models import db
+	print('Tables:', db.engine.table_names())
+PY
+```
+
+Add the above example to `PROGRESS_TRACKER.md` once verified.
+
 ### Testing (Week 4) - TODO
 - [ ] pytest configured
 - [ ] Basic unit tests written
@@ -331,6 +356,25 @@ GET    /api/system/<int:system_id>  - Get system detail
 - [ ] All tests pass locally
 
 **Progress: 0/5 (0%)**
+
+**Action:** See tracking ticket for testing checklist and CI guidance:
+
+- [PHASE_0_AUDIT_TESTING_TODO](issues/PHASE_0_AUDIT_TESTING_TODO.md) — includes commands, fast-check subsets, and CI recommendations.
+
+Quick test commands (developer):
+
+```bash
+# fast-check (subset) - developer friendly
+pytest tests/test_agent_release_api.py tests/test_alert_notifications.py -q
+
+# full suite (expect ~20m runtime locally)
+pytest -q
+
+# coverage run (example)
+coverage run -m pytest && coverage report -m
+```
+
+Document CI timeouts and resources in the ticket before gating full-suite runs in CI.
 
 ---
 
