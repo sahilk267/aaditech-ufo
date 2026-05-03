@@ -68,6 +68,43 @@ The script is idempotent: it will reuse the existing tenant/role and reset the u
 - **Self-service Change Password** — modal accessible from the topbar in every authenticated SPA page. Backed by new endpoint `POST /api/auth/change-password` which requires `current_password`, validates the new password against the tenant's auth policy, bumps `auth_token_version` (revoking other sessions), and returns a fresh token pair.
 - **`frontend/src/pages/logs/LogsPage.tsx`** — placeholder restored after it went missing; SPA build was failing on the lazy import.
 
+## Agent Engine (Modular AI Automation System)
+
+A production-grade, multi-component AI orchestration system mounted at `/api/agent_engine` (backend) and `/app/agent-engine` (frontend SPA page).
+
+### Architecture
+
+```
+Orchestrator  ←→  Planner  ←→  Executor  ←→  Tool Layer
+     ↓                               ↓
+ShortTermMemory                 AgentSession (DB)
+```
+
+- **`server/agent_engine/orchestrator.py`** — Top-level lifecycle: create DB session, invoke planner, dispatch executor, persist result, compute duration.
+- **`server/agent_engine/planner.py`** — Two-stage planner: AI JSON plan via `AIService` first; rule-based keyword fallback if AI fails. Produces `Step` dataclass list.
+- **`server/agent_engine/executor.py`** — Topological sort (`depends_on`), retry with exponential back-off (0.3s / 0.6s / 1.2s), never raises — errors are captured in step outputs.
+- **`server/agent_engine/memory.py`** — `ShortTermMemory` dict shared across all steps in a run; allows downstream steps to read upstream results.
+- **`server/agent_engine/tools/`** — Six registered tools: `system_query`, `automation_trigger`, `ai_analysis`, `alert_check`, `log_search`, `remote_exec`.
+- **`server/agent_engine/blueprint.py`** — Flask blueprint (`/api/agent_engine`): `POST /run`, `GET /sessions`, `GET /sessions/<id>`, `GET /tools`.
+- **`server/orchestrator_factory.py`** — `build_runtime_config()` helper that merges `app.config` with per-call overrides.
+- **`server/models.py` → `AgentSession`** — Persists every run: `session_id`, `status`, `plan_steps`, `step_outputs`, `final_result`, `duration_ms`.
+- **Migration** — `migrations/versions/027_agent_sessions.py`.
+
+### Frontend
+
+- **`frontend/src/pages/agent-engine/AgentEnginePage.tsx`** — Full SPA page: run panel with dry-run toggle, plan viewer, step results table with JSON drill-down, session history, tool registry.
+- Route: `/app/agent-engine` (requires `automation.manage` permission).
+- Navigation entry: "Agent Engine" in the main nav.
+
+### Config knobs (env vars)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `AGENT_ENGINE_ENABLED` | `True` | Master feature flag |
+| `AGENT_ENGINE_MAX_STEPS` | `10` | Cap on planner output steps |
+| `AGENT_ENGINE_MAX_RETRIES` | `2` | Per-step retry limit |
+| `AGENT_ENGINE_STEP_TIMEOUT_SECONDS` | `30` | Per-step wall-clock timeout |
+
 ## Notes
 
 - Redis is **not** provisioned by default. Celery and rate-limiting fall back to in-memory storage; the `/health` endpoint reports Redis as `disconnected`, which is expected in this environment.

@@ -921,3 +921,27 @@ export async function createIncidentComment(
   const { data } = await apiClient.post<IncidentCommentsResponse>(`/api/incidents/${incidentId}/comments`, payload);
   return data;
 }
+
+export async function runAgentEngine(payload: {
+  request: string;
+  dry_run?: boolean;
+  runtime_config?: Record<string, unknown>;
+}) {
+  const { data } = await apiClient.post("/api/agent_engine/run", payload);
+  return data;
+}
+
+export async function listAgentSessions(params?: { limit?: number; status?: string }) {
+  const { data } = await apiClient.get("/api/agent_engine/sessions", { params });
+  return data;
+}
+
+export async function getAgentSession(sessionId: string) {
+  const { data } = await apiClient.get(`/api/agent_engine/sessions/${sessionId}`);
+  return data;
+}
+
+export async function getAgentEngineTools() {
+  const { data } = await apiClient.get("/api/agent_engine/tools");
+  return data;
+}

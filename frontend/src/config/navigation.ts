@@ -34,4 +34,5 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "Agent Enrollment", route: ROUTES.AGENT_ENROLLMENT, permission: ROUTE_PERMISSIONS[ROUTES.AGENT_ENROLLMENT] },
   { label: "Backup", route: ROUTES.BACKUP, permission: ROUTE_PERMISSIONS[ROUTES.BACKUP] },
   { label: "Audit", route: ROUTES.AUDIT, permission: ROUTE_PERMISSIONS[ROUTES.AUDIT] },
+  { label: "Agent Engine", route: ROUTES.AGENT_ENGINE, permission: ROUTE_PERMISSIONS[ROUTES.AGENT_ENGINE] },
 ];

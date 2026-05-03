@@ -18,6 +18,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .auth import init_auth_context
 from .blueprints import api_bp, web_bp
+from .agent_engine.blueprint import agent_engine_bp
 from .config import get_config
 from .extensions import db, init_extensions, limiter
 from .queue import init_queue
@@ -202,6 +203,7 @@ def create_app(config_object=None) -> Flask:
 
     app.register_blueprint(api_bp)
     app.register_blueprint(web_bp)
+    app.register_blueprint(agent_engine_bp)
 
     # Import models during app creation so metadata is registered for
     # migrations, tests, and explicit create_all() calls.

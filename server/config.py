@@ -207,6 +207,12 @@ class Config:
     AGENT_RELEASES_DIR = os.getenv('AGENT_RELEASES_DIR', 'agent_releases')
     AGENT_RELEASE_MAX_MB = int(os.getenv('AGENT_RELEASE_MAX_MB', '256'))
     
+    # Agent engine configuration
+    AGENT_ENGINE_MAX_STEPS = int(os.getenv('AGENT_ENGINE_MAX_STEPS', '10'))
+    AGENT_ENGINE_MAX_RETRIES = int(os.getenv('AGENT_ENGINE_MAX_RETRIES', '2'))
+    AGENT_ENGINE_STEP_TIMEOUT_SECONDS = int(os.getenv('AGENT_ENGINE_STEP_TIMEOUT_SECONDS', '30'))
+    AGENT_ENGINE_ENABLED = os.getenv('AGENT_ENGINE_ENABLED', 'True').lower() == 'true'
+
     # Backup configuration
     BACKUP_DIR = os.getenv('BACKUP_DIR', 'backups/')
     

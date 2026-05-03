@@ -1320,3 +1320,48 @@ class AgentServerPin(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'rotated_at': self.rotated_at.isoformat() if self.rotated_at else None,
         }
+
+
+class AgentSession(db.Model):
+    """Durable record of one agent engine orchestration run."""
+
+    __tablename__ = 'agent_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    session_id = db.Column(db.String(64), nullable=False, unique=True, index=True)
+    request_text = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='pending', index=True)
+    plan_steps = db.Column(db.JSON, nullable=False, default=list)
+    step_outputs = db.Column(db.JSON, nullable=False, default=list)
+    final_result = db.Column(db.JSON, nullable=True)
+    error_reason = db.Column(db.String(64), nullable=True, index=True)
+    metadata_payload = db.Column(db.JSON, nullable=True)
+    duration_ms = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def to_dict(self):
+        step_outputs = self.step_outputs or []
+        success_count = sum(1 for s in step_outputs if s.get('status') == 'success')
+        failed_count = sum(1 for s in step_outputs if s.get('status') == 'error')
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'session_id': self.session_id,
+            'request_text': self.request_text,
+            'status': self.status,
+            'plan_steps': self.plan_steps or [],
+            'step_outputs': step_outputs,
+            'step_summary': {
+                'total': len(step_outputs),
+                'success': success_count,
+                'failed': failed_count,
+            },
+            'final_result': self.final_result or {},
+            'error_reason': self.error_reason,
+            'metadata_payload': self.metadata_payload or {},
+            'duration_ms': self.duration_ms,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
+        }
