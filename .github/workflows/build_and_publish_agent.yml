@@ -1,0 +1,60 @@
+name: Build and Publish Windows Agent
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Agent version to build (e.g. 1.0.0)'
+        required: true
+        default: '0.0.0'
+
+jobs:
+  build-and-publish:
+    runs-on: windows-latest
+    name: Build aaditech-agent and optionally publish
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+
+      - name: Build agent executable
+        shell: powershell
+        run: |
+          Write-Host "Building agent version ${{ github.event.inputs.version }}"
+          powershell -ExecutionPolicy Bypass -File .\scripts\build_agent_windows.ps1 -Version "${{ github.event.inputs.version }}"
+
+      - name: Upload build artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: aaditech-agent-${{ github.event.inputs.version }}
+          path: agent\dist\aaditech-agent-${{ github.event.inputs.version }}.exe
+
+      - name: Publish to server (optional)
+        if: ${{ secrets.AGENT_PUBLISH_URL && secrets.AGENT_PUBLISH_TOKEN }}
+        env:
+          PUBLISH_URL: ${{ secrets.AGENT_PUBLISH_URL }}
+          PUBLISH_TOKEN: ${{ secrets.AGENT_PUBLISH_TOKEN }}
+          VERSION: ${{ github.event.inputs.version }}
+        shell: bash
+        run: |
+          echo "Uploading built EXE to ${PUBLISH_URL}"
+          FILEPATH="agent/dist/aaditech-agent-${VERSION}.exe"
+          if [ ! -f "$FILEPATH" ]; then
+            echo "Built file not found: $FILEPATH"
+            exit 2
+          fi
+          curl -s -X POST \
+            -H "Authorization: Bearer ${PUBLISH_TOKEN}" \
+            -F "release_file=@${FILEPATH}" \
+            -F "version=${VERSION}" \
+            "${PUBLISH_URL%/}/api/agent/releases/upload" | jq -r '.'

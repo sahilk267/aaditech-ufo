@@ -1747,6 +1747,7 @@ def get_agent_release_guide_api():
 ALLOWED_COMMAND_TYPES = frozenset({
     'ping',                # diagnostic no-op
     'restart_service',     # payload: {"service_name": "MyService"}
+    'restart_agent',       # payload: {"delay_seconds": 1} -> schedules agent restart
     'rotate_logs',         # payload: {"path": "C:/Logs/app.log"}
     'collect_diagnostics', # payload: {} -> agent returns recent log/metric snapshot
     'run_powershell',      # payload: {"script": "Get-Service MyService"} -- requires whitelist
@@ -1805,7 +1806,7 @@ def queue_agent_command_api():
         payload=cmd_payload,
         status='pending',
         requested_by_user_id=getattr(user, 'id', None),
-        expires_at=datetime.utcnow() + _timedelta_seconds(expires_in),
+        expires_at=_utcnow_naive() + _timedelta_seconds(expires_in),
     )
     db.session.add(cmd)
     db.session.commit()
@@ -1856,7 +1857,7 @@ def list_pending_agent_commands_api():
     if org_id is None:
         return jsonify({'commands': []}), 200
 
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     query = AgentCommand.query.filter(
         AgentCommand.organization_id == org_id,
         AgentCommand.status == 'pending',
@@ -1895,7 +1896,7 @@ def submit_agent_command_result_api(command_id: int):
     cmd.status = 'completed' if status == 'success' else 'failed'
     cmd.result = payload.get('result') if isinstance(payload.get('result'), (dict, list)) else {'raw': payload.get('result')}
     cmd.error_message = (payload.get('error') or None) if status == 'failure' else None
-    cmd.completed_at = datetime.utcnow()
+    cmd.completed_at = _utcnow_naive()
     db.session.commit()
 
     log_audit_event(
@@ -1937,7 +1938,7 @@ def upsert_agent_cert_pin_api():
     if org_id is None:
         return jsonify({'error': 'Tenant context unavailable'}), 400
 
-    now = datetime.utcnow()
+    now = _utcnow_naive()
     AgentServerPin.query.filter_by(organization_id=org_id, is_active=True).update(
         {'is_active': False, 'rotated_at': now}, synchronize_session=False,
     )
@@ -1972,7 +1973,7 @@ def rotate_agent_key_api():
     return jsonify({
         'new_api_key': new_key,
         'grace_seconds': grace_seconds,
-        'rotated_at': datetime.utcnow().isoformat(),
+        'rotated_at': datetime.now(UTC).isoformat(),
     }), 200
 
 
@@ -3436,11 +3437,11 @@ def update_incident_api(incident_id):
         else:
             item.status = status
             if status == 'acknowledged':
-                item.acknowledged_at = datetime.utcnow()
+                item.acknowledged_at = _utcnow_naive()
                 item.resolved_at = None
             elif status == 'resolved':
-                item.acknowledged_at = item.acknowledged_at or datetime.utcnow()
-                item.resolved_at = datetime.utcnow()
+                item.acknowledged_at = item.acknowledged_at or _utcnow_naive()
+                item.resolved_at = _utcnow_naive()
             elif status == 'open':
                 item.acknowledged_at = None
                 item.resolved_at = None

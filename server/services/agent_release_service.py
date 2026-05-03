@@ -13,7 +13,7 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any
 
@@ -332,7 +332,7 @@ class AgentReleaseService:
         policy = {
             'target_version': cleaned_target,
             'notes': str(notes or '').strip(),
-            'updated_at': datetime.utcnow().isoformat(),
+            'updated_at': datetime.now(UTC).isoformat(),
         }
 
         path = cls._policy_path(config, instance_path)

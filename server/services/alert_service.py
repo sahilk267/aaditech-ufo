@@ -338,7 +338,7 @@ class AlertService:
                 ends_at = datetime.fromisoformat(str(ends_at_raw).replace('Z', '+00:00'))
                 if ends_at.tzinfo is not None:
                     ends_at = ends_at.replace(tzinfo=None)
-                if ends_at <= datetime.utcnow():
+                if ends_at <= datetime.now(UTC).replace(tzinfo=None):
                     errors.setdefault('ends_at', []).append('ends_at must be a future datetime.')
             except ValueError:
                 errors.setdefault('ends_at', []).append('ends_at must be a valid ISO 8601 datetime.')
@@ -348,7 +348,7 @@ class AlertService:
 
         reason = str(payload.get('reason', '')).strip()[:255] or None
         starts_at_raw = payload.get('starts_at')
-        starts_at = datetime.utcnow()
+        starts_at = datetime.now(UTC).replace(tzinfo=None)
         if starts_at_raw:
             try:
                 parsed = datetime.fromisoformat(str(starts_at_raw).replace('Z', '+00:00'))
@@ -388,7 +388,7 @@ class AlertService:
 
         Returns (active_alerts, silenced_alerts).
         """
-        now = datetime.utcnow()
+        now = datetime.now(UTC).replace(tzinfo=None)
         silences = (
             AlertSilence.query
             .filter_by(organization_id=organization_id)

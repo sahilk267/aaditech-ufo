@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from flask import current_app
 
@@ -47,7 +47,7 @@ def _persist_notification_delivery(
 
 def cleanup_expired_revoked_tokens():
     """Delete expired revoked-token entries to keep revocation table small."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     deleted = (
         RevokedToken.query
         .filter(RevokedToken.expires_at.isnot(None), RevokedToken.expires_at < now)
@@ -61,7 +61,7 @@ def cleanup_expired_revoked_tokens():
 def purge_old_audit_events(retention_days=90):
     """Purge old audit events according to retention policy."""
     retention_days = int(retention_days)
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
     deleted = (
         AuditEvent.query
         .filter(AuditEvent.created_at < cutoff)
@@ -85,7 +85,7 @@ def purge_notification_deliveries(retention_days=None):
     if retention_days is None:
         retention_days = int(current_app.config.get('NOTIFICATION_DELIVERY_RETENTION_DAYS', 60))
     retention_days = int(retention_days)
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
     deleted = (
         NotificationDelivery.query
         .filter(NotificationDelivery.created_at < cutoff)
@@ -100,7 +100,7 @@ def purge_workflow_runs(retention_days=None):
     if retention_days is None:
         retention_days = int(current_app.config.get('WORKFLOW_RUN_RETENTION_DAYS', 60))
     retention_days = int(retention_days)
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
     deleted = (
         WorkflowRun.query
         .filter(WorkflowRun.executed_at < cutoff)
@@ -115,7 +115,7 @@ def purge_resolved_incidents(retention_days=None):
     if retention_days is None:
         retention_days = int(current_app.config.get('RESOLVED_INCIDENT_RETENTION_DAYS', 90))
     retention_days = int(retention_days)
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
     deleted = (
         IncidentRecord.query
         .filter(IncidentRecord.status == 'resolved', IncidentRecord.resolved_at.isnot(None), IncidentRecord.resolved_at < cutoff)
@@ -130,7 +130,7 @@ def purge_log_entries(retention_days=None):
     if retention_days is None:
         retention_days = int(current_app.config.get('LOG_ENTRY_RETENTION_DAYS', 30))
     retention_days = int(retention_days)
-    cutoff = datetime.utcnow() - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=retention_days)
     deleted = (
         LogEntry.query
         .filter(LogEntry.created_at < cutoff)

@@ -180,7 +180,7 @@ class PerformanceService:
     @staticmethod
     def get_dashboard_counts(organization_id: int) -> dict[str, int]:
         """Return optimized dashboard counts in one aggregate query."""
-        active_cutoff = datetime.utcnow() - timedelta(minutes=5)
+        active_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=5)
         total_count, active_count = (
             db.session.query(
                 func.count(SystemData.id),

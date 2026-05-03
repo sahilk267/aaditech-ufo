@@ -12,6 +12,8 @@ import logging
 import platform
 import shlex
 import subprocess
+import os
+import sys
 from typing import Any
 from urllib.parse import urljoin
 
@@ -23,6 +25,7 @@ logger = logging.getLogger('aaditech-agent.commands')
 SAFE_COMMAND_TYPES = {
     'ping',
     'restart_service',
+    'restart_agent',
     'rotate_logs',
     'collect_diagnostics',
     'run_powershell',
@@ -172,10 +175,10 @@ def _execute(cmd_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if not path:
             return _fail('path required')
         import os
-        from datetime import datetime
+        from datetime import datetime, timezone
         if not os.path.isfile(path):
             return _fail(f'file not found: {path}')
-        rotated = f"{path}.{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.bak"
+        rotated = f"{path}.{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}.bak"
         os.replace(path, rotated)
         open(path, 'w', encoding='utf-8').close()
         return _ok({'rotated_to': rotated})
@@ -195,6 +198,34 @@ def _execute(cmd_type: str, payload: dict[str, Any]) -> dict[str, Any]:
         if proc.returncode != 0:
             return _fail(proc.stderr.strip()[:500] or 'script failed', stdout=proc.stdout[:500])
         return _ok({'stdout': proc.stdout[:2000]})
+
+    if cmd_type == 'restart_agent':
+        # Schedule a self-restart. We spawn a short-lived helper that will
+        # start a new process after `delay_seconds` and return success. We do
+        # not forcibly kill the running process here so the agent can report
+        # the command result back to the server. Payload may include
+        # `delay_seconds` (int).
+        delay = 1
+        try:
+            delay = int(payload.get('delay_seconds') or 1)
+        except Exception:
+            delay = 1
+
+        exe = sys.executable
+        args = [exe] + sys.argv[1:]
+        try:
+            if platform.system().lower() == 'windows':
+                # Use cmd to wait briefly then start the new process.
+                launcher = f'cmd /c "ping -n {max(2, delay+1)} 127.0.0.1 >nul & start "" {subprocess.list2cmdline(args)}"'
+                subprocess.Popen(launcher, shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+            else:
+                # POSIX: sleep then exec the new process in a sh subshell.
+                launcher = f'sh -c "sleep {delay}; exec {shlex.join(args)}"'
+                subprocess.Popen(launcher, shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True, start_new_session=True)
+        except Exception as exc:  # pragma: no cover - platform/process races
+            return _fail(f'restart scheduling failed: {exc}')
+
+        return _ok({'scheduled_restart': True, 'delay_seconds': delay})
 
     return _fail(f'unhandled command type: {cmd_type}')
 

@@ -57,6 +57,24 @@ def test_queue_command_success_writes_row(client, app_fixture):
         assert row.status == 'pending'
 
 
+def test_queue_restart_agent_writes_row(client, app_fixture):
+    resp = client.post(
+        '/api/agent/commands',
+        headers=_h(),
+        json={'command_type': 'restart_agent', 'payload': {'delay_seconds': 1}},
+    )
+    assert resp.status_code == 201
+    cmd = resp.get_json()['command']
+    assert cmd['command_type'] == 'restart_agent'
+    assert cmd['status'] == 'pending'
+
+    with app_fixture.app_context():
+        row = db.session.get(AgentCommand, cmd['id'])
+        assert row is not None
+        assert row.command_type == 'restart_agent'
+        assert row.status == 'pending'
+
+
 def test_pending_endpoint_dispatches_command_for_serial(client, app_fixture):
     queue = client.post(
         '/api/agent/commands',
@@ -66,6 +84,26 @@ def test_pending_endpoint_dispatches_command_for_serial(client, app_fixture):
     cmd_id = queue.get_json()['command']['id']
 
     poll = client.get('/api/agent/commands/pending?serial_number=HOST-X', headers=_h())
+    assert poll.status_code == 200
+    cmds = poll.get_json()['commands']
+    assert any(c['id'] == cmd_id for c in cmds)
+
+    with app_fixture.app_context():
+        row = db.session.get(AgentCommand, cmd_id)
+        assert row.status == 'dispatched'
+        assert row.dispatched_at is not None
+
+
+def test_pending_endpoint_dispatches_restart_agent_for_serial(client, app_fixture):
+    """Ensure a queued `restart_agent` is visible to the target and marked dispatched."""
+    queue = client.post(
+        '/api/agent/commands',
+        headers=_h(),
+        json={'command_type': 'restart_agent', 'target_serial_number': 'HOST-R'},
+    )
+    cmd_id = queue.get_json()['command']['id']
+
+    poll = client.get('/api/agent/commands/pending?serial_number=HOST-R', headers=_h())
     assert poll.status_code == 200
     cmds = poll.get_json()['commands']
     assert any(c['id'] == cmd_id for c in cmds)

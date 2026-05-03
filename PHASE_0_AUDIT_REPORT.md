@@ -207,6 +207,14 @@
 
 ---
 
+## 🧭 Recent Improvements (post-audit)
+
+- **Timezone-aware datetimes**: Replaced deprecated `datetime.utcnow()` usage in server code with timezone-aware `datetime.now(UTC)` (converted to naive UTC for DB fields where required) to remove deprecation warnings and ensure consistent UTC semantics.
+- **Agent restart integration test**: Added an integration test `tests/test_agent_restart_integration.py` that exercises the `restart_agent` executor and verifies a helper launcher process is spawned.
+
+These changes were validated locally by running the full pytest suite (436 tests passed).
+
+
 ## 📦 DEPENDENCIES VERIFICATION
 
 | Package | Version | Status | Purpose |
