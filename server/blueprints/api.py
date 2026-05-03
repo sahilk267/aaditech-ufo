@@ -1566,7 +1566,8 @@ def optimize_database_queries():
 @require_api_key_or_permission('dashboard.view')
 def list_agent_releases_api():
     """List versioned Windows agent releases for API clients."""
-    releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path)
+    tenant_slug = request.headers.get('X-Tenant-Slug')
+    releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path, tenant_slug=tenant_slug)
     release_payload = []
     for release in releases:
         item = release.to_dict()
@@ -1595,12 +1596,14 @@ def upload_agent_release_api():
         log_audit_event('agent.release.upload.api', outcome='failure', reason='file_too_large', version=version)
         return jsonify({'error': 'Validation failed', 'details': {'release_file': [f'Max size is {max_mb} MB.']}}), 400
 
+    tenant_slug = request.headers.get('X-Tenant-Slug')
     try:
         release = AgentReleaseService.save_uploaded_release(
             release_file,
             version,
             current_app.config,
             current_app.instance_path,
+            tenant_slug=tenant_slug,
         )
     except ValueError as exc:
         log_audit_event('agent.release.upload.api', outcome='failure', reason=str(exc), version=version)
@@ -1670,7 +1673,8 @@ def download_built_agent_binary_api():
 @require_api_key_or_permission('dashboard.view')
 def download_agent_release_api(filename):
     """Download versioned agent release for agent/self-update flows."""
-    file_path = AgentReleaseService.resolve_download_path(filename, current_app.config, current_app.instance_path)
+    tenant_slug = request.headers.get('X-Tenant-Slug')
+    file_path = AgentReleaseService.resolve_download_path(filename, current_app.config, current_app.instance_path, tenant_slug=tenant_slug)
     if file_path is None:
         log_audit_event('agent.release.download.api', outcome='failure', reason='not_found', filename=filename)
         abort(404)

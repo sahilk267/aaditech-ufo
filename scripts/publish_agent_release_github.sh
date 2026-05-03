@@ -10,6 +10,7 @@ set -euo pipefail
 
 SOURCE_FILE="$1"
 VERSION="$2"
+TENANT_SLUG="${3:-${TENANT_SLUG:-}}"
 
 if [[ -z "${AGENT_PUBLISH_URL:-}" || -z "${AGENT_PUBLISH_TOKEN:-}" ]]; then
   echo "AGENT_PUBLISH_URL and AGENT_PUBLISH_TOKEN must be set"
@@ -23,6 +24,7 @@ fi
 
 curl -v -X POST \
   -H "Authorization: Bearer ${AGENT_PUBLISH_TOKEN}" \
+  $( [ -n "$TENANT_SLUG" ] && echo "-H \"X-Tenant-Slug: $TENANT_SLUG\"" ) \
   -F "release_file=@${SOURCE_FILE}" \
   -F "version=${VERSION}" \
   "${AGENT_PUBLISH_URL%/}/api/agent/releases/upload"

@@ -156,19 +156,19 @@ class AgentReleaseService:
         }
 
     @classmethod
-    def _resolve_release_dir(cls, config: dict[str, Any], instance_path: str) -> Path:
+    def _resolve_release_dir(cls, config: dict[str, Any], instance_path: str, tenant_slug: str | None = None) -> Path:
         configured = str(config.get('AGENT_RELEASES_DIR', '')).strip()
-        if not configured:
-            return Path(instance_path) / 'agent_releases'
-
-        path = Path(configured)
-        if path.is_absolute():
-            return path
-        return Path(instance_path) / path
+        base = Path(instance_path) / 'agent_releases' if not configured else (Path(configured) if Path(configured).is_absolute() else Path(instance_path) / Path(configured)
+        )
+        if tenant_slug:
+            safe = str(tenant_slug).strip().lower()
+            if safe:
+                return base / safe
+        return base
 
     @classmethod
-    def ensure_release_dir(cls, config: dict[str, Any], instance_path: str) -> Path:
-        release_dir = cls._resolve_release_dir(config, instance_path)
+    def ensure_release_dir(cls, config: dict[str, Any], instance_path: str, tenant_slug: str | None = None) -> Path:
+        release_dir = cls._resolve_release_dir(config, instance_path, tenant_slug)
         release_dir.mkdir(parents=True, exist_ok=True)
         return release_dir
 
@@ -180,8 +180,8 @@ class AgentReleaseService:
         return 'unknown'
 
     @classmethod
-    def list_releases(cls, config: dict[str, Any], instance_path: str) -> list[AgentRelease]:
-        release_dir = cls.ensure_release_dir(config, instance_path)
+    def list_releases(cls, config: dict[str, Any], instance_path: str, tenant_slug: str | None = None) -> list[AgentRelease]:
+        release_dir = cls.ensure_release_dir(config, instance_path, tenant_slug)
         releases: list[AgentRelease] = []
         for item in release_dir.iterdir():
             if not item.is_file():
@@ -210,8 +210,9 @@ class AgentReleaseService:
         version: str,
         config: dict[str, Any],
         instance_path: str,
+        tenant_slug: str | None = None,
     ) -> AgentRelease:
-        release_dir = cls.ensure_release_dir(config, instance_path)
+        release_dir = cls.ensure_release_dir(config, instance_path, tenant_slug)
 
         version = str(version or '').strip()
         if not version:
@@ -242,8 +243,9 @@ class AgentReleaseService:
         version: str,
         config: dict[str, Any],
         instance_path: str,
+        tenant_slug: str | None = None,
     ) -> AgentRelease:
-        release_dir = cls.ensure_release_dir(config, instance_path)
+        release_dir = cls.ensure_release_dir(config, instance_path, tenant_slug)
 
         source = Path(source_path)
         if not source.exists() or not source.is_file():
@@ -273,8 +275,9 @@ class AgentReleaseService:
         filename: str,
         config: dict[str, Any],
         instance_path: str,
+        tenant_slug: str | None = None,
     ) -> Path | None:
-        release_dir = cls.ensure_release_dir(config, instance_path)
+        release_dir = cls.ensure_release_dir(config, instance_path, tenant_slug)
         safe_name = secure_filename(filename or '')
         if not safe_name or os.path.sep in safe_name or safe_name.startswith('.'):
             return None

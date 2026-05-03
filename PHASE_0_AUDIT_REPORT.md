@@ -235,6 +235,16 @@ These changes were validated locally by running the full pytest suite (436 tests
 		http://<HOST>:<PORT>/api/agent/releases/download/aaditech-agent-0.0.1-test.exe -o aaditech-agent-0.0.1-test.exe
 	```
 
+### Tenant-Scoped Releases & CI Publishing
+
+- Releases can now be scoped to tenants. The server accepts an `X-Tenant-Slug` header on the following endpoints:
+	- `GET /api/agent/releases` — lists releases under that tenant
+	- `POST /api/agent/releases/upload` — upload into tenant-specific storage when `X-Tenant-Slug` provided
+	- `GET /api/agent/releases/download/<filename>` — downloads from tenant-specific storage when `X-Tenant-Slug` provided
+
+- CI publishing: the GitHub Actions workflow `build_and_publish_agent.yml` and helper script `scripts/publish_agent_release_github.sh` now accept an optional tenant slug and include `X-Tenant-Slug` when uploading the artifact.
+
+
 
 
 ## 📦 DEPENDENCIES VERIFICATION

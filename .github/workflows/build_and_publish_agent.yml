@@ -45,6 +45,7 @@ jobs:
           PUBLISH_URL: ${{ secrets.AGENT_PUBLISH_URL }}
           PUBLISH_TOKEN: ${{ secrets.AGENT_PUBLISH_TOKEN }}
           VERSION: ${{ github.event.inputs.version }}
+          TENANT: ${{ github.event.inputs.tenant || '' }}
         shell: bash
         run: |
           echo "Uploading built EXE to ${PUBLISH_URL}"
@@ -53,8 +54,9 @@ jobs:
             echo "Built file not found: $FILEPATH"
             exit 2
           fi
-          curl -s -X POST \
-            -H "Authorization: Bearer ${PUBLISH_TOKEN}" \
-            -F "release_file=@${FILEPATH}" \
-            -F "version=${VERSION}" \
-            "${PUBLISH_URL%/}/api/agent/releases/upload" | jq -r '.'
+          CMD=(curl -s -X POST -H "Authorization: Bearer ${PUBLISH_TOKEN}")
+          if [ -n "${TENANT}" ]; then
+            CMD+=( -H "X-Tenant-Slug: ${TENANT}" )
+          fi
+          CMD+=( -F "release_file=@${FILEPATH}" -F "version=${VERSION}" "${PUBLISH_URL%/}/api/agent/releases/upload" )
+          "${CMD[@]}" | jq -r '.'
