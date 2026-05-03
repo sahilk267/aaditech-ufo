@@ -214,6 +214,28 @@
 
 These changes were validated locally by running the full pytest suite (436 tests passed).
 
+### Local EXE Build & Verification
+
+- **Local test EXE**: Built a minimal test agent executable and placed it in `instance/agent_releases/aaditech-agent-0.0.1-test.exe` for verification.
+- **SHA256**: `d243928c1b0f74bb8f57ad6ed8b4e2f93dad4037f3d78543fdbbbc8db97d1e06`
+- **Local auth-free verification**: For quick local checks (NOT for production), a helper runner is available at `scripts/run_server_local.py`. It starts the app with tenant DB lookups and auth disabled and exposes an auth-free download route:
+
+	- URL: `http://127.0.0.1:5001/local/agent/releases/download/aaditech-agent-0.0.1-test.exe`
+
+	- Example curl (local):
+
+		```bash
+		curl -O http://127.0.0.1:5001/local/agent/releases/download/aaditech-agent-0.0.1-test.exe
+		```
+
+	This is intended for local validation only. To verify against a deployed server, use the authenticated API endpoint:
+
+	```bash
+	curl -H "X-API-Key: <AGENT_API_KEY>" \
+		http://<HOST>:<PORT>/api/agent/releases/download/aaditech-agent-0.0.1-test.exe -o aaditech-agent-0.0.1-test.exe
+	```
+
+
 
 ## 📦 DEPENDENCIES VERIFICATION
 
