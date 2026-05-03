@@ -1,11 +1,24 @@
 """Executor: dispatches Steps to tools with retry and structured result passing.
 
 Design:
-  - Processes steps in dependency-respecting order (simple topological pass).
+  - Processes steps in dependency-respecting order (topological sort).
+  - Before each step runs, upstream dependency results are injected into
+    step.params["upstream_results"] so downstream tools (especially
+    ai_analysis) receive real data without reading global memory directly.
   - Each step is executed with up to step.retry_limit retries.
-  - Retry backoff: 0.3 s, then 0.6 s (cheap — no real LLM or network in test).
+  - Retry backoff: 0.3 s, then 0.6 s, then 1.2 s.
   - Results are written into ShortTermMemory after every step.
   - The executor never raises; all errors are captured and returned.
+
+Upstream injection contract:
+  params["upstream_results"] is a list of dicts:
+    [
+      {"step_index": int, "tool": str, "description": str,
+       "status": str, "result": dict | None},
+      ...
+    ]
+  Tools may inspect this list to enrich their analysis with real outputs
+  from preceding steps (e.g. ai_analysis reads log_search / alert_check).
 """
 
 from __future__ import annotations
@@ -42,9 +55,14 @@ class Executor:
             return []
 
         ordered = cls._resolve_order(steps)
+        # Map from step index to its completed result dict.
+        completed: dict[int, dict[str, Any]] = {}
         results: list[dict[str, Any]] = []
 
         for step in ordered:
+            # Inject results from upstream (depends_on) steps before dispatch.
+            cls._inject_upstream_results(step, completed)
+
             step_result = cls._execute_step_with_retry(
                 step=step,
                 memory=memory,
@@ -52,12 +70,56 @@ class Executor:
                 runtime_config=runtime_config,
             )
             results.append(step_result)
-
-            # Abort the entire plan on a step marked as fatal error?
-            # Current policy: continue unless the tool signalled hard stop.
-            # (Reserved for future policy enforcement via step.params.)
+            completed[step.index] = step_result
 
         return results
+
+    # ------------------------------------------------------------------ #
+    # Upstream injection                                                   #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _inject_upstream_results(
+        step: Step,
+        completed: dict[int, dict[str, Any]],
+    ) -> None:
+        """Populate step.params["upstream_results"] with the result dicts of
+        every step listed in step.depends_on that has already completed.
+
+        Tools receive a list of dicts, each with keys:
+            step_index, tool, description, status, result
+        This lets ai_analysis (and others) consume real upstream output
+        without reaching into the global ShortTermMemory directly.
+        """
+        if not step.depends_on:
+            return
+
+        upstream: list[dict[str, Any]] = []
+        for dep_idx in step.depends_on:
+            dep_result = completed.get(dep_idx)
+            if dep_result is None:
+                logger.warning(
+                    "Executor: step %d depends on step %d but it was not found "
+                    "in completed results — skipping injection for that dep.",
+                    step.index, dep_idx,
+                )
+                continue
+            upstream.append({
+                "step_index": dep_result.get("step_index", dep_idx),
+                "tool": dep_result.get("tool", ""),
+                "description": dep_result.get("description", ""),
+                "status": dep_result.get("status", "unknown"),
+                "result": dep_result.get("result"),
+            })
+
+        if upstream:
+            # Merge with any caller-supplied upstream_results (rare but safe).
+            existing = list(step.params.get("upstream_results") or [])
+            step.params["upstream_results"] = existing + upstream
+            logger.debug(
+                "Executor: injected %d upstream result(s) into step %d (%s).",
+                len(upstream), step.index, step.tool,
+            )
 
     # ------------------------------------------------------------------ #
     # Retry wrapper                                                        #
@@ -74,7 +136,7 @@ class Executor:
         """Execute one Step with up to step.retry_limit retries.
 
         The result dict always contains:
-            step_index, tool, description, status, result, error, retries
+            step_index, tool, description, params, status, result, error, retries
         """
         tool_cls = TOOL_REGISTRY.get(step.tool)
         if tool_cls is None:
@@ -109,20 +171,21 @@ class Executor:
                 last_error = error_key
 
                 if not error_key:
-                    # Success — no retry needed
                     break
 
-                # Transient error — retry if attempts remain
                 if attempt < max_attempts - 1:
                     delay = _RETRY_DELAYS[min(attempt, len(_RETRY_DELAYS) - 1)]
                     logger.warning(
-                        "Executor: step %d (%s) attempt %d/%d failed with %r — retrying in %.1fs",
-                        step.index, step.tool, attempt + 1, max_attempts, error_key, delay,
+                        "Executor: step %d (%s) attempt %d/%d failed with %r "
+                        "— retrying in %.1fs",
+                        step.index, step.tool, attempt + 1, max_attempts,
+                        error_key, delay,
                     )
                     time.sleep(delay)
                 else:
                     logger.error(
-                        "Executor: step %d (%s) exhausted %d attempts, last error: %r",
+                        "Executor: step %d (%s) exhausted %d attempts, "
+                        "last error: %r",
                         step.index, step.tool, max_attempts, error_key,
                     )
 
@@ -151,17 +214,17 @@ class Executor:
         return step_result
 
     # ------------------------------------------------------------------ #
-    # Dependency resolution                                                #
+    # Dependency resolution (topological sort)                             #
     # ------------------------------------------------------------------ #
 
     @staticmethod
     def _resolve_order(steps: list[Step]) -> list[Step]:
         """Return steps in a dependency-respecting execution order.
 
-        Steps with depends_on are moved after their dependencies.
-        Steps with no depends_on (or whose dependencies are all already
-        satisfied) are executed first. This is a simple stable topological
-        sort — cycles are broken by falling back to original index order.
+        Steps with depends_on are moved after all their dependencies.
+        Steps with no depends_on are executed first.
+        This is a stable recursive topological sort; cycles are broken by
+        the depth guard (depth > len(steps)).
         """
         index_map: dict[int, Step] = {s.index: s for s in steps}
         visited: set[int] = set()
@@ -171,7 +234,12 @@ class Executor:
             if step.index in visited:
                 return
             if depth > len(steps):
-                # Cycle guard
+                logger.warning(
+                    "Executor: cycle detected near step %d — forcing inclusion.",
+                    step.index,
+                )
+                visited.add(step.index)
+                ordered.append(step)
                 return
             for dep_idx in step.depends_on:
                 dep = index_map.get(dep_idx)
@@ -200,7 +268,12 @@ class Executor:
             "step_index": step.index,
             "tool": step.tool,
             "description": step.description,
-            "params": step.params,
+            "depends_on": step.depends_on,
+            "params": {
+                k: v for k, v in step.params.items()
+                if k != "upstream_results"   # keep result payload lean
+            },
+            "upstream_step_count": len(step.params.get("upstream_results") or []),
             "status": "error" if error else "success",
             "result": tool_result,
             "error": error,

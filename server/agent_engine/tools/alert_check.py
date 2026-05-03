@@ -50,7 +50,7 @@ class AlertCheckTool:
             latest_row = (
                 SystemData.query
                 .filter_by(organization_id=organization_id)
-                .order_by(SystemData.timestamp.desc())
+                .order_by(SystemData.last_update.desc())
                 .first()
             )
 
