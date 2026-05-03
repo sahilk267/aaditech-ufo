@@ -5,6 +5,7 @@ stack = "BEST_EFFORT_FALLBACK"
 
 [nix]
 channel = "stable-25_05"
+packages = ["cacert", "cargo", "libffi", "libiconv", "libxcrypt", "openssl", "pkg-config", "rustc"]
 
 [[ports]]
 localPort = 5000
@@ -31,10 +32,20 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "SPA_WAVE_1_ENABLED=true python -m server.app"
+args = "cd frontend && npm install --silent && npx vite build 2>&1 | tail -3 && cd .. && python -m scripts.seed_default_admin 2>&1 | tail -4 && python -m server.app"
 waitForPort = 5000
 
 [deployment]
 deploymentTarget = "autoscale"
 run = ["bash", "-lc", "python -c 'from server.app import app, apply_database_migrations; apply_database_migrations(app)' && gunicorn --bind=0.0.0.0:5000 --workers=2 --timeout=60 server.app:app"]
 build = ["bash", "-lc", "pip install -r requirements.txt && cd frontend && npm install && npx vite build"]
+
+[userenv]
+
+[userenv.shared]
+SECRET_KEY = "9c64f312f127f83b42e130f927319cbc8ce8dfc583ba1818e21de671553613d6"
+JWT_SECRET_KEY = "72121551056eea8d03b69f49118e6f24ed101e02bb3546e0d5f52bbbf8acd218"
+AGENT_API_KEY = "204674c1c39806b32d9ec6f1012c1ab8"
+FLASK_ENV = "development"
+SPA_WAVE_1_ENABLED = "true"
+SESSION_COOKIE_SECURE = "false"
