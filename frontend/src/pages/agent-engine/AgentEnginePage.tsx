@@ -28,6 +28,23 @@ type ToolInfo = {
   doc: string;
 };
 
+type AutomationPreviewData = {
+  workflow_id?: number;
+  workflow_name?: string;
+  trigger_type?: string;
+  action_type?: string;
+  is_active?: boolean;
+  dry_run_guard?: string;
+  dry_run?: boolean;
+  live_execution?: boolean;
+  would_trigger?: boolean;
+  would_update_last_triggered_at?: boolean;
+  estimated_impact?: string;
+  action_config_preview?: Record<string, unknown>;
+  payload_preview?: Record<string, unknown>;
+  last_triggered_at?: string | null;
+};
+
 function statusBadge(status: string) {
   if (status === "completed") return "ok";
   if (status === "partial") return "warn";
@@ -91,6 +108,13 @@ export function AgentEnginePage() {
   const stepSummary = resultData?.step_summary as
     | { total: number; success: number; failed: number }
     | undefined;
+  const automationPreviewData = stepResults
+    .map((step) => {
+      const s = step as Record<string, unknown>;
+      const result = s.result as Record<string, unknown> | undefined;
+      return result?.would_trigger === true ? (result as AutomationPreviewData) : null;
+    })
+    .find(Boolean) as AutomationPreviewData | null;
 
   return (
     <ModulePage
@@ -128,7 +152,7 @@ export function AgentEnginePage() {
           label="Failed sessions"
           value={failedCount}
           detail={failedCount > 0 ? "Check session list for details" : "All runs succeeded"}
-          status={failedCount > 0 ? "critical" : "ok"}
+          status={failedCount > 0 ? "warn" : "ok"}
         />
         <StatCard
           label="Registered tools"
@@ -293,9 +317,50 @@ export function AgentEnginePage() {
           </div>
           {selectedSession && (
             <div style={{ marginTop: 12 }}>
-              <JsonViewer data={selectedSession} title="Step detail" />
+              <JsonViewer data={selectedSession as Record<string, unknown>} title="Step detail" />
             </div>
           )}
+        </ActionPanel>
+      )}
+
+      {automationPreviewData && (
+        <ActionPanel title="Automation Preview">
+          <div className="stats-grid" style={{ marginBottom: 12 }}>
+            <StatCard
+              label="Workflow"
+              value={String(automationPreviewData.workflow_name ?? `#${automationPreviewData.workflow_id ?? "n/a"}`)}
+              detail={`Action: ${String(automationPreviewData.action_type ?? "unknown")}`}
+              status="neutral"
+            />
+            <StatCard
+              label="Dry-run guard"
+              value={String(automationPreviewData.dry_run_guard ?? "unknown")}
+              detail={automationPreviewData.live_execution ? "Live execution" : "Preview only"}
+              status={automationPreviewData.live_execution ? "error" : "ok"}
+            />
+            <StatCard
+              label="Impact"
+              value={String(automationPreviewData.estimated_impact ?? "n/a")}
+              detail="What would happen if executed"
+              status="warn"
+            />
+            <StatCard
+              label="Would trigger"
+              value={String(automationPreviewData.would_trigger ?? false)}
+              detail={automationPreviewData.would_update_last_triggered_at === false ? "No state change in preview" : "State change possible"}
+              status={automationPreviewData.would_trigger ? "warn" : "neutral"}
+            />
+          </div>
+          <div className="module-grid">
+            <div className="module-card" style={{ gridColumn: "1 / -1" }}>
+              <div className="module-card-title">Redacted workflow config</div>
+              <JsonViewer data={automationPreviewData.action_config_preview ?? {}} title="action_config_preview" />
+            </div>
+            <div className="module-card" style={{ gridColumn: "1 / -1" }}>
+              <div className="module-card-title">Payload preview</div>
+              <JsonViewer data={automationPreviewData.payload_preview ?? {}} title="payload_preview" />
+            </div>
+          </div>
         </ActionPanel>
       )}
 
