@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { logout } from "../../lib/auth";
 import { useAuthStore } from "../../store/authStore";
 import { ROUTES } from "../../config/routes";
-import { NAV_ITEMS } from "../../config/navigation";
+import { NAV_SECTIONS } from "../../config/navigation";
 import { hasPermission } from "../../lib/rbac";
 import { prefetchRoute } from "../../app/routePrefetch";
 import { ChangePasswordModal } from "../account/ChangePasswordModal";
@@ -16,20 +16,22 @@ export function AppShell() {
   const userPermissions = user?.permissions || [];
   const [changePasswordOpen, setChangePasswordOpen] = useState(false);
 
-  const visibleNavItems = NAV_ITEMS.filter((item) => hasPermission(userPermissions, item.permission));
-  const blockedNavItems = NAV_ITEMS.filter((item) => !hasPermission(userPermissions, item.permission));
+  // Flatten all visible items for prefetch
+  const allVisibleItems = NAV_SECTIONS.flatMap((s) => s.items).filter((item) =>
+    hasPermission(userPermissions, item.permission)
+  );
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
-      visibleNavItems
+      allVisibleItems
         .slice(0, 4)
         .map((item) => item.route)
         .filter((route) => route !== location.pathname)
         .forEach(prefetchRoute);
     }, 350);
-
     return () => window.clearTimeout(timeoutId);
-  }, [location.pathname, visibleNavItems]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   function prefetchOnIntent(route: string) {
     if (route !== location.pathname) {
@@ -56,24 +58,36 @@ export function AppShell() {
           <small>Operations SPA</small>
         </div>
         <nav>
-          {visibleNavItems.map((item) => (
-            <NavLink
-              key={item.route}
-              to={item.route}
-              onMouseEnter={() => prefetchOnIntent(item.route)}
-              onFocus={() => prefetchOnIntent(item.route)}
-              className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
-            >
-              {item.label}
-            </NavLink>
-          ))}
+          {NAV_SECTIONS.map((section) => {
+            const visibleItems = section.items.filter((item) =>
+              hasPermission(userPermissions, item.permission)
+            );
+            if (visibleItems.length === 0) return null;
+            return (
+              <div key={section.label} className="nav-section">
+                <div className="nav-section-label">{section.label}</div>
+                {visibleItems.map((item) => (
+                  <NavLink
+                    key={item.route}
+                    to={item.route}
+                    onMouseEnter={() => prefetchOnIntent(item.route)}
+                    onFocus={() => prefetchOnIntent(item.route)}
+                    className={({ isActive }) => (isActive ? "nav-link active" : "nav-link")}
+                  >
+                    {item.label}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
-        {blockedNavItems.length ? (
+
+        {/* Show restricted sections */}
+        {NAV_SECTIONS.some((s) =>
+          s.items.some((item) => !hasPermission(userPermissions, item.permission))
+        ) ? (
           <div className="blocked-features">
-            <small>Restricted modules:</small>
-            {blockedNavItems.map((item) => (
-              <small key={item.route}>{item.label}: needs {item.permission}</small>
-            ))}
+            <small>Some modules require elevated permissions.</small>
           </div>
         ) : null}
       </aside>

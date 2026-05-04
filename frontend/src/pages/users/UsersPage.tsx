@@ -9,7 +9,7 @@ import {
   FormInput,
   FormSubmitButton,
 } from "../../components/forms/FormComponents";
-import { getUsers, registerUser, updateUser } from "../../lib/api";
+import { getUsers, registerUser, revokeUserSessions, updateUser } from "../../lib/api";
 import { fetchMe } from "../../lib/auth";
 import { queryKeys } from "../../lib/queryKeys";
 import { createUserSchema, type CreateUserInput } from "../../lib/schemas";
@@ -51,6 +51,17 @@ export function UsersPage() {
       form.reset();
       void queryClient.invalidateQueries({ queryKey: queryKeys.users });
       void queryClient.invalidateQueries({ queryKey: queryKeys.me });
+    },
+    onError: (err) => {
+      form.setError("root", { message: String(err) });
+    },
+  });
+
+  const revokeSessionsMutation = useMutation({
+    mutationFn: (userId: number) => revokeUserSessions(userId),
+    onSuccess: (data) => {
+      setLatestResult(data);
+      void queryClient.invalidateQueries({ queryKey: queryKeys.users });
     },
     onError: (err) => {
       form.setError("root", { message: String(err) });
@@ -147,9 +158,19 @@ export function UsersPage() {
                     <td>{user.id}</td>
                     <td>{user.email}</td>
                     <td>{user.full_name || "-"}</td>
-                    <td>
+                    <td style={{ display: "flex", gap: 6 }}>
                       <button className="button button--secondary" type="button" onClick={() => onBeginEdit(user)}>
                         Edit
+                      </button>
+                      <button
+                        className="button button--secondary"
+                        type="button"
+                        style={{ fontSize: "0.82em", color: "#b45309", border: "1px solid #fde68a" }}
+                        onClick={() => revokeSessionsMutation.mutate(user.id)}
+                        disabled={revokeSessionsMutation.isPending}
+                        title="Force logout — revoke all active sessions for this user"
+                      >
+                        Revoke sessions
                       </button>
                     </td>
                   </tr>

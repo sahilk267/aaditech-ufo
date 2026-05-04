@@ -33,7 +33,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_VALID_MODES = frozenset({"root_cause", "recommendations", "troubleshoot"})
+_VALID_MODES = frozenset({"root_cause", "recommendations", "troubleshoot", "anomaly", "incident"})
 
 
 class AIAnalysisTool:
@@ -62,6 +62,10 @@ class AIAnalysisTool:
                 return AIAnalysisTool._root_cause(params, memory, runtime_config, AIService)
             if mode == "recommendations":
                 return AIAnalysisTool._recommendations(params, memory, runtime_config, AIService)
+            if mode == "anomaly":
+                return AIAnalysisTool._anomaly(params, memory, runtime_config, AIService)
+            if mode == "incident":
+                return AIAnalysisTool._incident(params, memory, runtime_config, AIService)
             return AIAnalysisTool._troubleshoot(params, memory, runtime_config, AIService)
 
         except Exception as exc:
@@ -333,6 +337,77 @@ class AIAnalysisTool:
             "mode": "troubleshoot",
             "upstream_evidence_count": len(upstream_evidence),
             "context_items_used": context_items[:14],
+            "result": result,
+            "error": error,
+        }, error
+
+    @staticmethod
+    def _anomaly(
+        params: dict[str, Any],
+        memory: "ShortTermMemory",
+        runtime_config: dict[str, Any],
+        AIService: Any,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Calls AIService.analyze_anomalies with structured anomaly list."""
+        upstream_evidence, _ = AIAnalysisTool._extract_upstream_evidence(params, memory)
+
+        anomalies: list[dict[str, Any]] = list(params.get("anomalies") or [])
+        # Build anomaly list from upstream evidence when none provided explicitly.
+        if not anomalies and upstream_evidence:
+            anomalies = [{"description": ev} for ev in upstream_evidence[:10]]
+        if not anomalies:
+            anomalies = [{"description": "Unknown anomaly — no upstream evidence available"}]
+
+        result, error = AIService.analyze_anomalies(
+            anomalies=anomalies[:15],
+            runtime_config=runtime_config,
+        )
+        memory.set("ai_anomaly_analysis", result)
+        return {
+            "status": "success" if not error else "error",
+            "tool": "ai_analysis",
+            "mode": "anomaly",
+            "anomalies_analyzed": len(anomalies),
+            "upstream_evidence_count": len(upstream_evidence),
+            "result": result,
+            "error": error,
+        }, error
+
+    @staticmethod
+    def _incident(
+        params: dict[str, Any],
+        memory: "ShortTermMemory",
+        runtime_config: dict[str, Any],
+        AIService: Any,
+    ) -> tuple[dict[str, Any], str | None]:
+        """Calls AIService.explain_incident with incident context."""
+        upstream_evidence, _ = AIAnalysisTool._extract_upstream_evidence(params, memory)
+
+        incident_title = str(
+            params.get("incident_title")
+            or params.get("symptom_summary")
+            or "Incident under investigation"
+        ).strip()
+
+        affected_systems: list[str] = list(params.get("affected_systems") or [])
+        if not affected_systems and upstream_evidence:
+            affected_systems = upstream_evidence[:6]
+
+        metrics_snapshot: dict[str, Any] = dict(params.get("metrics_snapshot") or {})
+
+        result, error = AIService.explain_incident(
+            incident_title=incident_title,
+            affected_systems=affected_systems or None,
+            metrics_snapshot=metrics_snapshot or None,
+            runtime_config=runtime_config,
+        )
+        memory.set("ai_incident_explanation", result)
+        return {
+            "status": "success" if not error else "error",
+            "tool": "ai_analysis",
+            "mode": "incident",
+            "incident_title": incident_title,
+            "upstream_evidence_count": len(upstream_evidence),
             "result": result,
             "error": error,
         }, error

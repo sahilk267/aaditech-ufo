@@ -16,6 +16,8 @@ import {
   createAutomationWorkflow,
   executeAutomationWorkflow,
   getAutomationServiceStatus,
+  getAutomationServiceDependencies,
+  getAutomationServiceFailures,
   getAutomationWorkflows,
   getWorkflowRun,
   getWorkflowRuns,
@@ -139,6 +141,8 @@ export function AutomationPage() {
   });
 
   const serviceStatusMutation = useMutation({ mutationFn: () => getAutomationServiceStatus(serviceName), onSuccess: onOk, onError: onErr });
+  const serviceDependenciesMutation = useMutation({ mutationFn: () => getAutomationServiceDependencies(serviceName), onSuccess: onOk, onError: onErr });
+  const serviceFailuresMutation = useMutation({ mutationFn: () => getAutomationServiceFailures(serviceName), onSuccess: onOk, onError: onErr });
   const selfHealMutation = useMutation({ mutationFn: () => triggerSelfHealing({ alerts: [], dry_run: true }), onSuccess: onOk, onError: onErr });
 
   const onSubmit = (data: CreateAutomationWorkflowInput) => {
@@ -286,7 +290,9 @@ export function AutomationPage() {
         ) : null}
         <div className="row-between" style={{ marginTop: 12 }}>
           <button onClick={() => selectedWorkflowId && executeWorkflowMutation.mutate(selectedWorkflowId)} disabled={!selectedWorkflowId || executeWorkflowMutation.isPending}>Execute (Dry Run)</button>
-          <button onClick={() => serviceStatusMutation.mutate()} disabled={serviceStatusMutation.isPending}>Check Service</button>
+          <button onClick={() => serviceStatusMutation.mutate()} disabled={serviceStatusMutation.isPending}>Check Status</button>
+          <button onClick={() => serviceDependenciesMutation.mutate()} disabled={serviceDependenciesMutation.isPending}>Dependencies</button>
+          <button onClick={() => serviceFailuresMutation.mutate()} disabled={serviceFailuresMutation.isPending}>Failures</button>
           <button onClick={() => selfHealMutation.mutate()} disabled={selfHealMutation.isPending}>Self-Heal (Dry Run)</button>
         </div>
         <MutationFeedback error={actionError} />

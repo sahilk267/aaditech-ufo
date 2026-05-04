@@ -9,9 +9,9 @@ export function LoginPage() {
   const navigate = useNavigate();
   const setAuth = useAuthStore((state) => state.setAuth);
   const setTenantSlug = useAuthStore((state) => state.setTenantSlug);
-  const [tenantSlug, setTenantSlugInput] = useState("default");
-  const [email, setEmail] = useState("admin@example.com");
-  const [password, setPassword] = useState("ChangeMe123!");
+  const [tenantSlug, setTenantSlugInput] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [mfaCode, setMfaCode] = useState("");

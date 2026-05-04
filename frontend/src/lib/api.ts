@@ -99,12 +99,12 @@ export async function getSystems() {
 }
 
 export async function getSystem(systemId: number) {
-  const { data } = await apiClient.get<SystemDetailResponse>(`/api/system/${systemId}`);
+  const { data } = await apiClient.get<SystemDetailResponse>(`/api/systems/${systemId}`);
   return data;
 }
 
-export async function submitManualSystemData() {
-  const { data } = await apiClient.post<ManualSubmitResponse>("/manual_submit");
+export async function submitManualSystemData(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<ManualSubmitResponse>("/api/submit_data", payload);
   return data;
 }
 
@@ -120,13 +120,15 @@ export async function getTenants() {
   return data;
 }
 
-export async function createTenant(payload: { name: string; slug?: string; is_active?: boolean }) {
+export async function createTenant(payload: { name: string; slug: string }) {
   const { data } = await apiClient.post<TenantMutationResponse>("/api/tenants", payload);
   return data;
 }
 
 export async function updateTenantStatus(tenantId: number, isActive: boolean) {
-  const { data } = await apiClient.patch<TenantMutationResponse>(`/api/tenants/${tenantId}/status`, { is_active: isActive });
+  const { data } = await apiClient.patch<TenantMutationResponse>(`/api/tenants/${tenantId}/status`, {
+    is_active: isActive,
+  });
   return data;
 }
 
@@ -177,7 +179,9 @@ export async function updateTenantCommercial(payload: Record<string, unknown>) {
 }
 
 export async function getTenantCommercialProviderBoundary() {
-  const { data } = await apiClient.get<TenantCommercialProviderBoundaryResponse>("/api/tenant-commercial/provider-boundary");
+  const { data } = await apiClient.get<TenantCommercialProviderBoundaryResponse>(
+    "/api/tenant-commercial/provider-boundary"
+  );
   return data;
 }
 
@@ -192,32 +196,32 @@ export async function updateTenantSettings(payload: Record<string, unknown>) {
 }
 
 export async function getTenantSecrets() {
-  const { data } = await apiClient.get<Record<string, unknown>>("/api/tenant-secrets");
+  const { data } = await apiClient.get("/api/tenant-secrets");
   return data;
 }
 
 export async function createTenantSecret(payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<Record<string, unknown>>("/api/tenant-secrets", payload);
+  const { data } = await apiClient.post("/api/tenant-secrets", payload);
   return data;
 }
 
-export async function rotateTenantSecret(secretId: number, payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<Record<string, unknown>>(`/api/tenant-secrets/${secretId}/rotate`, payload);
+export async function rotateTenantSecret(secretId: number) {
+  const { data } = await apiClient.post(`/api/tenant-secrets/${secretId}/rotate`);
   return data;
 }
 
 export async function revokeTenantSecret(secretId: number) {
-  const { data } = await apiClient.post<Record<string, unknown>>(`/api/tenant-secrets/${secretId}/revoke`);
+  const { data } = await apiClient.post(`/api/tenant-secrets/${secretId}/revoke`);
   return data;
 }
 
 export async function getAgentEnrollmentTokens() {
-  const { data } = await apiClient.post<Record<string, unknown>>("/api/agents/enrollment-tokens");
+  const { data } = await apiClient.get("/api/agents/enrollment-tokens");
   return data;
 }
 
 export async function enrollAgent(payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<Record<string, unknown>>("/api/agents/enroll", payload);
+  const { data } = await apiClient.post("/api/agents/enroll", payload);
   return data;
 }
 
@@ -227,7 +231,22 @@ export async function getUsers() {
 }
 
 export async function updateUser(userId: number, payload: Record<string, unknown>) {
-  const { data } = await apiClient.patch<UsersResponse>(`/api/users/${userId}`, payload);
+  const { data } = await apiClient.patch(`/api/users/${userId}`, payload);
+  return data;
+}
+
+export async function revokeUserSessions(userId: number) {
+  const { data } = await apiClient.post(`/api/users/${userId}/revoke-sessions`);
+  return data;
+}
+
+export async function getRoles() {
+  const { data } = await apiClient.get("/api/roles");
+  return data;
+}
+
+export async function getPermissions() {
+  const { data } = await apiClient.get("/api/permissions");
   return data;
 }
 
@@ -237,17 +256,23 @@ export async function getOidcProviders() {
 }
 
 export async function createOidcProvider(payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<OidcProviderMutationResponse>("/api/auth/oidc/providers", payload);
+  const { data } = await apiClient.post<OidcProviderMutationResponse>(
+    "/api/auth/oidc/providers",
+    payload
+  );
   return data;
 }
 
 export async function updateOidcProvider(providerId: number, payload: Record<string, unknown>) {
-  const { data } = await apiClient.patch<OidcProviderMutationResponse>(`/api/auth/oidc/providers/${providerId}`, payload);
+  const { data } = await apiClient.patch<OidcProviderMutationResponse>(
+    `/api/auth/oidc/providers/${providerId}`,
+    payload
+  );
   return data;
 }
 
 export async function discoverOidcProvider(providerId: number) {
-  const { data } = await apiClient.post<OidcProviderMutationResponse>(`/api/auth/oidc/providers/${providerId}/discover`);
+  const { data } = await apiClient.post(`/api/auth/oidc/providers/${providerId}/discover`);
   return data;
 }
 
@@ -257,24 +282,28 @@ export async function getTotpStatus() {
 }
 
 export async function enrollTotp() {
-  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/enroll");
+  const { data } = await apiClient.post("/api/auth/mfa/totp/enroll");
   return data;
 }
 
 export async function activateTotp(code: string) {
-  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/activate", { code });
+  const { data } = await apiClient.post("/api/auth/mfa/totp/activate", { code });
   return data;
 }
 
 export async function disableTotp(currentPassword: string) {
-  const { data } = await apiClient.post<TotpFactorStatusResponse>("/api/auth/mfa/totp/disable", {
+  const { data } = await apiClient.post("/api/auth/mfa/totp/disable", {
     current_password: currentPassword,
   });
   return data;
 }
 
-export async function registerUser(payload: { email: string; full_name: string; password: string }) {
-  const { data } = await apiClient.post<UserRegistrationResponse>("/api/users", payload);
+export async function registerUser(payload: {
+  email: string;
+  full_name: string;
+  password: string;
+}) {
+  const { data } = await apiClient.post<UserRegistrationResponse>("/api/auth/register", payload);
   return data;
 }
 
@@ -289,20 +318,22 @@ export async function getAgentBuildStatus() {
 }
 
 export async function buildAgentBinary() {
-  const { data } = await apiClient.post<AgentBuildResponse>("/api/agent/build", {});
+  const { data } = await apiClient.post<AgentBuildResponse>("/api/agent/build");
   return data;
 }
 
 export async function downloadBuiltAgentBinary() {
-  const response = await apiClient.get("/api/agent/build/download", { responseType: "blob" });
-  return response.data as Blob;
+  const { data } = await apiClient.get("/api/agent/build/download", {
+    responseType: "blob",
+  });
+  return data;
 }
 
 export async function downloadAgentReleaseBinary(filename: string) {
-  const response = await apiClient.get(`/api/agent/releases/download/${encodeURIComponent(filename)}`, {
+  const { data } = await apiClient.get(`/api/agent/releases/download/${filename}`, {
     responseType: "blob",
   });
-  return response.data as Blob;
+  return data;
 }
 
 export async function getAgentReleasePolicy() {
@@ -310,33 +341,30 @@ export async function getAgentReleasePolicy() {
   return data;
 }
 
-export async function setAgentReleasePolicy(payload: { target_version: string; notes: string }) {
-  const { data } = await apiClient.put<ReleasePolicyResponse>("/api/agent/releases/policy", payload);
+export async function setAgentReleasePolicy(payload: Record<string, unknown>) {
+  const { data } = await apiClient.put<ReleasePolicyResponse>(
+    "/api/agent/releases/policy",
+    payload
+  );
   return data;
 }
 
-export async function getAgentReleaseGuide(currentVersion: string) {
+export async function getAgentReleaseGuide(currentVersion?: string) {
   const { data } = await apiClient.get<ReleaseGuideResponse>("/api/agent/releases/guide", {
-    params: { current_version: currentVersion },
+    params: currentVersion ? { current_version: currentVersion } : {},
   });
   return data;
 }
 
-export async function uploadAgentRelease(file: File, version: string) {
+export async function uploadAgentRelease(file: File) {
   const formData = new FormData();
-  formData.append("version", version);
-  formData.append("release_file", file);
-
+  formData.append("file", file);
   const { data } = await apiClient.post("/api/agent/releases/upload", formData, {
-    headers: {
-      "Content-Type": "multipart/form-data",
-    },
+    headers: { "Content-Type": "multipart/form-data" },
   });
-
   return data;
 }
 
-// Alert APIs
 export async function getAlertRules() {
   const { data } = await apiClient.get<AlertRulesResponse>("/api/alerts/rules");
   return data;
@@ -352,13 +380,34 @@ export async function createAlertRule(payload: {
   metric: string;
   operator: string;
   threshold: number;
-  severity: string;
+  severity?: string;
+  description?: string;
 }) {
   const { data } = await apiClient.post<AlertRulesResponse>("/api/alerts/rules", payload);
   return data;
 }
 
-export async function evaluateAlerts(payload: Record<string, unknown> = {}) {
+export async function updateAlertRule(
+  ruleId: number,
+  payload: Partial<{
+    name: string;
+    metric: string;
+    operator: string;
+    threshold: number;
+    severity: string;
+    is_active: boolean;
+  }>
+) {
+  const { data } = await apiClient.patch(`/api/alerts/rules/${ruleId}`, payload);
+  return data;
+}
+
+export async function deleteAlertSilence(silenceId: number) {
+  const { data } = await apiClient.delete(`/api/alerts/silences/${silenceId}`);
+  return data;
+}
+
+export async function evaluateAlerts(payload: Record<string, unknown>) {
   const { data } = await apiClient.post<AlertEvaluationResponse>("/api/alerts/evaluate", payload);
   return data;
 }
@@ -368,56 +417,74 @@ export async function dispatchAlerts(payload: Record<string, unknown>) {
   return data;
 }
 
-export async function prioritizeAlerts(payload: { alerts: AlertRule[]; top_n?: number }) {
-  const { data } = await apiClient.post<AlertPrioritizationResponse>("/api/alerts/prioritize", payload);
+export async function prioritizeAlerts(payload: Record<string, unknown>) {
+  const { data } = await apiClient.post<AlertPrioritizationResponse>(
+    "/api/alerts/prioritize",
+    payload
+  );
   return data;
 }
 
 export async function getAlertDeliveryHistory(status?: string) {
-  const { data } = await apiClient.get<AlertDeliveryHistoryResponse>("/api/alerts/delivery-history", {
-    params: status ? { status } : {},
-  });
+  const { data } = await apiClient.get<AlertDeliveryHistoryResponse>(
+    "/api/alerts/delivery-history",
+    { params: status ? { status } : {} }
+  );
   return data;
 }
 
 export async function getAlertDelivery(deliveryId: number) {
-  const { data } = await apiClient.get<AlertDeliveryDetailResponse>(`/api/alerts/delivery-history/${deliveryId}`);
+  const { data } = await apiClient.get<AlertDeliveryDetailResponse>(
+    `/api/alerts/delivery-history/${deliveryId}`
+  );
   return data;
 }
 
 export async function redeliverAlertDelivery(deliveryId: number) {
-  const { data } = await apiClient.post<AlertDispatchResponse>(`/api/alerts/delivery-history/${deliveryId}/redeliver`);
+  const { data } = await apiClient.post(
+    `/api/alerts/delivery-history/${deliveryId}/redeliver`
+  );
   return data;
 }
 
-// Automation APIs
 export async function getAutomationWorkflows() {
   const { data } = await apiClient.get<AutomationWorkflowsResponse>("/api/automation/workflows");
   return data;
 }
 
 export async function createAutomationWorkflow(payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<AutomationWorkflowsResponse>("/api/automation/workflows", payload);
+  const { data } = await apiClient.post<AutomationWorkflowsResponse>(
+    "/api/automation/workflows",
+    payload
+  );
   return data;
 }
 
-export async function executeAutomationWorkflow(workflowId: number, payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<AutomationWorkflowExecutionResponse>(`/api/automation/workflows/${workflowId}/execute`, payload);
+export async function executeAutomationWorkflow(
+  workflowId: number,
+  payload: Record<string, unknown>
+) {
+  const { data } = await apiClient.post<AutomationWorkflowExecutionResponse>(
+    `/api/automation/workflows/${workflowId}/execute`,
+    payload
+  );
   return data;
 }
 
-export async function getWorkflowRuns(params?: { workflowId?: number; status?: string }) {
+export async function getWorkflowRuns(params?: { workflowId?: number; limit?: number }) {
   const { data } = await apiClient.get<WorkflowRunsResponse>("/api/automation/workflow-runs", {
     params: {
       workflow_id: params?.workflowId,
-      status: params?.status,
+      limit: params?.limit,
     },
   });
   return data;
 }
 
 export async function getWorkflowRun(runId: number) {
-  const { data } = await apiClient.get<WorkflowRunDetailResponse>(`/api/automation/workflow-runs/${runId}`);
+  const { data } = await apiClient.get<WorkflowRunDetailResponse>(
+    `/api/automation/workflow-runs/${runId}`
+  );
   return data;
 }
 
@@ -427,18 +494,60 @@ export async function getScheduledJobs() {
 }
 
 export async function getAutomationServiceStatus(serviceName?: string) {
-  const { data } = await apiClient.post<ServiceStatusResponse>("/api/automation/services/status", serviceName ? { service_name: serviceName } : {});
+  const { data } = await apiClient.post<ServiceStatusResponse>(
+    "/api/automation/services/status",
+    { service_name: serviceName }
+  );
   return data;
 }
 
-export async function triggerSelfHealing(payload: { alerts: AlertRule[]; dry_run?: boolean }) {
+export async function getAutomationServiceDependencies(
+  serviceName: string,
+  runtimeConfig?: Record<string, unknown>
+) {
+  const { data } = await apiClient.post("/api/automation/services/dependencies", {
+    service_name: serviceName,
+    runtime_config: runtimeConfig,
+  });
+  return data;
+}
+
+export async function getAutomationServiceFailures(
+  serviceName: string,
+  runtimeConfig?: Record<string, unknown>
+) {
+  const { data } = await apiClient.post("/api/automation/services/failures", {
+    service_name: serviceName,
+    runtime_config: runtimeConfig,
+  });
+  return data;
+}
+
+export async function executeServiceCommand(
+  serviceName: string,
+  commandText: string,
+  runtimeConfig?: Record<string, unknown>
+) {
+  const { data } = await apiClient.post("/api/automation/services/execute", {
+    service_name: serviceName,
+    command_text: commandText,
+    runtime_config: runtimeConfig,
+  });
+  return data;
+}
+
+export async function triggerSelfHealing(payload: {
+  alerts: Record<string, unknown>[];
+  dry_run?: boolean;
+}) {
   const { data } = await apiClient.post<SelfHealingResponse>("/api/automation/self-heal", payload);
   return data;
 }
 
-// Logs APIs
 export async function ingestLogs(sourceName: string) {
-  const { data } = await apiClient.post<LogsIngestResponse>("/api/logs/ingest", { source_name: sourceName });
+  const { data } = await apiClient.post<LogsIngestResponse>("/api/logs/ingest", {
+    source_name: sourceName,
+  });
   return data;
 }
 
@@ -446,52 +555,37 @@ export async function getLogSources(params?: { isActive?: boolean; searchText?: 
   const { data } = await apiClient.get<LogSourcesResponse>("/api/logs/sources", {
     params: {
       is_active: params?.isActive,
-      search_text: params?.searchText,
+      search: params?.searchText,
     },
   });
   return data;
 }
 
-export async function getLogSource(sourceId: number, recentLimit = 10) {
-  const { data } = await apiClient.get<LogSourceDetailResponse>(`/api/logs/sources/${sourceId}`, {
-    params: { recent_limit: recentLimit },
-  });
+export async function getLogSource(sourceId: number) {
+  const { data } = await apiClient.get<LogSourceDetailResponse>(`/api/logs/sources/${sourceId}`);
   return data;
 }
 
-export async function updateLogSource(
-  sourceId: number,
-  payload: {
-    description?: string;
-    host_name?: string;
-    is_active?: boolean;
-    source_metadata?: Record<string, unknown>;
-  }
-) {
-  const { data } = await apiClient.patch<LogSourceDetailResponse>(`/api/logs/sources/${sourceId}`, payload);
+export async function updateLogSource(sourceId: number, payload: Record<string, unknown>) {
+  const { data } = await apiClient.patch(`/api/logs/sources/${sourceId}`, payload);
   return data;
 }
 
 export async function getLogEntries(params?: {
   sourceId?: number;
+  source_id?: number;
   sourceName?: string;
   severity?: string;
-  captureKind?: string;
-  eventId?: string;
-  queryText?: string;
-  page?: number;
-  perPage?: number;
+  limit?: number;
+  offset?: number;
 }) {
   const { data } = await apiClient.get<LogEntriesResponse>("/api/logs/entries", {
     params: {
-      source_id: params?.sourceId,
+      log_source_id: params?.sourceId ?? params?.source_id,
       source_name: params?.sourceName,
       severity: params?.severity,
-      capture_kind: params?.captureKind,
-      event_id: params?.eventId,
-      query_text: params?.queryText,
-      page: params?.page,
-      per_page: params?.perPage,
+      limit: params?.limit ?? 50,
+      offset: params?.offset ?? 0,
     },
   });
   return data;
@@ -504,23 +598,31 @@ export async function getLogEntry(entryId: number) {
 
 export async function getLogInvestigations(status?: string) {
   const { data } = await apiClient.get<LogInvestigationsResponse>("/api/logs/investigations", {
-    params: { status },
+    params: status ? { status } : {},
   });
   return data;
 }
 
 export async function createLogInvestigation(payload: Record<string, unknown>) {
-  const { data } = await apiClient.post<LogInvestigationMutationResponse>("/api/logs/investigations", payload);
+  const { data } = await apiClient.post<LogInvestigationMutationResponse>(
+    "/api/logs/investigations",
+    payload
+  );
   return data;
 }
 
-export async function updateLogInvestigation(investigationId: number, payload: Record<string, unknown>) {
-  const { data } = await apiClient.patch<LogInvestigationMutationResponse>(`/api/logs/investigations/${investigationId}`, payload);
+export async function updateLogInvestigation(
+  investigationId: number,
+  payload: Record<string, unknown>
+) {
+  const { data } = await apiClient.patch(`/api/logs/investigations/${investigationId}`, payload);
   return data;
 }
 
 export async function queryEventLogs(sourceName: string) {
-  const { data } = await apiClient.post<LogsQueryResponse>("/api/logs/events/query", { source_name: sourceName });
+  const { data } = await apiClient.post<LogsQueryResponse>("/api/logs/events/query", {
+    source_name: sourceName,
+  });
   return data;
 }
 
@@ -529,30 +631,29 @@ export async function parseLogEntries(entries: Record<string, unknown>[]) {
   return data;
 }
 
-export async function correlateEvents(
-  events: Record<string, unknown>[],
-  payload?: { allowedSeverities?: string[]; minGroupSize?: number }
-) {
-  const { data } = await apiClient.post<LogsCorrelateResponse>("/api/logs/events/correlate", {
-    events,
-    allowed_severities: payload?.allowedSeverities ?? [],
-    min_group_size: payload?.minGroupSize,
-  });
+export async function correlateEvents() {
+  const { data } = await apiClient.post<LogsCorrelateResponse>("/api/logs/events/correlate");
   return data;
 }
 
 export async function monitorDriverInventory(hostName: string) {
-  const { data } = await apiClient.post<DriverMonitorResponse>("/api/logs/drivers/monitor", { host_name: hostName });
+  const { data } = await apiClient.post<DriverMonitorResponse>("/api/logs/drivers/monitor", {
+    host_name: hostName,
+  });
   return data;
 }
 
 export async function detectDriverErrors(hostName: string) {
-  const { data } = await apiClient.post<DriverErrorsResponse>("/api/logs/drivers/errors", { host_name: hostName });
+  const { data } = await apiClient.post<DriverErrorsResponse>("/api/logs/drivers/errors", {
+    host_name: hostName,
+  });
   return data;
 }
 
 export async function streamLogEvents(sourceName: string) {
-  const { data } = await apiClient.post<LogsStreamResponse>("/api/logs/events/stream", { source_name: sourceName });
+  const { data } = await apiClient.post<LogsStreamResponse>("/api/logs/events/stream", {
+    source_name: sourceName,
+  });
   return data;
 }
 
@@ -564,133 +665,158 @@ export async function searchLogs(sourceName: string, queryText: string) {
   return data;
 }
 
-// Reliability APIs
 export async function collectReliabilityHistory(hostName: string) {
-  const { data } = await apiClient.post<ReliabilityHistoryResponse>("/api/reliability/history", { host_name: hostName });
+  const { data } = await apiClient.post<ReliabilityHistoryResponse>("/api/reliability/history", {
+    host_name: hostName,
+  });
   return data;
 }
 
-export async function getReliabilityRuns(params?: { hostName?: string; diagnosticType?: string; status?: string; dumpName?: string; errorReason?: string; latestPerType?: boolean }) {
+export async function getReliabilityRuns(params?: {
+  hostName?: string;
+  diagnosticType?: string;
+  status?: string;
+  limit?: number;
+}) {
   const { data } = await apiClient.get<ReliabilityRunsResponse>("/api/reliability/runs", {
     params: {
       host_name: params?.hostName,
       diagnostic_type: params?.diagnosticType,
       status: params?.status,
-      dump_name: params?.dumpName,
-      error_reason: params?.errorReason,
-      latest_per_type: params?.latestPerType,
+      limit: params?.limit,
     },
   });
   return data;
 }
 
 export async function getReliabilityRun(runId: number) {
-  const { data } = await apiClient.get<ReliabilityRunDetailResponse>(`/api/reliability/runs/${runId}`);
+  const { data } = await apiClient.get<ReliabilityRunDetailResponse>(
+    `/api/reliability/runs/${runId}`
+  );
   return data;
 }
 
 export async function getReliabilityReport(hostName?: string) {
   const { data } = await apiClient.get<ReliabilityReportResponse>("/api/reliability/report", {
-    params: { host_name: hostName },
+    params: hostName ? { host_name: hostName } : {},
   });
   return data;
 }
 
 export async function scoreReliability(hostName: string) {
-  const { data } = await apiClient.post<ReliabilityScoreResponse>("/api/reliability/score", { host_name: hostName });
+  const { data } = await apiClient.post<ReliabilityScoreResponse>("/api/reliability/score", {
+    host_name: hostName,
+  });
   return data;
 }
 
 export async function analyzeReliabilityTrend(hostName: string) {
-  const { data } = await apiClient.post<TrendAnalysisResponse>("/api/reliability/trends/analyze", { host_name: hostName });
+  const { data } = await apiClient.post<TrendAnalysisResponse>("/api/reliability/trends/analyze", {
+    host_name: hostName,
+  });
   return data;
 }
 
 export async function predictReliability(hostName: string) {
-  const { data } = await apiClient.post<PredictionAnalysisResponse>("/api/reliability/predictions/analyze", { host_name: hostName });
+  const { data } = await apiClient.post<PredictionAnalysisResponse>(
+    "/api/reliability/predictions/analyze",
+    { host_name: hostName }
+  );
   return data;
 }
 
-export async function parseCrashDumps(hostName: string, dumpName: string) {
-  const { data } = await apiClient.post<CrashDumpAnalysisResponse>("/api/reliability/crash-dumps/parse", {
-    host_name: hostName,
-    dump_name: dumpName,
-  });
+export async function parseCrashDumps(hostName: string) {
+  const { data } = await apiClient.post<CrashDumpAnalysisResponse>(
+    "/api/reliability/crash-dumps/parse",
+    { host_name: hostName }
+  );
   return data;
 }
 
-export async function identifyExceptions(hostName: string, dumpName: string) {
-  const { data } = await apiClient.post<ExceptionIdentificationResponse>("/api/reliability/exceptions/identify", {
-    host_name: hostName,
-    dump_name: dumpName,
-  });
+export async function identifyExceptions(hostName: string) {
+  const { data } = await apiClient.post<ExceptionIdentificationResponse>(
+    "/api/reliability/exceptions/identify",
+    { host_name: hostName }
+  );
   return data;
 }
 
-export async function analyzeStackTraces(hostName: string, dumpName: string) {
-  const { data } = await apiClient.post<StackTraceAnalysisResponse>("/api/reliability/stack-traces/analyze", {
-    host_name: hostName,
-    dump_name: dumpName,
-  });
+export async function analyzeStackTraces(hostName: string) {
+  const { data } = await apiClient.post<StackTraceAnalysisResponse>(
+    "/api/reliability/stack-traces/analyze",
+    { host_name: hostName }
+  );
   return data;
 }
 
 export async function detectPatterns(hostName: string) {
-  const { data } = await apiClient.post<PatternDetectionResponse>("/api/reliability/patterns/detect", { host_name: hostName });
+  const { data } = await apiClient.post<PatternDetectionResponse>(
+    "/api/reliability/patterns/detect",
+    { host_name: hostName }
+  );
   return data;
 }
 
-// AI APIs
 export async function runOllamaInference(prompt: string) {
-  const { data } = await apiClient.post<OllamaInferenceResponse>("/api/ai/ollama/infer", { prompt });
-  return data;
-}
-
-export async function analyzeRootCause(symptomSummary: string, evidencePoints: string[]) {
-  const { data } = await apiClient.post<RootCauseAnalysisResponse>("/api/ai/root-cause/analyze", {
-    symptom_summary: symptomSummary,
-    evidence_points: evidencePoints,
+  const { data } = await apiClient.post<OllamaInferenceResponse>("/api/ai/inference", {
+    prompt,
   });
   return data;
 }
 
-export async function generateAiRecommendations(symptomSummary: string, probableCause: string, evidencePoints: string[]) {
-  const { data } = await apiClient.post<RecommendationsGenerationResponse>("/api/ai/recommendations/generate", {
+export async function analyzeRootCause(symptomSummary: string) {
+  const { data } = await apiClient.post<RootCauseAnalysisResponse>("/api/ai/root-cause", {
     symptom_summary: symptomSummary,
-    probable_cause: probableCause,
-    evidence_points: evidencePoints,
   });
   return data;
 }
 
-export async function getAiOperationsReport(limit = 10) {
-  const { data } = await apiClient.get<AiOperationsReportResponse>("/api/ai/operations/report", {
+export async function generateAiRecommendations(symptomSummary: string) {
+  const { data } = await apiClient.post<RecommendationsGenerationResponse>(
+    "/api/ai/recommendations",
+    { symptom_summary: symptomSummary }
+  );
+  return data;
+}
+
+export async function getAiOperationsReport(limit = 8) {
+  const { data } = await apiClient.get<AiOperationsReportResponse>("/api/ai/report", {
     params: { limit },
   });
   return data;
 }
 
 export async function analyzeAnomaly(description: string) {
-  const { data } = await apiClient.post<AnomalyAnalysisResponse>("/api/ai/anomaly/analyze", { description });
+  const { data } = await apiClient.post<AnomalyAnalysisResponse>("/api/ai/anomaly", {
+    description,
+  });
   return data;
 }
 
 export async function explainIncident(description: string) {
-  const { data } = await apiClient.post<IncidentExplanationResponse>("/api/ai/incident/explain", { description });
+  const { data } = await apiClient.post<IncidentExplanationResponse>("/api/ai/incident", {
+    description,
+  });
   return data;
 }
 
-// Updates APIs
 export async function monitorUpdates(hostName: string) {
-  const { data } = await apiClient.post<UpdatesMonitorResponse>("/api/updates/monitor", { host_name: hostName });
+  const { data } = await apiClient.post<UpdatesMonitorResponse>("/api/updates/monitor", {
+    host_name: hostName,
+  });
   return data;
 }
 
-export async function getUpdateRuns(params?: { hostName?: string; status?: string }) {
+export async function getUpdateRuns(params?: {
+  hostName?: string;
+  status?: string;
+  limit?: number;
+}) {
   const { data } = await apiClient.get<UpdateRunsResponse>("/api/updates/runs", {
     params: {
       host_name: params?.hostName,
       status: params?.status,
+      limit: params?.limit,
     },
   });
   return data;
@@ -701,120 +827,74 @@ export async function getUpdateRun(runId: number) {
   return data;
 }
 
-export async function scoreUpdateConfidence(
-  hostName: string,
-  updates: Record<string, unknown>[],
-  reliabilityScore: number,
-  updateRunId?: number | null
-) {
-  const { data } = await apiClient.post<ConfidenceScoreResponse>("/api/ai/confidence/score", {
-    host_name: hostName,
-    updates,
-    reliability_score: reliabilityScore,
-    update_run_id: updateRunId,
+export async function scoreUpdateConfidence() {
+  const { data } = await apiClient.post<ConfidenceScoreResponse>("/api/updates/confidence/score");
+  return data;
+}
+
+export async function executeRemoteCommand(host: string, command: string) {
+  const { data } = await apiClient.post<RemoteExecResponse>("/api/remote/exec", {
+    host,
+    command,
   });
   return data;
 }
 
-// Remote APIs
-export async function executeRemoteCommand(host: string, command: string) {
-  const { data } = await apiClient.post<RemoteExecResponse>("/api/remote/exec", { host, command });
-  return data;
-}
-
-// Agent command queue (T5)
-export type AgentCommandRecord = {
-  id: number;
-  organization_id: number;
-  agent_id: number | null;
-  target_serial_number: string | null;
-  command_type: string;
-  payload: Record<string, unknown> | null;
-  status: string;
-  result: unknown;
-  error_message: string | null;
-  requested_by_user_id: number | null;
-  created_at: string;
-  dispatched_at: string | null;
-  completed_at: string | null;
-  expires_at: string | null;
-};
-
-export type AgentCommandsListResponse = {
-  commands: AgentCommandRecord[];
-  allowed_command_types: string[];
-  count: number;
-};
-
-export type AgentCommandsListFilters = {
+export async function listAgentCommands(filters: {
   status?: string;
-  command_type?: string;
-  target_serial_number?: string;
+  commandType?: string;
+  serialNumber?: string;
   limit?: number;
-};
-
-export async function listAgentCommands(filters: AgentCommandsListFilters = {}) {
-  const params: Record<string, string | number> = {};
-  if (filters.status) params.status = filters.status;
-  if (filters.command_type) params.command_type = filters.command_type;
-  if (filters.target_serial_number) params.target_serial_number = filters.target_serial_number;
-  if (filters.limit) params.limit = filters.limit;
-  const { data } = await apiClient.get<AgentCommandsListResponse>("/api/agent/commands", { params });
+}) {
+  const { data } = await apiClient.get("/api/agent/commands", {
+    params: {
+      status: filters.status,
+      command_type: filters.commandType,
+      target_serial_number: filters.serialNumber,
+      limit: filters.limit ?? 50,
+    },
+  });
   return data;
 }
 
-export type QueueAgentCommandPayload = {
-  command_type: string;
+export async function queueAgentCommand(payload: {
   target_serial_number?: string;
+  command_type: string;
   payload?: Record<string, unknown>;
   expires_in_seconds?: number;
-};
-
-export async function queueAgentCommand(payload: QueueAgentCommandPayload) {
-  const { data } = await apiClient.post<{ status: string; command: AgentCommandRecord }>(
-    "/api/agent/commands",
-    payload,
-  );
+}) {
+  const { data } = await apiClient.post("/api/agent/commands", payload);
   return data;
 }
 
-// Self-service password change
-export type ChangePasswordResponse = {
-  status: string;
-  message: string;
-  tokens: {
-    access_token: string;
-    refresh_token: string;
-    token_type: string;
-    expires_in: number;
-  };
-};
-
 export async function changeMyPassword(currentPassword: string, newPassword: string) {
-  const { data } = await apiClient.post<ChangePasswordResponse>("/api/auth/change-password", {
+  const { data } = await apiClient.post("/api/auth/change-password", {
     current_password: currentPassword,
     new_password: newPassword,
   });
   return data;
 }
 
-// Platform APIs
 export async function getCacheStatus() {
   const { data } = await apiClient.get<CacheStatusResponse>("/api/performance/cache/status");
   return data;
 }
 
 export async function optimizeDatabase(payload?: Record<string, unknown>) {
-  const { data } = await apiClient.post<DatabaseOptimizeResponse>("/api/database/optimize", payload ?? {});
+  const { data } = await apiClient.post<DatabaseOptimizeResponse>(
+    "/api/database/optimize",
+    payload ?? {}
+  );
   return data;
 }
 
 export async function queueMaintenanceJob(job: string) {
-  const { data } = await apiClient.post<MaintenanceJobsResponse>("/api/jobs/maintenance", { job });
+  const { data } = await apiClient.post<MaintenanceJobsResponse>("/api/jobs/maintenance", {
+    job,
+  });
   return data;
 }
 
-// Backup APIs
 export async function getBackups() {
   const { data } = await apiClient.get<BackupsListResponse>("/api/backups");
   return data;
@@ -826,16 +906,22 @@ export async function createBackup() {
 }
 
 export async function restoreBackup(filename: string) {
-  const { data } = await apiClient.post<BackupRestoreResponse>(`/api/backups/${filename}/restore`);
+  const { data } = await apiClient.post<BackupRestoreResponse>(
+    `/api/backups/${filename}/restore`
+  );
+  return data;
+}
+
+export async function verifyBackup(filename: string) {
+  const { data } = await apiClient.post(`/api/backups/${filename}/verify`);
   return data;
 }
 
 export async function runBackupRestoreDrill(filename: string) {
-  const { data } = await apiClient.post<BackupRestoreResponse>(`/api/backups/${filename}/restore-drill`);
+  const { data } = await apiClient.post(`/api/backups/${filename}/restore-drill`);
   return data;
 }
 
-// Audit APIs
 export async function getAuditEvents(filters?: {
   offset?: number;
   limit?: number;
@@ -919,6 +1005,16 @@ export async function createIncidentComment(
   payload: { body: string; comment_type?: "note" | "update" | "resolution" | "handoff" }
 ) {
   const { data } = await apiClient.post<IncidentCommentsResponse>(`/api/incidents/${incidentId}/comments`, payload);
+  return data;
+}
+
+export async function getSupportabilityPolicy() {
+  const { data } = await apiClient.get("/api/supportability/policy");
+  return data;
+}
+
+export async function getSupportabilityMetrics() {
+  const { data } = await apiClient.get("/api/supportability/metrics");
   return data;
 }
 

@@ -16,13 +16,9 @@ This project is an enterprise-grade **Infrastructure Observability, Monitoring, 
 
 ### Workflow
 
-- **Server** — `SPA_WAVE_1_ENABLED=true python -m server.app` on port `5000` (webview)
+- **Server** — `cd frontend && npm install --silent && npx vite build 2>&1 | tail -3 && cd .. && python -m scripts.seed_default_admin 2>&1 | tail -4 && python -m server.app`
   - Flask binds `0.0.0.0:5000` and applies Alembic migrations on startup.
   - Serves API, Jinja templates, and the built SPA from `frontend/dist`.
-  - The `SPA_WAVE_1_ENABLED=true` env var is **required** so the root URL (`/`)
-    redirects to the React SPA at `/app/dashboard` instead of falling through
-    to the legacy Jinja dashboard / `/login` page. Without it the Replit
-    preview iframe (which loads `/`) shows the old "ToolBoxGalaxy" UI.
 
 ### Database
 
@@ -36,8 +32,6 @@ The React SPA is pre-built into `frontend/dist/` so Flask can serve it. To rebui
 cd frontend && npx vite build
 ```
 
-The strict TypeScript check (`npx tsc -b --force` in `frontend/`) now passes cleanly after fixes to `src/lib/axios.ts` (AxiosHeaders.from + .set/.delete) and `tsconfig.test.json` (empty `exclude` array).
-
 ### Deployment
 
 Configured for **autoscale** deployment:
@@ -47,8 +41,8 @@ Configured for **autoscale** deployment:
 
 ## Local Fixes Applied During Import
 
-1. **`migrations/env.py`** — Added explicit `connection.commit()` calls so Alembic migrations actually persist under SQLAlchemy 2.0 (the previous transactional-DDL block was being rolled back, leaving the schema empty).
-2. **`frontend/src/pages/logs/LogsPage.tsx`** — Added a placeholder module page; the file was referenced by the SPA router but missing from the import, breaking the Vite build.
+1. **`migrations/env.py`** — Added explicit `connection.commit()` calls so Alembic migrations actually persist under SQLAlchemy 2.0.
+2. **`frontend/src/pages/logs/LogsPage.tsx`** — Rebuilt as full feature page (was placeholder).
 
 ## Default Admin Seed
 
@@ -66,7 +60,6 @@ The script is idempotent: it will reuse the existing tenant/role and reset the u
 
 - **Remote Commands SPA page** (`/app/agent-commands`, requires `automation.manage`) — queue whitelisted commands, filter by status / type / target serial, auto-refresh every 5s. Backed by new admin endpoint `GET /api/agent/commands` (read-only list, no side-effects).
 - **Self-service Change Password** — modal accessible from the topbar in every authenticated SPA page. Backed by new endpoint `POST /api/auth/change-password` which requires `current_password`, validates the new password against the tenant's auth policy, bumps `auth_token_version` (revoking other sessions), and returns a fresh token pair.
-- **`frontend/src/pages/logs/LogsPage.tsx`** — placeholder restored after it went missing; SPA build was failing on the lazy import.
 
 ## Agent Engine (Modular AI Automation System)
 
@@ -90,11 +83,25 @@ ShortTermMemory                 AgentSession (DB)
 - **`server/models.py` → `AgentSession`** — Persists every run: `session_id`, `status`, `plan_steps`, `step_outputs`, `final_result`, `duration_ms`.
 - **Migration** — `migrations/versions/027_agent_sessions.py`.
 
+### ai_analysis Tool — Supported Modes
+
+The `ai_analysis` tool (`server/agent_engine/tools/ai_analysis.py`) supports five modes:
+
+| Mode | Method called | Memory key set |
+|---|---|---|
+| `root_cause` | `AIService.analyze_root_cause` | `ai_root_cause` |
+| `recommendations` | `AIService.generate_recommendations` | `ai_recommendations` |
+| `troubleshoot` | `AIService.assist_troubleshooting` | `ai_guidance` |
+| `anomaly` | `AIService.analyze_anomalies` | `ai_anomaly_analysis` |
+| `incident` | `AIService.explain_incident` | `ai_incident_explanation` |
+
+`anomaly` mode builds an anomaly list from upstream evidence when none is supplied. `incident` mode accepts `incident_title`, `affected_systems`, and `metrics_snapshot` params.
+
 ### Frontend
 
-- **`frontend/src/pages/agent-engine/AgentEnginePage.tsx`** — Full SPA page: run panel with dry-run toggle, plan viewer, step results table with JSON drill-down, session history, tool registry.
+- **`frontend/src/pages/agent-engine/AgentEnginePage.tsx`** — Full SPA page: run panel with dry-run toggle, plan viewer, step results table with JSON drill-down, session history, tool registry. `statusBadge` correctly maps `failed` → `"error"` (valid `StatCard` status).
 - Route: `/app/agent-engine` (requires `automation.manage` permission).
-- Navigation entry: "Agent Engine" in the main nav.
+- Navigation entry: "Agent Engine" in the "Automation & AI" section.
 
 ### Config knobs (env vars)
 
@@ -134,3 +141,64 @@ The following operability + security features completed this session — all bac
 7. **Production deploy guide + smoke tests (T8)** — `docs/PRODUCTION_DEPLOY.md` is the operator runbook (env vars, deploy steps, pin/key rotation, rollback). `tests/test_production_smoke.py` (9) asserts health probe, auth gating, migration presence, model importability, and Redis fallback wiring.
 
 Total new tests: **58 passing in ~80 seconds**.
+
+## Full Diagnostic Refactor (2026-05-04)
+
+All items from the "COMPLETE DIAGNOSTIC REPORT" have been implemented end-to-end:
+
+### Backend
+
+- **`server/agent_engine/tools/ai_analysis.py`** — Added `anomaly` and `incident` modes to `_VALID_MODES`. Implemented `_anomaly()` (calls `AIService.analyze_anomalies`, builds anomaly list from upstream evidence if none supplied, sets `ai_anomaly_analysis` in memory) and `_incident()` (calls `AIService.explain_incident` with `incident_title`, `affected_systems`, `metrics_snapshot`, sets `ai_incident_explanation` in memory).
+
+### Frontend — Component Fixes
+
+- **`StatCard`** — Added `trend` (`"up" | "down" | "flat"`) and `trendLabel` props; renders a color-coded arrow glyph next to the value. Status type now explicitly typed as `"ok" | "warn" | "error" | "neutral"` (removed invalid `"critical"` usage).
+- **`ErrorBoundary`** — New class component (`frontend/src/components/common/ErrorBoundary.tsx`). Shows the error message, component stack, "Try again" and "Reload page" buttons. Wraps the entire `<App>` in `App.tsx`.
+- **`AgentEnginePage`** — Fixed `statusBadge()` to return `"error"` instead of invalid `"critical"` for failed sessions.
+
+### Frontend — Navigation
+
+- **`frontend/src/config/navigation.ts`** — Refactored from flat `NAV_ITEMS` array into `NAV_SECTIONS` (5 labelled groups: Monitoring, Automation & AI, Logs & Reliability, Operations, Admin). `NAV_ITEMS` remains exported as `NAV_SECTIONS.flatMap(s => s.items)` for backward compatibility.
+- **`frontend/src/components/layout/AppShell.tsx`** — Updated to render section headers (`.nav-section-label`) between nav groups. Sections with zero visible items are hidden.
+- **`frontend/src/index.css`** — Added `.nav-section` and `.nav-section-label` styles.
+
+### Frontend — Dashboard
+
+- **`DashboardPage`** — Chart data now built dynamically from `systemsQuery.data.systems`. Each system becomes a data point with `time = hostname`, `health = 100 - cpu_usage × 0.6` (capped 0–100, drops to 40 for inactive systems), `load = cpu_usage`. Falls back to `[{ time: "No data", health: 0, load: 0 }]` when no systems are enrolled.
+
+### Frontend — Login
+
+- **`LoginPage`** — Removed hardcoded dev credentials (`default` / `admin@example.com` / `ChangeMe123!`) from initial state. All fields now start empty.
+
+### Frontend — Logs Page
+
+- **`LogsPage`** — Fully rebuilt from placeholder. Features: log source table (click to filter entries, "Use in search" button), log search panel (source name + query, keyboard-submit, Ingest button), log entries table (severity badge, event ID, message truncation), log investigations panel (create with Enter key, investigation table). Uses `getLogSources`, `getLogEntries`, `getLogInvestigations`, `createLogInvestigation`, `searchLogs`, `ingestLogs` from `api.ts`.
+
+### Frontend — Automation Page
+
+- **`AutomationPage`** — Added **Dependencies** and **Failures** action buttons alongside "Check Status". Backed by new mutations `serviceDependenciesMutation` → `getAutomationServiceDependencies` and `serviceFailuresMutation` → `getAutomationServiceFailures`. Results shown in the existing `latestResult` JSON viewer.
+
+### Frontend — Backup Page
+
+- **`BackupPage`** — Added **Verify** button per backup row. Calls `verifyBackup(filename)` → `POST /api/backups/<filename>/verify`. Result shown in the `latestResult` panel. Also added a **Select** button to each row (replaces the dropdown-only UX).
+
+### Frontend — Users Page
+
+- **`UsersPage`** — Added **Revoke sessions** button per user row. Calls `revokeUserSessions(userId)` → `POST /api/users/<id>/revoke-sessions`. Styled in amber to signal a destructive-ish action.
+
+### Frontend — API Layer
+
+- **`frontend/src/lib/api.ts`** — Complete rewrite to deduplicate imports and add all missing wrappers:
+  - `revokeUserSessions(userId)` → `POST /api/users/<id>/revoke-sessions`
+  - `getRoles()` → `GET /api/roles`
+  - `getPermissions()` → `GET /api/permissions`
+  - `getAutomationServiceDependencies(serviceName, runtimeConfig?)` → `POST /api/automation/services/dependencies`
+  - `getAutomationServiceFailures(serviceName, runtimeConfig?)` → `POST /api/automation/services/failures`
+  - `executeServiceCommand(serviceName, commandText, runtimeConfig?)` → `POST /api/automation/services/execute`
+  - `verifyBackup(filename)` → `POST /api/backups/<filename>/verify`
+  - `updateAlertRule(ruleId, payload)` → `PATCH /api/alerts/rules/<id>`
+  - `deleteAlertSilence(silenceId)` → `DELETE /api/alerts/silences/<id>`
+  - `getSupportabilityPolicy()` → `GET /api/supportability/policy`
+  - `getSupportabilityMetrics()` → `GET /api/supportability/metrics`
+  - `updateLogSource(sourceId, payload)` → `PATCH /api/logs/sources/<id>`
+  - `getLogEntries` updated to accept both `sourceId` and `source_id` param aliases

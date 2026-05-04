@@ -32,7 +32,6 @@ export function DashboardPage() {
     const timeoutId = window.setTimeout(() => {
       setShowChart(true);
     }, 700);
-
     return () => window.clearTimeout(timeoutId);
   }, []);
 
@@ -68,15 +67,28 @@ export function DashboardPage() {
       ? "Failed to load API or systems data. Check server connection."
       : null;
 
-  // Sample health trend data
-  const chartData = [
-    { time: "00:00", health: 95, load: 45 },
-    { time: "04:00", health: 92, load: 38 },
-    { time: "08:00", health: 88, load: 62 },
-    { time: "12:00", health: 91, load: 55 },
-    { time: "16:00", health: 94, load: 48 },
-    { time: "20:00", health: 96, load: 40 },
-  ];
+  // Build chart data from real system inventory — each system becomes a data point.
+  const chartData = useMemo(() => {
+    type SystemRow = {
+      hostname?: string;
+      cpu_usage?: number;
+      ram_usage?: number;
+      status?: string;
+    };
+    const systems = (systemsQuery.data?.systems ?? []) as SystemRow[];
+    if (systems.length === 0) {
+      return [{ time: "No data", health: 0, load: 0 }];
+    }
+    return systems.slice(0, 10).map((s, i) => {
+      const cpu = typeof s.cpu_usage === "number" ? s.cpu_usage : 0;
+      const health = s.status === "active" ? Math.max(0, Math.min(100, 100 - cpu * 0.6)) : 40;
+      return {
+        time: s.hostname ? String(s.hostname).slice(0, 12) : `Sys ${i + 1}`,
+        health: Math.round(health),
+        load: Math.round(cpu),
+      };
+    });
+  }, [systemsQuery.data]);
 
   return (
     <ModulePage
@@ -100,12 +112,35 @@ export function DashboardPage() {
       }
     >
       <div className="grid-cards">
-        <StatCard label="API" value={apiStatusQuery.data?.status || "loading"} detail={`Version: ${apiStatusQuery.data?.version || "-"}`} />
-        <StatCard label="Systems" value={systemsQuery.data?.count ?? 0} detail={`Active: ${activeCount}`} />
+        <StatCard
+          label="API"
+          value={apiStatusQuery.data?.status || "loading"}
+          detail={`Version: ${apiStatusQuery.data?.version || "-"}`}
+          status={apiStatusQuery.data?.status === "ok" ? "ok" : "neutral"}
+        />
+        <StatCard
+          label="Systems"
+          value={systemsQuery.data?.count ?? 0}
+          detail={`Active: ${activeCount}`}
+          status={activeCount > 0 ? "ok" : "warn"}
+        />
         <StatCard
           label="Aggregate Health"
           value={dashboardStatusQuery.data?.dashboard?.aggregate_health?.overall_status || "unknown"}
           detail={`Cache hit: ${String(dashboardStatusQuery.data?.cache_hit ?? false)}`}
+          status={
+            dashboardStatusQuery.data?.dashboard?.aggregate_health?.overall_status === "healthy"
+              ? "ok"
+              : dashboardStatusQuery.data?.dashboard?.aggregate_health?.overall_status
+              ? "warn"
+              : "neutral"
+          }
+        />
+        <StatCard
+          label="Chart data points"
+          value={chartData.length}
+          detail="Systems shown in health trend"
+          status="neutral"
         />
       </div>
 
@@ -120,7 +155,12 @@ export function DashboardPage() {
       </ActionPanel>
 
       <div style={{ marginTop: 24 }}>
-        <h3 style={{ marginBottom: 12 }}>System Health Trend</h3>
+        <h3 style={{ marginBottom: 12 }}>
+          System Health Trend
+          <small style={{ fontWeight: 400, fontSize: "0.75em", marginLeft: 10, color: "#64748b" }}>
+            — real data from {chartData.length} system{chartData.length !== 1 ? "s" : ""}
+          </small>
+        </h3>
         {showChart ? (
           <Suspense fallback={<div className="module-status loading">Loading chart...</div>}>
             <SystemHealthChart data={chartData} />

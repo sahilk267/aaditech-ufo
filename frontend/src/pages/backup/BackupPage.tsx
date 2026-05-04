@@ -12,7 +12,7 @@ import {
   FormSubmitButton,
 } from '../../components/forms/FormComponents';
 import { restoreBackupSchema, type RestoreBackupInput } from '../../lib/schemas';
-import { createBackup, getBackups, restoreBackup } from '../../lib/api';
+import { createBackup, getBackups, restoreBackup, verifyBackup } from '../../lib/api';
 
 /**
  * BackupPage - Backup management console
@@ -62,6 +62,15 @@ export function BackupPage() {
       setActionError(null);
       form.reset();
       await queryClient.invalidateQueries({ queryKey: ['backups'] });
+    },
+    onError: (err) => setActionError(err),
+  });
+
+  const verifyBackupMutation = useMutation({
+    mutationFn: (filename: string) => verifyBackup(filename),
+    onSuccess: (data) => {
+      setLatestResult(data);
+      setActionError(null);
     },
     onError: (err) => setActionError(err),
   });
@@ -132,6 +141,7 @@ export function BackupPage() {
                     <th>Filename</th>
                     <th>Timestamp</th>
                     <th>Size (MB)</th>
+                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -141,6 +151,24 @@ export function BackupPage() {
                       <td>{backup.filename || '-'}</td>
                       <td>{backup.timestamp || '-'}</td>
                       <td>{backup.size || '-'}</td>
+                      <td>
+                        <button
+                          type="button"
+                          style={{ fontSize: '0.78em', padding: '4px 8px', marginRight: 6 }}
+                          onClick={() => verifyBackupMutation.mutate(backup.filename)}
+                          disabled={verifyBackupMutation.isPending}
+                          title="Verify backup integrity"
+                        >
+                          {verifyBackupMutation.isPending ? '…' : 'Verify'}
+                        </button>
+                        <button
+                          type="button"
+                          style={{ fontSize: '0.78em', padding: '4px 8px', background: 'var(--color-surface-raised, #f8fafc)', color: '#475569', border: '1px solid #e2e8f0' }}
+                          onClick={() => setSelectedFilename(backup.filename)}
+                        >
+                          Select
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

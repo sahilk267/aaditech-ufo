@@ -58,9 +58,22 @@ a {
   font-size: 0.74rem;
 }
 
+.nav-section {
+  margin-bottom: 6px;
+}
+
+.nav-section-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #475569;
+  padding: 10px 12px 4px;
+}
+
 .sidebar nav .nav-link {
-  padding: 10px 12px;
-  border-radius: 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
   color: #cbd5e1;
   display: block;
 }

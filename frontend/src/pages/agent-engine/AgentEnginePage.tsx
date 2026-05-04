@@ -45,10 +45,10 @@ type AutomationPreviewData = {
   last_triggered_at?: string | null;
 };
 
-function statusBadge(status: string) {
+function statusBadge(status: string): "ok" | "warn" | "error" | "neutral" {
   if (status === "completed") return "ok";
   if (status === "partial") return "warn";
-  if (status === "failed") return "critical";
+  if (status === "failed") return "error";
   return "neutral";
 }
 
