@@ -21,22 +21,23 @@ from .agent_release_service import AgentReleaseService
 from .agent_identity_service import AgentIdentityService
 from .tenant_secret_service import TenantSecretService
 from .mfa_service import MfaService
+from .rollout_service import RolloutService
 
 __all__ = [
-	'SystemService',
-	'BackupService',
-	'AlertService',
-	'NotificationService',
-	'AutomationService',
-	'LogService',
-	'ReliabilityService',
-	'AIService',
-	'UpdateService',
-	'ConfidenceService',
-	'DashboardService',
-	'RemoteExecutorService',
-	'PerformanceService',
-	'AgentReleaseService',
+        'SystemService',
+        'BackupService',
+        'AlertService',
+        'NotificationService',
+        'AutomationService',
+        'LogService',
+        'ReliabilityService',
+        'AIService',
+        'UpdateService',
+        'ConfidenceService',
+        'DashboardService',
+        'RemoteExecutorService',
+        'PerformanceService',
+        'AgentReleaseService',
     'AgentIdentityService',
     'TenantSecretService',
     'MfaService',

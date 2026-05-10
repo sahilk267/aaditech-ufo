@@ -75,6 +75,8 @@ from ..models import (
     Agent,
     AgentCommand,
     AgentServerPin,
+    AgentRollout,
+    AgentRolloutBatch,
     AutomationWorkflow,
     WorkflowRun,
     NotificationDelivery,
@@ -104,6 +106,7 @@ from ..services import (
     AgentIdentityService,
     TenantSecretService,
     MfaService,
+    RolloutService,
 )
 from marshmallow import ValidationError
 
@@ -1730,6 +1733,17 @@ def get_agent_release_guide_api():
     else:
         guide['recommended_download_url'] = None
 
+    # Check active rollout — override recommended version for this agent serial
+    serial_number = str(request.args.get('serial_number') or '').strip()
+    org = getattr(g, 'tenant', None)
+    if org and serial_number:
+        rollout_version = RolloutService.get_rollout_version_for_agent(
+            serial_number, org.id, guide.get('recommended_version')
+        )
+        if rollout_version and rollout_version != guide.get('recommended_version'):
+            guide['recommended_version'] = rollout_version
+            guide['rollout_override'] = True
+
     log_audit_event(
         'agent.release.guide',
         outcome='success',
@@ -1738,6 +1752,171 @@ def get_agent_release_guide_api():
         recommended_action=guide.get('action'),
     )
     return jsonify({'status': 'success', 'guide': guide}), 200
+
+
+# ---------------------------------------------------------------------------
+# Auto-versioning helper
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/agent/releases/next-version', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def suggest_next_release_version():
+    """Suggest the next auto-incremented version based on existing releases."""
+    releases = AgentReleaseService.list_releases(current_app.config, current_app.instance_path)
+    versions = [r.version for r in releases]
+    next_ver = RolloutService.suggest_next_version(versions)
+    return jsonify({'status': 'success', 'next_version': next_ver, 'existing_versions': versions}), 200
+
+
+# ---------------------------------------------------------------------------
+# GitHub Actions trigger (cross-compile Windows .exe)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/agent/releases/trigger-github-build', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def trigger_github_build():
+    """Trigger the GitHub Actions agent-release workflow to build a Windows .exe."""
+    body = request.get_json(silent=True) or {}
+    version = str(body.get('version') or '').strip()
+    if not version:
+        return jsonify({'error': 'version_required'}), 400
+
+    github_token = os.environ.get('GITHUB_TOKEN', '').strip()
+    github_owner = os.environ.get('GITHUB_OWNER', '').strip()
+    github_repo = os.environ.get('GITHUB_REPO', '').strip()
+    workflow_id = os.environ.get('GITHUB_WORKFLOW_ID', 'agent-release-publish.yml').strip()
+
+    if not github_token or not github_owner or not github_repo:
+        return jsonify({
+            'error': 'github_not_configured',
+            'details': 'Set GITHUB_TOKEN, GITHUB_OWNER, and GITHUB_REPO secrets to enable remote builds.',
+        }), 422
+
+    url = f'https://api.github.com/repos/{github_owner}/{github_repo}/actions/workflows/{workflow_id}/dispatches'
+    payload = {'ref': 'main', 'inputs': {'version': version}}
+    headers = {
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=10)
+    except Exception as exc:
+        logger.error('GitHub API call failed: %s', exc)
+        return jsonify({'error': 'github_api_error', 'details': str(exc)[:200]}), 502
+
+    if resp.status_code not in {204, 200, 201}:
+        return jsonify({
+            'error': 'github_dispatch_failed',
+            'http_status': resp.status_code,
+            'details': resp.text[:500],
+        }), 502
+
+    runs_url = f'https://github.com/{github_owner}/{github_repo}/actions'
+    log_audit_event('agent.release.github_build_triggered', outcome='success', version=version)
+    return jsonify({
+        'status': 'success',
+        'message': f'GitHub Actions workflow triggered for version {version}.',
+        'actions_url': runs_url,
+        'version': version,
+    }), 200
+
+
+# ---------------------------------------------------------------------------
+# Batched rollout management
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/agent/rollouts', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_rollouts():
+    """List all rollouts for the current tenant."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    rollouts = RolloutService.list_rollouts(org.id)
+    return jsonify({'status': 'success', 'rollouts': rollouts, 'count': len(rollouts)}), 200
+
+
+@api_bp.route('/agent/rollouts', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def create_rollout():
+    """Create a new batched rollout plan."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    body = request.get_json(silent=True) or {}
+    version = str(body.get('version') or '').strip()
+    if not version:
+        return jsonify({'error': 'version_required'}), 400
+    notes = str(body.get('notes') or '').strip()
+    batch_percentages = body.get('batch_percentages')
+    created_by = getattr(getattr(g, 'current_user', None), 'email', 'system')
+    try:
+        rollout = RolloutService.create_rollout(org.id, version, notes, batch_percentages, created_by)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    log_audit_event('agent.rollout.created', outcome='success', version=version, rollout_id=rollout.id)
+    return jsonify({'status': 'success', 'rollout': rollout.to_dict()}), 201
+
+
+@api_bp.route('/agent/rollouts/<int:rollout_id>', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_rollout(rollout_id):
+    """Get full detail of a rollout including all batches."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    try:
+        detail = RolloutService.get_rollout_detail(rollout_id, org.id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 404
+    return jsonify({'status': 'success', 'rollout': detail}), 200
+
+
+@api_bp.route('/agent/rollouts/<int:rollout_id>/test', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def mark_rollout_tested(rollout_id):
+    """Mark a rollout as tested and ready to deploy."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    try:
+        rollout = RolloutService.mark_tested(rollout_id, org.id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    log_audit_event('agent.rollout.tested', outcome='success', rollout_id=rollout_id)
+    return jsonify({'status': 'success', 'rollout': rollout.to_dict()}), 200
+
+
+@api_bp.route('/agent/rollouts/<int:rollout_id>/advance', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def advance_rollout_batch(rollout_id):
+    """Advance rollout to the next batch (or complete it)."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    try:
+        result = RolloutService.advance_batch(rollout_id, org.id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    log_audit_event('agent.rollout.batch_advanced', outcome='success', rollout_id=rollout_id)
+    return jsonify({'status': 'success', **result}), 200
+
+
+@api_bp.route('/agent/rollouts/<int:rollout_id>/rollback', methods=['POST'])
+@require_api_key_or_permission('tenant.manage')
+def rollback_rollout(rollout_id):
+    """Roll back a rollout — stops all pending and in-progress batches."""
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+    try:
+        rollout = RolloutService.rollback(rollout_id, org.id)
+    except ValueError as exc:
+        return jsonify({'error': str(exc)}), 400
+    log_audit_event('agent.rollout.rolled_back', outcome='success', rollout_id=rollout_id)
+    return jsonify({'status': 'success', 'rollout': rollout.to_dict()}), 200
 
 
 # ---------------------------------------------------------------------------

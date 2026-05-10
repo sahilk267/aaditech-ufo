@@ -356,12 +356,53 @@ export async function getAgentReleaseGuide(currentVersion?: string) {
   return data;
 }
 
-export async function uploadAgentRelease(file: File) {
+export async function uploadAgentRelease(file: File, version: string) {
   const formData = new FormData();
-  formData.append("file", file);
+  formData.append("release_file", file);
+  formData.append("version", version);
   const { data } = await apiClient.post("/api/agent/releases/upload", formData, {
     headers: { "Content-Type": "multipart/form-data" },
   });
+  return data;
+}
+
+export async function getNextReleaseVersion() {
+  const { data } = await apiClient.get<{ status: string; next_version: string; existing_versions: string[] }>("/api/agent/releases/next-version");
+  return data;
+}
+
+export async function triggerGithubBuild(version: string) {
+  const { data } = await apiClient.post<{ status: string; message: string; actions_url: string; version: string }>("/api/agent/releases/trigger-github-build", { version });
+  return data;
+}
+
+export async function listRollouts() {
+  const { data } = await apiClient.get<{ status: string; rollouts: unknown[]; count: number }>("/api/agent/rollouts");
+  return data;
+}
+
+export async function createRollout(payload: { version: string; notes?: string; batch_percentages?: number[] }) {
+  const { data } = await apiClient.post<{ status: string; rollout: unknown }>("/api/agent/rollouts", payload);
+  return data;
+}
+
+export async function getRollout(rolloutId: number) {
+  const { data } = await apiClient.get<{ status: string; rollout: unknown }>(`/api/agent/rollouts/${rolloutId}`);
+  return data;
+}
+
+export async function markRolloutTested(rolloutId: number) {
+  const { data } = await apiClient.post<{ status: string; rollout: unknown }>(`/api/agent/rollouts/${rolloutId}/test`);
+  return data;
+}
+
+export async function advanceRolloutBatch(rolloutId: number) {
+  const { data } = await apiClient.post<{ status: string; rollout: unknown; batch: unknown }>(`/api/agent/rollouts/${rolloutId}/advance`);
+  return data;
+}
+
+export async function rollbackRollout(rolloutId: number) {
+  const { data } = await apiClient.post<{ status: string; rollout: unknown }>(`/api/agent/rollouts/${rolloutId}/rollback`);
   return data;
 }
 

@@ -118,6 +118,29 @@ The `ai_analysis` tool (`server/agent_engine/tools/ai_analysis.py`) supports fiv
 - The SPA is served at `/app` and `/app/*`; the legacy server-rendered UI (login, dashboard, admin) is at `/`.
 - The default tenant slug is `default`; tenants are auto-created on first request.
 
+## Release Build, Versioning & Batched Rollout System (2026-05-10)
+
+### Web-Triggered Windows .exe Build (GitHub Actions)
+- **`POST /api/agent/releases/trigger-github-build`** — dispatches `workflow_dispatch` to the GitHub Actions `agent-release-publish.yml` workflow (or custom `GITHUB_WORKFLOW_ID`). Requires `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` secrets in Replit. Returns `actions_url` link. When secrets not set, returns clear `github_not_configured` error with setup instructions.
+- Solves the PyInstaller cross-compilation problem: server runs Linux, so real Windows .exe must be built on GitHub's `windows-latest` runner and auto-uploaded back.
+
+### Auto-Numbered Release Versioning
+- **`GET /api/agent/releases/next-version`** — parses all existing release versions as semver, finds the highest, and suggests `major.minor.(patch+1)`. Falls back to `0.0.1` if no releases exist. Surfaced in the UI as a pre-filled suggestion in every version input field.
+
+### Batched Rollout System
+- **`AgentRollout` + `AgentRolloutBatch` models** — added to `server/models.py`, migration `028_agent_rollouts`.
+- **`server/services/rollout_service.py`** — full lifecycle: `create_rollout` (assigns enrolled agents across batches), `mark_tested`, `advance_batch`, `rollback`, `list_rollouts`, `get_rollout_detail`, `get_rollout_version_for_agent`.
+- **Endpoints**: `GET/POST /api/agent/rollouts`, `GET /api/agent/rollouts/<id>`, `POST /api/agent/rollouts/<id>/test|advance|rollback`.
+- **Guide override**: `GET /api/agent/releases/guide?serial_number=<sn>` now checks active rollouts and overrides `recommended_version` per-agent based on which batch they're in.
+- **Default batch config**: 25% → 25% → 50% (fully customizable via `batch_percentages` in request body).
+- **Rollout statuses**: `draft` → `testing` → `rolling_out` → `completed` (or `rolled_back` at any point).
+
+### Releases Page Rebuild (`frontend/src/pages/releases/ReleasesPage.tsx`)
+Three-tab interface:
+1. **Build & Upload** — GitHub Actions trigger (with setup instructions), manual .exe upload with version/file validation, release policy editor, native server build, release guide lookup.
+2. **Releases** — table of all uploaded releases with download + "Deploy Rollout" buttons; auto-suggested next version shown.
+3. **Batched Rollout** — create rollout (default or custom batch %), select from rollout list, view batch-by-batch progress bars, Mark Tested → Start Rollout → Advance Batch → Rollback buttons with confirmation dialogs.
+
 ## Agent Release / .exe Build Pipeline
 
 PyInstaller cannot cross-compile a Windows `.exe` from the Linux server, so a dedicated pipeline is in place. Full operator documentation lives at `docs/AGENT_RELEASE_BUILD.md`.

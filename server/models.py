@@ -1322,6 +1322,82 @@ class AgentServerPin(db.Model):
         }
 
 
+class AgentRollout(db.Model):
+    """Batched agent update rollout plan."""
+
+    __tablename__ = 'agent_rollouts'
+
+    id = db.Column(db.Integer, primary_key=True)
+    organization_id = db.Column(db.Integer, db.ForeignKey('organizations.id'), nullable=False, index=True)
+    version = db.Column(db.String(64), nullable=False)
+    status = db.Column(db.String(32), nullable=False, default='draft', index=True)
+    total_batches = db.Column(db.Integer, nullable=False, default=3)
+    current_batch = db.Column(db.Integer, nullable=False, default=0)
+    batch_config = db.Column(db.JSON, nullable=False, default=list)
+    notes = db.Column(db.Text, nullable=True)
+    github_run_id = db.Column(db.String(64), nullable=True)
+    github_run_url = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    tested_at = db.Column(db.DateTime, nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_by = db.Column(db.String(255), nullable=True)
+
+    batches = db.relationship('AgentRolloutBatch', backref='rollout', lazy=True, order_by='AgentRolloutBatch.batch_num')
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'organization_id': self.organization_id,
+            'version': self.version,
+            'status': self.status,
+            'total_batches': self.total_batches,
+            'current_batch': self.current_batch,
+            'batch_config': self.batch_config or [],
+            'notes': self.notes or '',
+            'github_run_id': self.github_run_id,
+            'github_run_url': self.github_run_url,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'tested_at': self.tested_at.isoformat() if self.tested_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'created_by': self.created_by,
+        }
+
+
+class AgentRolloutBatch(db.Model):
+    """One batch within a rollout plan."""
+
+    __tablename__ = 'agent_rollout_batches'
+
+    id = db.Column(db.Integer, primary_key=True)
+    rollout_id = db.Column(db.Integer, db.ForeignKey('agent_rollouts.id'), nullable=False, index=True)
+    batch_num = db.Column(db.Integer, nullable=False)
+    percentage = db.Column(db.Integer, nullable=False, default=25)
+    agent_serials = db.Column(db.JSON, nullable=False, default=list)
+    status = db.Column(db.String(32), nullable=False, default='pending')
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    agents_total = db.Column(db.Integer, nullable=False, default=0)
+    agents_updated = db.Column(db.Integer, nullable=False, default=0)
+    agents_failed = db.Column(db.Integer, nullable=False, default=0)
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'rollout_id': self.rollout_id,
+            'batch_num': self.batch_num,
+            'percentage': self.percentage,
+            'agent_serials': self.agent_serials or [],
+            'status': self.status,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'agents_total': self.agents_total,
+            'agents_updated': self.agents_updated,
+            'agents_failed': self.agents_failed,
+        }
+
+
 class AgentSession(db.Model):
     """Durable record of one agent engine orchestration run."""
 

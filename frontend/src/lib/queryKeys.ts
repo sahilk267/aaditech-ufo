@@ -40,6 +40,9 @@ export const queryKeys = {
   releases: ["releases"] as const,
   releasePolicy: ["releases", "policy"] as const,
   releaseGuide: (version: string) => ["releases", "guide", version] as const,
+  releaseNextVersion: ["releases", "next-version"] as const,
+  rollouts: ["rollouts"] as const,
+  rollout: (id: number) => ["rollouts", id] as const,
   agentCommands: (filters: { status?: string; command_type?: string; target_serial_number?: string }) =>
     ["agents", "commands", filters] as const,
   agentSessions: ["agent-engine", "sessions"] as const,
