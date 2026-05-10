@@ -211,6 +211,84 @@ class RolloutService:
         return default_version
 
     @classmethod
+    def process_agent_checkin(cls, serial_number: str, agent_version: str, org_id: int) -> dict[str, Any]:
+        """
+        Called every time an agent heartbeats / checks in.
+        - Finds any active rolling_out rollout for this org.
+        - If this agent is in the current in-progress batch AND its version
+          matches the rollout target, increments agents_updated.
+        - Auto-completes the batch when every agent has reported the new version.
+        - Auto-completes the whole rollout if no pending batches remain.
+        Returns a dict describing what happened (for logging / response).
+        """
+        active_rollout = AgentRollout.query.filter_by(
+            organization_id=org_id,
+            status='rolling_out',
+        ).order_by(AgentRollout.created_at.desc()).first()
+
+        if not active_rollout:
+            return {'rollout_active': False}
+
+        in_progress_batch = AgentRolloutBatch.query.filter_by(
+            rollout_id=active_rollout.id,
+            status='in_progress',
+        ).first()
+
+        if not in_progress_batch:
+            return {'rollout_active': True, 'in_batch': False}
+
+        if serial_number not in (in_progress_batch.agent_serials or []):
+            return {'rollout_active': True, 'in_batch': False}
+
+        # Count how many agents in this batch now report the rollout version
+        if in_progress_batch.agents_total > 0:
+            from ..models import Agent  # local import to avoid circular
+            updated_count = Agent.query.filter(
+                Agent.organization_id == org_id,
+                Agent.serial_number.in_(in_progress_batch.agent_serials),
+                Agent.agent_version == active_rollout.version,
+            ).count()
+            in_progress_batch.agents_updated = updated_count
+
+            # Auto-complete batch when all agents have the new version
+            if updated_count >= in_progress_batch.agents_total:
+                in_progress_batch.status = 'completed'
+                in_progress_batch.completed_at = datetime.utcnow()
+                active_rollout.current_batch = in_progress_batch.batch_num
+
+                # Check if any pending batches remain — if not, complete the rollout
+                pending_next = AgentRolloutBatch.query.filter_by(
+                    rollout_id=active_rollout.id,
+                    status='pending',
+                ).first()
+
+                if pending_next is None:
+                    active_rollout.status = 'completed'
+                    active_rollout.completed_at = datetime.utcnow()
+
+                db.session.commit()
+                return {
+                    'rollout_active': True,
+                    'in_batch': True,
+                    'batch_num': in_progress_batch.batch_num,
+                    'batch_auto_completed': True,
+                    'rollout_completed': active_rollout.status == 'completed',
+                    'agents_updated': updated_count,
+                    'agents_total': in_progress_batch.agents_total,
+                }
+
+        db.session.commit()
+        return {
+            'rollout_active': True,
+            'in_batch': True,
+            'batch_num': in_progress_batch.batch_num,
+            'batch_auto_completed': False,
+            'agents_updated': in_progress_batch.agents_updated,
+            'agents_total': in_progress_batch.agents_total,
+            'version_match': agent_version == active_rollout.version,
+        }
+
+    @classmethod
     def _get_rollout(cls, rollout_id: int, org_id: int) -> AgentRollout:
         rollout = AgentRollout.query.filter_by(id=rollout_id, organization_id=org_id).first()
         if not rollout:

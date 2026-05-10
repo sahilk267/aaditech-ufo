@@ -118,6 +118,49 @@ The `ai_analysis` tool (`server/agent_engine/tools/ai_analysis.py`) supports fiv
 - The SPA is served at `/app` and `/app/*`; the legacy server-rendered UI (login, dashboard, admin) is at `/`.
 - The default tenant slug is `default`; tenants are auto-created on first request.
 
+## UI Design System — CSS Classes (2026-05-10)
+
+All new pages use the shared design system via CSS class names in `frontend/src/index.css`. Classes added in this session:
+
+| Class | Purpose |
+|---|---|
+| `.page-tabs`, `.page-tab`, `.page-tab--active` | Tabbed navigation |
+| `.badge`, `.badge--draft/testing/rolling-out/completed/rolled-back/pending/in-progress/cancelled` | Status badges |
+| `.progress-track`, `.progress-fill`, `.progress-fill--warn/error/done` | Progress bars |
+| `.setup-panel`, `.setup-panel--warn/error` | Info/instruction panels with left border accent |
+| `.feedback-banner`, `.feedback-banner--success/error` | In-page success/error messages |
+| `.rollout-step`, `.rollout-step--active/done/fail` | Batch step cards |
+| `.rollout-list-item`, `.rollout-list-item--selected` | Clickable list rows |
+| `.version-chip` | Monospaced dark pill for version strings |
+| `.section-label` | Tiny uppercase section headers |
+| `.stat-row`, `.stat-pill` | Inline stat grid inside cards |
+| `.button--sm`, `.button--amber`, `.button--purple`, `.button--green` | Button color variants |
+| `.empty-state` | Centered no-data placeholder |
+| `.panel-split` | Two-column detail layout (sidebar + main) |
+
+## Agent Heartbeat & Rollout Auto-completion (2026-05-10)
+
+### `POST /api/agent/heartbeat`
+Agents call this endpoint periodically to report liveness and current version. The server:
+1. Upserts the `Agent` record (`agent_version`, `last_seen_at`, `last_ip`, `hostname`).
+2. Calls `RolloutService.process_agent_checkin()` — counts how many agents in the current in-progress batch have reported the rollout version.
+3. Auto-completes the batch when `agents_updated >= agents_total`.
+4. Auto-completes the rollout if no `pending` batches remain.
+5. Returns `recommended_version`, `update_required`, rollout status, `server_time`.
+
+Requires `X-API-Key` header (tenant API key). Rate-limited to 60/minute.
+
+Also hooked into `POST /api/submit_data` — if the payload includes `serial_number` + `agent_version`, the Agent record is updated and rollout progress is computed automatically on every metrics submission.
+
+### `RolloutService.process_agent_checkin(serial, version, org_id)`
+New class method in `server/services/rollout_service.py`. Finds the active `rolling_out` rollout, locates the `in_progress` batch, queries the `agents` table for version matches, and triggers auto-completion. Does not raise — always returns a dict.
+
+### GitHub Token Fallback
+`POST /api/agent/releases/trigger-github-build` now accepts either `GITHUB_TOKEN` or `GITHUB_PERSONAL_ACCESS_TOKEN` (checked in that order). `GITHUB_OWNER`, `GITHUB_REPO`, and `GITHUB_WORKFLOW_ID` are pre-configured as Replit environment variables.
+
+### Agent Heartbeat in `api.ts`
+`agentHeartbeat({ serial_number, agent_version, hostname? })` → `POST /api/agent/heartbeat` added to the frontend API layer.
+
 ## Release Build, Versioning & Batched Rollout System (2026-05-10)
 
 ### Web-Triggered Windows .exe Build (GitHub Actions)

@@ -1492,6 +1492,25 @@ def submit_data():
         validated_data['organization_id'] = g.tenant.id
         new_system = SystemData(**validated_data)
         db.session.add(new_system)
+
+        # Update Agent heartbeat record if serial_number is present in submission
+        _serial = str(data.get('serial_number') or validated_data.get('serial_number') or '').strip()
+        _agent_ver = str(data.get('agent_version') or '').strip()
+        _hostname = str(validated_data.get('hostname') or data.get('hostname') or '').strip()
+        if _serial:
+            _agent_rec = Agent.query.filter_by(
+                organization_id=g.tenant.id,
+                serial_number=_serial,
+            ).first()
+            _now = datetime.utcnow()
+            if _agent_rec:
+                _agent_rec.last_seen_at = _now
+                _agent_rec.last_ip = request.remote_addr
+                if _agent_ver:
+                    _agent_rec.agent_version = _agent_ver
+            if _agent_ver and _serial:
+                RolloutService.process_agent_checkin(_serial, _agent_ver, g.tenant.id)
+
         db.session.commit()
         
         logger.info(f"Data saved for system: {validated_data.get('hostname')}")
@@ -1781,7 +1800,11 @@ def trigger_github_build():
     if not version:
         return jsonify({'error': 'version_required'}), 400
 
-    github_token = os.environ.get('GITHUB_TOKEN', '').strip()
+    # Accept both GITHUB_TOKEN and GITHUB_PERSONAL_ACCESS_TOKEN
+    github_token = (
+        os.environ.get('GITHUB_TOKEN', '').strip()
+        or os.environ.get('GITHUB_PERSONAL_ACCESS_TOKEN', '').strip()
+    )
     github_owner = os.environ.get('GITHUB_OWNER', '').strip()
     github_repo = os.environ.get('GITHUB_REPO', '').strip()
     workflow_id = os.environ.get('GITHUB_WORKFLOW_ID', 'agent-release-publish.yml').strip()
@@ -1917,6 +1940,110 @@ def rollback_rollout(rollout_id):
         return jsonify({'error': str(exc)}), 400
     log_audit_event('agent.rollout.rolled_back', outcome='success', rollout_id=rollout_id)
     return jsonify({'status': 'success', 'rollout': rollout.to_dict()}), 200
+
+
+# ---------------------------------------------------------------------------
+# Agent heartbeat / check-in (version tracking + rollout auto-completion)
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/agent/heartbeat', methods=['POST'])
+@limiter.limit("60 per minute")
+@require_api_key
+def agent_heartbeat():
+    """
+    Agents call this endpoint periodically to report their current version
+    and liveness. The server:
+      1. Updates the Agent record (agent_version, last_seen_at, last_ip).
+      2. Runs rollout batch auto-completion logic.
+      3. Returns the recommended version for this agent (guide).
+
+    Request JSON:
+        serial_number   (required) — agent serial / unique id
+        agent_version   (required) — currently running version string
+        hostname        (optional)
+    """
+    payload = request.get_json(silent=True) or {}
+    serial_number = str(payload.get('serial_number') or '').strip()
+    agent_version = str(payload.get('agent_version') or '').strip()
+    hostname = str(payload.get('hostname') or '').strip()
+
+    if not serial_number:
+        return jsonify({'error': 'serial_number_required'}), 400
+    if not agent_version:
+        return jsonify({'error': 'agent_version_required'}), 400
+
+    org = getattr(g, 'tenant', None)
+    if not org:
+        return jsonify({'error': 'tenant_required'}), 400
+
+    now = datetime.utcnow()
+
+    # Update Agent record — upsert-style
+    agent = Agent.query.filter_by(
+        organization_id=org.id,
+        serial_number=serial_number,
+    ).first()
+
+    if agent:
+        agent.agent_version = agent_version
+        agent.last_seen_at = now
+        agent.last_ip = request.remote_addr
+        if hostname and hostname != agent.hostname:
+            agent.hostname = hostname
+    else:
+        # Auto-create minimal record for new agents not yet formally enrolled
+        agent = Agent(
+            organization_id=org.id,
+            display_name=hostname or serial_number,
+            hostname=hostname or serial_number,
+            serial_number=serial_number,
+            platform='unknown',
+            agent_version=agent_version,
+            enrollment_state='pending',
+            last_seen_at=now,
+            last_ip=request.remote_addr,
+        )
+        db.session.add(agent)
+
+    db.session.flush()
+
+    # Process rollout batch auto-completion
+    rollout_info = RolloutService.process_agent_checkin(serial_number, agent_version, org.id)
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        logger.error('agent.heartbeat commit failed: %s', exc)
+        return jsonify({'error': 'db_error', 'details': str(exc)[:200]}), 500
+
+    # Build recommended version for this agent
+    guide = AgentReleaseService.build_update_guide(agent_version, current_app.config, current_app.instance_path)
+    recommended_version = guide.get('recommended_version') or agent_version
+
+    # Apply rollout override
+    rollout_override = RolloutService.get_rollout_version_for_agent(
+        serial_number, org.id, recommended_version
+    )
+    if rollout_override and rollout_override != recommended_version:
+        recommended_version = rollout_override
+
+    log_audit_event(
+        'agent.heartbeat',
+        outcome='success',
+        serial_number=serial_number,
+        agent_version=agent_version,
+        rollout_active=rollout_info.get('rollout_active', False),
+        batch_auto_completed=rollout_info.get('batch_auto_completed', False),
+    )
+
+    return jsonify({
+        'status': 'success',
+        'recommended_version': recommended_version,
+        'update_required': recommended_version != agent_version,
+        'rollout': rollout_info,
+        'server_time': now.isoformat(),
+    }), 200
 
 
 # ---------------------------------------------------------------------------

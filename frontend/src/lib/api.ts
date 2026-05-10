@@ -376,6 +376,11 @@ export async function triggerGithubBuild(version: string) {
   return data;
 }
 
+export async function agentHeartbeat(payload: { serial_number: string; agent_version: string; hostname?: string }) {
+  const { data } = await apiClient.post<{ status: string; recommended_version: string; update_required: boolean; rollout: unknown }>("/api/agent/heartbeat", payload);
+  return data;
+}
+
 export async function listRollouts() {
   const { data } = await apiClient.get<{ status: string; rollouts: unknown[]; count: number }>("/api/agent/rollouts");
   return data;
