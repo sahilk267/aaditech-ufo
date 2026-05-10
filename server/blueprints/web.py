@@ -68,6 +68,7 @@ def _coerce_backup_rows():
 
 
 @web_bp.route('/app')
+@web_bp.route('/app/')
 @web_bp.route('/app/<path:path>')
 @limiter.exempt
 def spa_shell(path=None):
