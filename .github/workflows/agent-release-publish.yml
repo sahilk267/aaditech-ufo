@@ -21,6 +21,11 @@ jobs:
     name: Build on windows-latest
     runs-on: windows-latest
 
+    env:
+      AGENT_RELEASE_UPLOAD_URL: ${{ secrets.AGENT_RELEASE_UPLOAD_URL }}
+      AGENT_RELEASE_API_KEY: ${{ secrets.AGENT_RELEASE_API_KEY }}
+      AGENT_RELEASE_TENANT_SLUG: ${{ secrets.AGENT_RELEASE_TENANT_SLUG }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,14 +53,7 @@ jobs:
           if ($version -notmatch '^[A-Za-z0-9._-]{1,64}$') {
             throw "Invalid version string: $version"
           }
-          $content = @"
-          """Single source of truth for the agent's running version.
-
-          This file is overwritten by CI at build time.
-          """
-
-          AGENT_VERSION = "$version"
-          "@
+          $content = "AGENT_VERSION = `"$version`""
           Set-Content -Path agent/version.py -Value $content -Encoding utf8
           Write-Host "Stamped version: $version"
 
@@ -81,7 +79,6 @@ jobs:
           $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
           Write-Host "SHA-256: $hash"
           echo "EXE_SHA256=$hash" >> $env:GITHUB_ENV
-          echo "EXE_PATH=$exe" >> $env:GITHUB_ENV
 
       - name: Upload .exe as GitHub Actions artifact
         uses: actions/upload-artifact@v4
@@ -109,29 +106,42 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Auto-upload to UFO server
-        if: ${{ github.event.inputs.upload_to_server == 'true' && secrets.AGENT_RELEASE_UPLOAD_URL != '' }}
+        if: ${{ github.event.inputs.upload_to_server == 'true' }}
         shell: pwsh
+        continue-on-error: true
         run: |
-          $url    = "${{ secrets.AGENT_RELEASE_UPLOAD_URL }}"
-          $apiKey = "${{ secrets.AGENT_RELEASE_API_KEY }}"
-          $tenant = if ("${{ secrets.AGENT_RELEASE_TENANT_SLUG }}" -ne "") { "${{ secrets.AGENT_RELEASE_TENANT_SLUG }}" } else { "default" }
+          $url    = "${{ env.AGENT_RELEASE_UPLOAD_URL }}"
+          $apiKey = "${{ env.AGENT_RELEASE_API_KEY }}"
+          $tenant = if ("${{ env.AGENT_RELEASE_TENANT_SLUG }}" -ne "") { "${{ env.AGENT_RELEASE_TENANT_SLUG }}" } else { "default" }
           $version = "${{ github.event.inputs.version }}"
           $exePath = "agent\dist\aaditech-agent-$version.exe"
 
+          if ([string]::IsNullOrWhiteSpace($url)) {
+            Write-Host "AGENT_RELEASE_UPLOAD_URL not set — skipping server upload."
+            exit 0
+          }
+          if ([string]::IsNullOrWhiteSpace($apiKey)) {
+            Write-Host "AGENT_RELEASE_API_KEY not set — skipping server upload."
+            exit 0
+          }
+
           Write-Host "Uploading $exePath to $url ..."
-          $response = Invoke-RestMethod `
-            -Uri "$url/api/agent/releases/upload" `
-            -Method POST `
-            -Headers @{
-              "X-API-Key"        = $apiKey
-              "X-Tenant-Slug"    = $tenant
-            } `
-            -Form @{
-              version = $version
-              file    = Get-Item $exePath
-            }
-          Write-Host "Server response: $($response | ConvertTo-Json -Depth 3)"
-        continue-on-error: true
+          try {
+            $response = Invoke-RestMethod `
+              -Uri "$url/api/agent/releases/upload" `
+              -Method POST `
+              -Headers @{
+                "X-API-Key"     = $apiKey
+                "X-Tenant-Slug" = $tenant
+              } `
+              -Form @{
+                version = $version
+                file    = Get-Item $exePath
+              }
+            Write-Host "Server response: $($response | ConvertTo-Json -Depth 3)"
+          } catch {
+            Write-Warning "Server upload failed: $_"
+          }
 
       - name: Build summary
         shell: pwsh
@@ -139,7 +149,7 @@ jobs:
           $version = "${{ github.event.inputs.version }}"
           $sha256  = "${{ env.EXE_SHA256 }}"
           $actor   = "${{ github.actor }}"
-          Write-Host "::notice::Built aaditech-agent-$version.exe (SHA-256: $sha256) — triggered by $actor"
+          Write-Host "::notice::Built aaditech-agent-$version.exe (SHA-256: $sha256) triggered by $actor"
           @"
           ## Agent Release Build Summary
 
