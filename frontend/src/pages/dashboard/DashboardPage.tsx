@@ -3,12 +3,211 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { ActionPanel } from "../../components/common/ActionPanel";
 import { StatCard } from "../../components/common/StatCard";
-import { getApiStatus, getDashboardStatus, getSystems } from "../../lib/api";
+import { getApiStatus, getDashboardStatus, getSystems, listRollouts } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
 
 const SystemHealthChart = lazy(() =>
   import("../../components/dashboard/SystemHealthChart").then((m) => ({ default: m.SystemHealthChart }))
 );
+
+// Badge CSS class for rollout status
+function rolloutBadgeClass(status: string): string {
+  const map: Record<string, string> = {
+    draft: "badge--draft",
+    testing: "badge--testing",
+    rolling_out: "badge--rolling-out",
+    completed: "badge--completed",
+    rolled_back: "badge--rolled-back",
+  };
+  return `badge ${map[status] ?? "badge--draft"}`;
+}
+
+interface RolloutBatch {
+  batch_num: number;
+  percentage: number;
+  status: string;
+  agents_total: number;
+  agents_updated: number;
+  agent_serials: string[];
+}
+
+interface ActiveRollout {
+  id: number;
+  version: string;
+  status: string;
+  current_batch: number;
+  total_batches: number;
+  notes: string;
+  started_at: string | null;
+  batches?: RolloutBatch[];
+}
+
+function RolloutProgressWidget() {
+  const rolloutsQ = useQuery({
+    queryKey: queryKeys.rollouts,
+    queryFn: listRollouts,
+    staleTime: 15_000,
+    refetchInterval: 20_000,
+  });
+
+  const activeRollout = useMemo(() => {
+    const list = (rolloutsQ.data?.rollouts ?? []) as ActiveRollout[];
+    return list.find((r) => r.status === "rolling_out" || r.status === "testing") ?? null;
+  }, [rolloutsQ.data]);
+
+  if (rolloutsQ.isLoading) {
+    return (
+      <div className="module-card" style={{ marginTop: 20 }}>
+        <div className="module-status loading">Loading rollout status…</div>
+      </div>
+    );
+  }
+
+  if (!activeRollout) {
+    return (
+      <div className="module-card" style={{ marginTop: 20 }}>
+        <div className="row-between" style={{ marginBottom: 4 }}>
+          <h3 style={{ margin: 0, fontSize: "1rem" }}>Active Rollout</h3>
+          <span className="badge badge--completed">No active rollout</span>
+        </div>
+        <p style={{ margin: "8px 0 0", fontSize: "0.85rem", color: "#94a3b8" }}>
+          No rollout is currently in progress. Go to{" "}
+          <a href="/app/releases" style={{ color: "#0f766e" }}>Releases → Batched Rollout</a>{" "}
+          to start one.
+        </p>
+      </div>
+    );
+  }
+
+  // Get in-progress batch
+  const batches = (activeRollout.batches ?? []) as RolloutBatch[];
+  const currentBatch = batches.find((b) => b.status === "in_progress") ?? batches[activeRollout.current_batch - 1];
+  const completedBatches = batches.filter((b) => b.status === "completed").length;
+  const overallPct = activeRollout.total_batches > 0
+    ? Math.round((completedBatches / activeRollout.total_batches) * 100)
+    : 0;
+
+  const batchUpdated = currentBatch?.agents_updated ?? 0;
+  const batchTotal = currentBatch?.agents_total ?? 0;
+  const batchPct = batchTotal > 0 ? Math.round((batchUpdated / batchTotal) * 100) : 0;
+
+  return (
+    <div className="module-card" style={{ marginTop: 20 }}>
+      {/* Header */}
+      <div className="row-between" style={{ marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <h3 style={{ margin: 0, fontSize: "1rem" }}>Active Rollout</h3>
+          <span className="version-chip">v{activeRollout.version}</span>
+        </div>
+        <span className={rolloutBadgeClass(activeRollout.status)}>
+          {activeRollout.status.replace(/_/g, " ")}
+        </span>
+      </div>
+
+      {activeRollout.notes && (
+        <p style={{ margin: "0 0 12px", fontSize: "0.85rem", color: "#64748b" }}>{activeRollout.notes}</p>
+      )}
+
+      {/* Stats row */}
+      <div className="stat-row" style={{ marginBottom: 14 }}>
+        <div className="stat-pill">
+          <strong>{completedBatches}/{activeRollout.total_batches}</strong>
+          <span>Batches done</span>
+        </div>
+        <div className="stat-pill">
+          <strong>{activeRollout.current_batch}</strong>
+          <span>Current batch</span>
+        </div>
+        {currentBatch && (
+          <>
+            <div className="stat-pill">
+              <strong style={{ color: "#15803d" }}>{batchUpdated}</strong>
+              <span>Updated</span>
+            </div>
+            <div className="stat-pill">
+              <strong>{batchTotal}</strong>
+              <span>In batch</span>
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Overall rollout progress */}
+      <div style={{ marginBottom: 10 }}>
+        <div className="row-between" style={{ marginBottom: 5, fontSize: "0.82rem", color: "#64748b" }}>
+          <span>Overall rollout progress</span>
+          <span>{overallPct}%</span>
+        </div>
+        <div className="progress-track">
+          <div
+            className="progress-fill"
+            style={{ width: `${overallPct}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Current batch progress */}
+      {currentBatch && batchTotal > 0 && (
+        <div style={{ marginBottom: 4 }}>
+          <div className="row-between" style={{ marginBottom: 5, fontSize: "0.82rem", color: "#64748b" }}>
+            <span>Batch {currentBatch.batch_num} ({currentBatch.percentage}% of fleet)</span>
+            <span>{batchPct}% — {batchUpdated}/{batchTotal} agents on v{activeRollout.version}</span>
+          </div>
+          <div className="progress-track">
+            <div
+              className={`progress-fill${batchPct === 100 ? " progress-fill--done" : ""}`}
+              style={{ width: `${batchPct}%` }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Batch pills */}
+      {batches.length > 0 && (
+        <div style={{ display: "flex", gap: 6, marginTop: 12, flexWrap: "wrap" }}>
+          {batches.map((b) => (
+            <div
+              key={b.batch_num}
+              title={`Batch ${b.batch_num}: ${b.agents_updated}/${b.agents_total} agents updated`}
+              style={{
+                padding: "4px 12px",
+                borderRadius: 20,
+                fontSize: "0.75rem",
+                fontWeight: 600,
+                background:
+                  b.status === "completed" ? "#dcfce7" :
+                  b.status === "in_progress" ? "#fef9c3" :
+                  b.status === "cancelled" ? "#fee2e2" :
+                  "#f1f5f9",
+                color:
+                  b.status === "completed" ? "#15803d" :
+                  b.status === "in_progress" ? "#a16207" :
+                  b.status === "cancelled" ? "#b91c1c" :
+                  "#64748b",
+                border: b.status === "in_progress" ? "2px solid #fcd34d" : "1px solid transparent",
+              }}
+            >
+              B{b.batch_num} — {b.percentage}%
+            </div>
+          ))}
+        </div>
+      )}
+
+      {activeRollout.started_at && (
+        <p style={{ margin: "10px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
+          Started {new Date(activeRollout.started_at).toLocaleString()} ·{" "}
+          <a href="/app/releases" style={{ color: "#0f766e" }}>Manage rollout →</a>
+        </p>
+      )}
+
+      {activeRollout.status === "rolling_out" && (
+        <p style={{ margin: "6px 0 0", fontSize: "0.75rem", color: "#94a3b8" }}>
+          Auto-refreshes every 20 s — agents report progress via heartbeat.
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function DashboardPage() {
   const [manualHostName, setHostName] = useState<string | null>(null);
@@ -48,6 +247,7 @@ export function DashboardPage() {
     void queryClient.invalidateQueries({ queryKey: queryKeys.apiStatus });
     void queryClient.invalidateQueries({ queryKey: queryKeys.systems });
     void queryClient.invalidateQueries({ queryKey: queryKeys.dashboardStatus(hostName || "none") });
+    void queryClient.invalidateQueries({ queryKey: queryKeys.rollouts });
   };
 
   const resetDashboardView = () => {
@@ -67,7 +267,6 @@ export function DashboardPage() {
       ? "Failed to load API or systems data. Check server connection."
       : null;
 
-  // Build chart data from real system inventory — each system becomes a data point.
   const chartData = useMemo(() => {
     type SystemRow = {
       hostname?: string;
@@ -143,6 +342,9 @@ export function DashboardPage() {
           status="neutral"
         />
       </div>
+
+      {/* Live rollout progress widget */}
+      <RolloutProgressWidget />
 
       <ActionPanel style={{ marginTop: 12 }}>
         <label style={{ display: "grid", gap: 6, maxWidth: 360 }}>

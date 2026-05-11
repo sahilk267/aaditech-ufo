@@ -138,6 +138,47 @@ All new pages use the shared design system via CSS class names in `frontend/src/
 | `.empty-state` | Centered no-data placeholder |
 | `.panel-split` | Two-column detail layout (sidebar + main) |
 
+## GitHub Actions Workflow — Windows .exe Build (2026-05-11)
+
+### File: `.github/workflows/agent-release-publish.yml`
+
+This file was created locally **and pushed to the GitHub repo** (`sahilk267/aaditech-ufo`) via the GitHub Contents API during the 2026-05-11 session. It must exist in the repo for the `workflow_dispatch` trigger to work.
+
+**Workflow triggers:**
+- `workflow_dispatch` with two inputs:
+  - `version` (required) — semver string e.g. `1.2.0`
+  - `upload_to_server` (optional, default `true`) — auto-upload .exe to UFO server after build
+
+**What it does (jobs → steps):**
+1. Runs on `windows-latest` GitHub runner
+2. Checks out the repo, sets up Python 3.12
+3. Installs PyInstaller + agent/requirements.txt
+4. Stamps `agent/version.py` with the requested version
+5. Builds with `pyinstaller build.spec --clean --noconfirm` → `agent/dist/aaditech-agent.exe`
+6. Computes SHA-256
+7. Uploads .exe as a GitHub Actions artifact (90-day retention)
+8. Creates/updates a GitHub Release tagged `v{version}` with the .exe attached
+9. If `AGENT_RELEASE_UPLOAD_URL` + `AGENT_RELEASE_API_KEY` secrets are configured, auto-uploads to the UFO server via `POST /api/agent/releases/upload`
+10. Writes a build summary to the Actions job summary
+
+**To trigger:** Go to Releases page → Build & Upload tab → "Trigger GitHub Build"  
+**Direct link:** `https://github.com/sahilk267/aaditech-ufo/actions/workflows/agent-release-publish.yml`
+
+**Required GitHub repo secrets (set in GitHub → Settings → Secrets):**
+- `GITHUB_TOKEN` — auto-provided by Actions (no setup needed)
+- `AGENT_RELEASE_UPLOAD_URL` — optional, for auto-upload to UFO
+- `AGENT_RELEASE_API_KEY` — optional, for auto-upload to UFO
+- `AGENT_RELEASE_TENANT_SLUG` — optional, defaults to `default`
+
+### Dashboard Rollout Widget
+
+`RolloutProgressWidget` component added to `DashboardPage.tsx`:
+- Queries `GET /api/agent/rollouts` every 20 s
+- Finds any rollout with status `rolling_out` or `testing`
+- Shows version chip, status badge, batch pills, overall progress bar, current-batch agent progress bar
+- Links to `/app/releases` for management
+- Shows "No active rollout" when fleet is idle
+
 ## Agent Heartbeat & Rollout Auto-completion (2026-05-10)
 
 ### `POST /api/agent/heartbeat`
