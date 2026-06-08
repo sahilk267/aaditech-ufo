@@ -1,0 +1,169 @@
+name: CI — Test, Lint & Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Backend (Python pytest)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run pytest
+        env:
+          DATABASE_URL: sqlite:///test_ci.db
+          SECRET_KEY: ci-test-secret-key
+          JWT_SECRET_KEY: ci-test-jwt-key
+          FLASK_ENV: testing
+          AGENT_API_KEY: ci-test-agent-key
+          RATELIMIT_ENABLED: "False"
+          AGENT_ENGINE_ENABLED: "True"
+        run: pytest --tb=short -q 2>&1 | tail -30
+
+      - name: Upload coverage (optional)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results
+          path: .coverage
+          retention-days: 7
+
+  frontend-build:
+    name: Frontend (TypeScript + Vite build)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm install --silent
+
+      - name: TypeScript type check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+      - name: Vite production build
+        working-directory: frontend
+        run: npx vite build
+
+      - name: Upload built dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 3
+
+  integration-smoke:
+    name: Integration smoke test
+    runs-on: ubuntu-latest
+    needs: [backend-tests, frontend-build]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Download built frontend
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+
+      - name: Seed admin + smoke test server startup
+        env:
+          DATABASE_URL: sqlite:///smoke_test.db
+          SECRET_KEY: smoke-secret-key
+          JWT_SECRET_KEY: smoke-jwt-key
+          FLASK_ENV: testing
+          AGENT_API_KEY: smoke-agent-key
+          RATELIMIT_ENABLED: "False"
+        run: |
+          python - <<'EOF'
+          import os, sys
+          # All env vars already set by step env block
+          from server.app import create_app
+          from server.extensions import db
+
+          app = create_app()
+          with app.app_context():
+              # Create all tables (migrations not needed for smoke test)
+              db.create_all()
+              print("Tables created OK")
+
+          # Seed admin user directly (tables now exist)
+          from server.models import Organization, User, Role, Permission
+          from server.auth import hash_password
+          with app.app_context():
+              org = Organization.query.filter_by(slug="default").first()
+              if not org:
+                  org = Organization(name="Default", slug="default", is_active=True)
+                  db.session.add(org)
+                  db.session.commit()
+              user = User.query.filter_by(email="admin@example.com").first()
+              if not user:
+                  user = User(
+                      organization_id=org.id,
+                      email="admin@example.com",
+                      full_name="Admin User",
+                      password_hash=hash_password("ChangeMe123!"),
+                      is_active=True,
+                  )
+                  db.session.add(user)
+                  db.session.commit()
+          print("Seed OK")
+
+          # Smoke test HTTP endpoints
+          client = app.test_client()
+          with app.app_context():
+              r = client.get('/health')
+              assert r.status_code == 200, f"/health returned {r.status_code}"
+              data = r.get_json()
+              assert data.get('status') in ('ok', 'degraded'), f"/health body: {data}"
+
+              r = client.post('/api/auth/login', json={
+                  'tenant_slug': 'default',
+                  'email': 'admin@example.com',
+                  'password': 'ChangeMe123!'
+              })
+              assert r.status_code == 200, f"/api/auth/login returned {r.status_code}: {r.data[:200]}"
+              token = r.get_json().get('tokens', {}).get('access_token')
+              assert token, "No access_token in login response"
+
+              r = client.get('/app')
+              assert r.status_code in (200, 301, 302, 404), f"/app returned {r.status_code}"
+
+              print("All smoke tests passed!")
+          EOF

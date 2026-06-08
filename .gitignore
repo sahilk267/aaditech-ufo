@@ -6,7 +6,7 @@ __pycache__/
 .DS_Store
 *.log
 .env
-.env.local
+# .env.local is a template — kept in repo
 *.db
 frontend/node_modules/
 frontend/dist/
