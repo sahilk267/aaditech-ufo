@@ -1777,6 +1777,37 @@ def get_agent_release_guide_api():
 # Auto-versioning helper
 # ---------------------------------------------------------------------------
 
+@api_bp.route('/agent/setup-env', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def get_agent_setup_env():
+    """Return all config values an operator needs to configure a new agent machine.
+
+    The AGENT_API_KEY is read from the server's environment variable — it is the
+    single shared key for all agents in this tenant. Operators copy this into the
+    agent .env file on each Windows host.
+    """
+    org = getattr(g, 'tenant', None)
+    tenant_slug = org.slug if org else 'default'
+
+    # Build server URL from the request host (works behind a reverse proxy too)
+    scheme = request.headers.get('X-Forwarded-Proto', request.scheme)
+    host = request.headers.get('X-Forwarded-Host', request.host)
+    server_url = f"{scheme}://{host}"
+
+    agent_api_key = current_app.config.get('AGENT_API_KEY', '')
+    is_default_key = agent_api_key in ('', 'default-key-change-this')
+
+    return jsonify({
+        'status': 'success',
+        'tenant_slug': tenant_slug,
+        'server_url': server_url,
+        'agent_api_key': agent_api_key,
+        'is_default_key': is_default_key,
+        'report_interval_seconds': 60,
+        'update_check_interval_seconds': 3600,
+    }), 200
+
+
 @api_bp.route('/agent/releases/next-version', methods=['GET'])
 @require_api_key_or_permission('tenant.manage')
 def suggest_next_release_version():

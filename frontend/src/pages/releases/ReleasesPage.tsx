@@ -15,6 +15,7 @@ import {
   getAgentReleaseGuide,
   getAgentReleasePolicy,
   getAgentReleases,
+  getAgentSetupEnv,
   getNextReleaseVersion,
   listRollouts,
   markRolloutTested,
@@ -175,6 +176,7 @@ export function ReleasesPage() {
 
   const [tab, setTab] = useState<Tab>("build");
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
+  const [showSetupModal, setShowSetupModal] = useState(false);
 
   // Build tab
   const [githubVersion, setGithubVersion] = useState("");
@@ -196,6 +198,7 @@ export function ReleasesPage() {
   const err = (msg: string) => setFeedback({ msg, ok: false });
 
   // ── Queries ─────────────────────────────────────────────────────────────
+  const setupEnvQ = useQuery({ queryKey: ["agent", "setup-env"], queryFn: getAgentSetupEnv, staleTime: 60_000, enabled: showSetupModal });
   const releasesQ = useQuery({ queryKey: queryKeys.releases, queryFn: getAgentReleases, staleTime: 60_000 });
   const buildStatusQ = useQuery({ queryKey: ["agent", "build", "status"], queryFn: getAgentBuildStatus, staleTime: 30_000 });
   const policyQ = useQuery({ queryKey: queryKeys.releasePolicy, queryFn: getAgentReleasePolicy, staleTime: 60_000 });
@@ -374,6 +377,38 @@ export function ReleasesPage() {
   const totalBatches = selectedRollout?.total_batches ?? 0;
   const nextSuggestedVersion = nextVersionQ.data?.next_version ?? "";
 
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  const setupEnvData = setupEnvQ.data;
+  const envFileContent = setupEnvData
+    ? [
+        "# Aaditech UFO Agent Configuration",
+        "# Copy this file alongside aaditech-agent.exe on the Windows host",
+        "",
+        `SERVER_BASE_URL=${setupEnvData.server_url}`,
+        `AGENT_API_KEY=${setupEnvData.agent_api_key}`,
+        `TENANT_SLUG=${setupEnvData.tenant_slug}`,
+        "",
+        `AGENT_REPORT_INTERVAL_SECONDS=${setupEnvData.report_interval_seconds}`,
+        `AGENT_UPDATE_CHECK_INTERVAL_SECONDS=${setupEnvData.update_check_interval_seconds}`,
+        "AGENT_UPDATE_ENABLED=1",
+        "",
+        "# Optional: log forwarding",
+        "# AGENT_LOG_FORWARD_ENABLED=1",
+        "# AGENT_LOG_FORWARD_WINDOWS_EVENT_LOGS=System,Application",
+      ].join("\n")
+    : "";
+
+  function downloadEnvFile() {
+    const blob = new Blob([envFileContent], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: ".env" }).click();
+    URL.revokeObjectURL(url);
+  }
+
+  function copyEnvToClipboard() {
+    void navigator.clipboard.writeText(envFileContent).then(() => ok("Copied to clipboard!"));
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <ModulePage
@@ -381,6 +416,9 @@ export function ReleasesPage() {
       description="Build, publish, and safely roll out agent updates to your fleet."
       actions={
         <div className="module-page-actions-group">
+          <button type="button" className="button--secondary" onClick={() => setShowSetupModal(true)}>
+            Setup Instructions
+          </button>
           <button type="button" className="button--secondary" onClick={invalidateAll}>
             Refresh
           </button>
@@ -406,6 +444,144 @@ export function ReleasesPage() {
         <div className={`feedback-banner ${feedback.ok ? "feedback-banner--success" : "feedback-banner--error"}`}>
           <span>{feedback.msg}</span>
           <button type="button" onClick={() => setFeedback(null)}>✕</button>
+        </div>
+      )}
+
+      {/* ================================================================= */}
+      {/* SETUP INSTRUCTIONS MODAL                                           */}
+      {/* ================================================================= */}
+      {showSetupModal && (
+        <div
+          style={{
+            position: "fixed", inset: 0, zIndex: 1000,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "16px",
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget) setShowSetupModal(false); }}
+        >
+          <div style={{
+            background: "#fff", borderRadius: "12px", boxShadow: "0 20px 60px rgba(0,0,0,0.3)",
+            width: "100%", maxWidth: "680px", maxHeight: "90vh",
+            display: "flex", flexDirection: "column", overflow: "hidden",
+          }}>
+            {/* Modal header */}
+            <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <div>
+                <h2 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "#0f172a" }}>Agent Setup Instructions</h2>
+                <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+                  Copy this <code style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 4 }}>.env</code> file alongside <code style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 4 }}>aaditech-agent.exe</code> on each Windows host.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSetupModal(false)}
+                style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.3rem", color: "#64748b", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal body */}
+            <div style={{ padding: "20px 24px", overflowY: "auto", flex: 1 }}>
+              {setupEnvQ.isPending ? (
+                <div style={{ textAlign: "center", padding: "32px 0", color: "#64748b" }}>Loading configuration…</div>
+              ) : setupEnvQ.isError ? (
+                <div className="setup-panel setup-panel--warn">
+                  Could not load server configuration. Please try again.
+                </div>
+              ) : setupEnvData ? (
+                <>
+                  {/* Warning if API key is default/unset */}
+                  {setupEnvData.is_default_key && (
+                    <div className="setup-panel setup-panel--warn" style={{ marginBottom: 16 }}>
+                      <strong>Warning:</strong> The server is using the default <code>AGENT_API_KEY</code>.
+                      Set a strong key in your Replit secrets (<code>AGENT_API_KEY</code>) before deploying agents to production.
+                    </div>
+                  )}
+
+                  {/* Step 1 */}
+                  <div style={{ marginBottom: 20 }}>
+                    <p className="section-label" style={{ marginBottom: 8 }}>Step 1 — Download the agent</p>
+                    <p style={{ fontSize: "0.88rem", color: "#475569", margin: 0 }}>
+                      Go to the <strong>All Releases</strong> tab, find the latest release, and click <strong>Download</strong> to get <code>aaditech-agent.exe</code>.
+                      Place it in a permanent folder on the Windows host, e.g. <code>C:\Aaditech\Agent\</code>.
+                    </p>
+                  </div>
+
+                  {/* Step 2 */}
+                  <div style={{ marginBottom: 12 }}>
+                    <p className="section-label" style={{ marginBottom: 8 }}>Step 2 — Create the .env file</p>
+                    <p style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 10 }}>
+                      Save the file below as <code>.env</code> in the same folder as the .exe. All values are pre-filled for this server.
+                    </p>
+                    <div style={{ position: "relative" }}>
+                      <pre style={{
+                        background: "#0f172a", color: "#e2e8f0",
+                        borderRadius: 8, padding: "16px",
+                        fontSize: "0.8rem", lineHeight: 1.7,
+                        overflowX: "auto", margin: 0,
+                        fontFamily: "'Courier New', monospace",
+                        whiteSpace: "pre",
+                      }}>
+                        {envFileContent.split("\n").map((line, i) => (
+                          <div key={i} style={{
+                            color: line.startsWith("#")
+                              ? "#64748b"
+                              : line.includes("=")
+                                ? line.split("=")[0].includes("API_KEY") || line.split("=")[0].includes("API_key")
+                                  ? "#fbbf24"
+                                  : "#86efac"
+                                : "#e2e8f0",
+                          }}>{line || "\u00a0"}</div>
+                        ))}
+                      </pre>
+                    </div>
+                  </div>
+
+                  {/* Step 3 */}
+                  <div style={{ marginTop: 16 }}>
+                    <p className="section-label" style={{ marginBottom: 8 }}>Step 3 — Run the agent</p>
+                    <p style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 8 }}>
+                      Double-click <code>aaditech-agent.exe</code> or register it as a Windows Service using NSIS installer.
+                      The agent will start sending metrics and appear in the fleet within 60 seconds.
+                    </p>
+                    <div className="setup-panel" style={{ fontSize: "0.82rem" }}>
+                      <strong>Optional Windows Service install:</strong> Use the NSIS installer from the Releases page to register the agent as a background service that survives reboots.
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            {/* Modal footer */}
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                className="button--secondary"
+                onClick={() => setShowSetupModal(false)}
+              >
+                Close
+              </button>
+              {setupEnvData && (
+                <>
+                  <button
+                    type="button"
+                    className="button--secondary"
+                    onClick={downloadEnvFile}
+                  >
+                    ↓ Download .env
+                  </button>
+                  <button
+                    type="button"
+                    onClick={copyEnvToClipboard}
+                  >
+                    Copy to Clipboard
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       )}
 

@@ -371,6 +371,19 @@ export async function getNextReleaseVersion() {
   return data;
 }
 
+export async function getAgentSetupEnv() {
+  const { data } = await apiClient.get<{
+    status: string;
+    tenant_slug: string;
+    server_url: string;
+    agent_api_key: string;
+    is_default_key: boolean;
+    report_interval_seconds: number;
+    update_check_interval_seconds: number;
+  }>("/api/agent/setup-env");
+  return data;
+}
+
 export async function triggerGithubBuild(version: string) {
   const { data } = await apiClient.post<{ status: string; message: string; actions_url: string; version: string }>("/api/agent/releases/trigger-github-build", { version });
   return data;
