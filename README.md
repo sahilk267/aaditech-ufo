@@ -1,5 +1,10 @@
 # 🎯 Aaditech UFO - Universal Observability, Monitoring & Automation Platform
 
+[![CI — Test, Lint & Build](https://github.com/sahilk267/aaditech-ufo/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sahilk267/aaditech-ufo/actions/workflows/ci.yml)
+[![Agent Release Build](https://github.com/sahilk267/aaditech-ufo/actions/workflows/agent-release-publish.yml/badge.svg)](https://github.com/sahilk267/aaditech-ufo/actions/workflows/agent-release-publish.yml)
+[![Python](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
 ## 📌 IMPORTANT: DOCUMENTATION CONTEXT
 
 **This is the VISION document** - the complete 92-feature enterprise platform vision that inspired this project.
@@ -245,9 +250,9 @@ CI auto-build + auto-publish workflow:
 - Trigger by tag: `agent-v1.2.3` (or manual dispatch with version input)
 - Builds Windows `.exe`, uploads CI artifact, publishes GitHub release asset
 - Optional auto-publish to server release API when secrets are configured:
-	- `AGENT_RELEASE_UPLOAD_URL` (example: `https://your-server/api/agent/releases/upload`)
-	- `AGENT_RELEASE_API_KEY`
-	- Optional tenant slug via env (defaults to `default`)
+        - `AGENT_RELEASE_UPLOAD_URL` (example: `https://your-server/api/agent/releases/upload`)
+        - `AGENT_RELEASE_API_KEY`
+        - Optional tenant slug via env (defaults to `default`)
 
 Configuration:
 
