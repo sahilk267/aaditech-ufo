@@ -178,6 +178,8 @@ export function ReleasesPage() {
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [connTest, setConnTest] = useState<{ state: "idle" | "pending" | "ok" | "error"; msg: string }>({ state: "idle", msg: "" });
+  const [psCopied, setPsCopied] = useState(false);
+  const [setupTab, setSetupTab] = useState<"env" | "powershell">("env");
 
   // Build tab
   const [githubVersion, setGithubVersion] = useState("");
@@ -410,6 +412,53 @@ export function ReleasesPage() {
     void navigator.clipboard.writeText(envFileContent).then(() => ok("Copied to clipboard!"));
   }
 
+  function buildPowerShellSnippet(): string {
+    if (!setupEnvData) return "";
+    const dir = "C:\\Aaditech\\Agent";
+    const envLines = [
+      `SERVER_BASE_URL=${setupEnvData.server_url}`,
+      `AGENT_API_KEY=${setupEnvData.agent_api_key}`,
+      `TENANT_SLUG=${setupEnvData.tenant_slug}`,
+      `AGENT_REPORT_INTERVAL_SECONDS=${setupEnvData.report_interval_seconds}`,
+      `AGENT_UPDATE_CHECK_INTERVAL_SECONDS=${setupEnvData.update_check_interval_seconds}`,
+      "AGENT_UPDATE_ENABLED=1",
+    ].join("\n");
+    return [
+      `# Aaditech UFO Agent — one-shot setup script`,
+      `# Run as Administrator in PowerShell on the target Windows host`,
+      ``,
+      `$AgentDir = "${dir}"`,
+      `New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null`,
+      ``,
+      `# Write the .env file`,
+      `@"`,
+      `${envLines}`,
+      `"@ | Set-Content -Path "$AgentDir\\.env" -Encoding UTF8`,
+      ``,
+      `Write-Host "✅ .env written to $AgentDir\\.env"`,
+      `Write-Host "   Place aaditech-agent.exe in the same folder, then run it."`,
+      ``,
+      `# Optional: register as a Windows Service (requires NSIS installer)`,
+      `# Start-Process -FilePath "$AgentDir\\aaditech-agent-setup.exe" -ArgumentList "/S" -Wait`,
+    ].join("\n");
+  }
+
+  function copyAsPowerShell() {
+    const snippet = buildPowerShellSnippet();
+    void navigator.clipboard.writeText(snippet).then(() => {
+      setPsCopied(true);
+      setTimeout(() => setPsCopied(false), 2500);
+    });
+  }
+
+  function downloadPsScript() {
+    const snippet = buildPowerShellSnippet();
+    const blob = new Blob([snippet], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: "setup-agent.ps1" }).click();
+    URL.revokeObjectURL(url);
+  }
+
   async function testConnection() {
     if (!setupEnvData) return;
     setConnTest({ state: "pending", msg: "" });
@@ -488,20 +537,45 @@ export function ReleasesPage() {
             display: "flex", flexDirection: "column", overflow: "hidden",
           }}>
             {/* Modal header */}
-            <div style={{ padding: "20px 24px 16px", borderBottom: "1px solid #e2e8f0", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <h2 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "#0f172a" }}>Agent Setup Instructions</h2>
-                <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
-                  Copy this <code style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 4 }}>.env</code> file alongside <code style={{ background: "#f1f5f9", padding: "1px 5px", borderRadius: 4 }}>aaditech-agent.exe</code> on each Windows host.
-                </p>
+            <div style={{ padding: "20px 24px 0", borderBottom: "1px solid #e2e8f0" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: "1.15rem", fontWeight: 700, color: "#0f172a" }}>Agent Setup Instructions</h2>
+                  <p style={{ margin: "4px 0 0", fontSize: "0.85rem", color: "#64748b" }}>
+                    Get a Windows host connected in one copy-paste — all values are pre-filled for this server.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowSetupModal(false); setConnTest({ state: "idle", msg: "" }); setSetupTab("env"); }}
+                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.3rem", color: "#64748b", lineHeight: 1, padding: "4px 8px", borderRadius: 6, flexShrink: 0 }}
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowSetupModal(false)}
-                style={{ background: "none", border: "none", cursor: "pointer", fontSize: "1.3rem", color: "#64748b", lineHeight: 1, padding: "4px 8px", borderRadius: 6 }}
-              >
-                ✕
-              </button>
+              {/* Inner tab bar */}
+              <div style={{ display: "flex", gap: 0 }}>
+                {(["env", "powershell"] as const).map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    onClick={() => setSetupTab(t)}
+                    style={{
+                      padding: "8px 18px",
+                      fontSize: "0.85rem",
+                      fontWeight: setupTab === t ? 600 : 400,
+                      color: setupTab === t ? "#0f172a" : "#64748b",
+                      background: "none",
+                      border: "none",
+                      borderBottom: setupTab === t ? "2px solid #0f766e" : "2px solid transparent",
+                      cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {t === "env" ? "📄 .env File" : "⚡ PowerShell Script"}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Modal body */}
@@ -522,56 +596,93 @@ export function ReleasesPage() {
                     </div>
                   )}
 
-                  {/* Step 1 */}
-                  <div style={{ marginBottom: 20 }}>
-                    <p className="section-label" style={{ marginBottom: 8 }}>Step 1 — Download the agent</p>
-                    <p style={{ fontSize: "0.88rem", color: "#475569", margin: 0 }}>
-                      Go to the <strong>All Releases</strong> tab, find the latest release, and click <strong>Download</strong> to get <code>aaditech-agent.exe</code>.
-                      Place it in a permanent folder on the Windows host, e.g. <code>C:\Aaditech\Agent\</code>.
-                    </p>
-                  </div>
+                  {/* ── .env tab ── */}
+                  {setupTab === "env" && (
+                    <>
+                      <div style={{ marginBottom: 20 }}>
+                        <p className="section-label" style={{ marginBottom: 8 }}>Step 1 — Download the agent</p>
+                        <p style={{ fontSize: "0.88rem", color: "#475569", margin: 0 }}>
+                          Go to the <strong>All Releases</strong> tab, find the latest release, and click <strong>Download</strong> to get <code>aaditech-agent.exe</code>.
+                          Place it in a permanent folder on the Windows host, e.g. <code>C:\Aaditech\Agent\</code>.
+                        </p>
+                      </div>
 
-                  {/* Step 2 */}
-                  <div style={{ marginBottom: 12 }}>
-                    <p className="section-label" style={{ marginBottom: 8 }}>Step 2 — Create the .env file</p>
-                    <p style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 10 }}>
-                      Save the file below as <code>.env</code> in the same folder as the .exe. All values are pre-filled for this server.
-                    </p>
-                    <div style={{ position: "relative" }}>
+                      <div style={{ marginBottom: 16 }}>
+                        <p className="section-label" style={{ marginBottom: 8 }}>Step 2 — Save this as <code>.env</code> next to the .exe</p>
+                        <pre style={{
+                          background: "#0f172a", color: "#e2e8f0",
+                          borderRadius: 8, padding: "16px",
+                          fontSize: "0.8rem", lineHeight: 1.7,
+                          overflowX: "auto", margin: 0,
+                          fontFamily: "'Courier New', monospace",
+                          whiteSpace: "pre",
+                        }}>
+                          {envFileContent.split("\n").map((line, i) => (
+                            <div key={i} style={{
+                              color: line.startsWith("#")
+                                ? "#64748b"
+                                : line.includes("=")
+                                  ? line.split("=")[0].includes("API_KEY")
+                                    ? "#fbbf24"
+                                    : "#86efac"
+                                  : "#e2e8f0",
+                            }}>{line || "\u00a0"}</div>
+                          ))}
+                        </pre>
+                      </div>
+
+                      <div>
+                        <p className="section-label" style={{ marginBottom: 8 }}>Step 3 — Run the agent</p>
+                        <p style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 8 }}>
+                          Double-click <code>aaditech-agent.exe</code> or register it as a Windows Service using NSIS installer.
+                          The agent will appear in the fleet within 60 seconds.
+                        </p>
+                        <div className="setup-panel" style={{ fontSize: "0.82rem" }}>
+                          <strong>Optional:</strong> Use the NSIS installer to register as a background service that survives reboots.
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {/* ── PowerShell tab ── */}
+                  {setupTab === "powershell" && (
+                    <>
+                      <p style={{ fontSize: "0.88rem", color: "#475569", margin: "0 0 14px" }}>
+                        Run this script <strong>as Administrator</strong> in PowerShell on each Windows host.
+                        It creates the agent directory, writes the <code>.env</code> file, and prints next steps — no text editor needed.
+                      </p>
+
                       <pre style={{
                         background: "#0f172a", color: "#e2e8f0",
                         borderRadius: 8, padding: "16px",
-                        fontSize: "0.8rem", lineHeight: 1.7,
-                        overflowX: "auto", margin: 0,
+                        fontSize: "0.79rem", lineHeight: 1.75,
+                        overflowX: "auto", margin: "0 0 14px",
                         fontFamily: "'Courier New', monospace",
                         whiteSpace: "pre",
                       }}>
-                        {envFileContent.split("\n").map((line, i) => (
-                          <div key={i} style={{
-                            color: line.startsWith("#")
-                              ? "#64748b"
-                              : line.includes("=")
-                                ? line.split("=")[0].includes("API_KEY") || line.split("=")[0].includes("API_key")
-                                  ? "#fbbf24"
-                                  : "#86efac"
+                        {buildPowerShellSnippet().split("\n").map((line, i) => {
+                          const isComment = line.trimStart().startsWith("#");
+                          const isKeyword = /^\$(AgentDir)/.test(line.trimStart()) || line.trimStart().startsWith("New-Item") || line.trimStart().startsWith("Set-Content") || line.trimStart().startsWith("Write-Host") || line.trimStart().startsWith("Start-Process");
+                          const isHereDoc = line.startsWith('@"') || line.startsWith('"@');
+                          const isApiKey = line.includes("AGENT_API_KEY");
+                          return (
+                            <div key={i} style={{
+                              color: isComment ? "#64748b"
+                                : isApiKey ? "#fbbf24"
+                                : isHereDoc ? "#94a3b8"
+                                : isKeyword ? "#7dd3fc"
+                                : line.includes("=") && !line.startsWith(" ") ? "#86efac"
                                 : "#e2e8f0",
-                          }}>{line || "\u00a0"}</div>
-                        ))}
+                            }}>{line || "\u00a0"}</div>
+                          );
+                        })}
                       </pre>
-                    </div>
-                  </div>
 
-                  {/* Step 3 */}
-                  <div style={{ marginTop: 16 }}>
-                    <p className="section-label" style={{ marginBottom: 8 }}>Step 3 — Run the agent</p>
-                    <p style={{ fontSize: "0.88rem", color: "#475569", marginBottom: 8 }}>
-                      Double-click <code>aaditech-agent.exe</code> or register it as a Windows Service using NSIS installer.
-                      The agent will start sending metrics and appear in the fleet within 60 seconds.
-                    </p>
-                    <div className="setup-panel" style={{ fontSize: "0.82rem" }}>
-                      <strong>Optional Windows Service install:</strong> Use the NSIS installer from the Releases page to register the agent as a background service that survives reboots.
-                    </div>
-                  </div>
+                      <div className="setup-panel" style={{ fontSize: "0.82rem" }}>
+                        <strong>Tip:</strong> Save this script as <code>setup-agent.ps1</code> and use it for all new Windows hosts — the credentials are embedded. Keep it private.
+                      </div>
+                    </>
+                  )}
                 </>
               ) : null}
             </div>
@@ -601,16 +712,16 @@ export function ReleasesPage() {
                 </div>
               )}
 
-              {/* Buttons row */}
-              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              {/* Buttons row — context-aware per tab */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
                 <button
                   type="button"
                   className="button--secondary"
-                  onClick={() => { setShowSetupModal(false); setConnTest({ state: "idle", msg: "" }); }}
+                  onClick={() => { setShowSetupModal(false); setConnTest({ state: "idle", msg: "" }); setSetupTab("env"); }}
                 >
                   Close
                 </button>
-                {setupEnvData && (
+                {setupEnvData && setupTab === "env" && (
                   <>
                     <button
                       type="button"
@@ -624,7 +735,33 @@ export function ReleasesPage() {
                       className="button--secondary"
                       onClick={copyEnvToClipboard}
                     >
-                      Copy to Clipboard
+                      Copy .env
+                    </button>
+                    <button
+                      type="button"
+                      className="button--green"
+                      onClick={() => void testConnection()}
+                      disabled={connTest.state === "pending"}
+                    >
+                      {connTest.state === "pending" ? "Testing…" : "▶ Test Connection"}
+                    </button>
+                  </>
+                )}
+                {setupEnvData && setupTab === "powershell" && (
+                  <>
+                    <button
+                      type="button"
+                      className="button--secondary"
+                      onClick={downloadPsScript}
+                    >
+                      ↓ Download .ps1
+                    </button>
+                    <button
+                      type="button"
+                      className="button--purple"
+                      onClick={copyAsPowerShell}
+                    >
+                      {psCopied ? "✓ Copied!" : "⚡ Copy PowerShell"}
                     </button>
                     <button
                       type="button"
