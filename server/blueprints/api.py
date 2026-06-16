@@ -1777,6 +1777,27 @@ def get_agent_release_guide_api():
 # Auto-versioning helper
 # ---------------------------------------------------------------------------
 
+@api_bp.route('/agent/ping', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def agent_ping():
+    """Lightweight connectivity + credential check for agent config verification.
+
+    Accepts either ``X-API-Key`` (agent key) or a valid JWT token.
+    Returns tenant slug, server time, and auth method used — so operators can
+    confirm a freshly generated ``.env`` file is correct before deploying.
+    """
+    org = getattr(g, 'tenant', None)
+    tenant_slug = org.slug if org else 'default'
+    auth_method = 'api_key' if request.headers.get('X-API-Key') else 'jwt'
+    return jsonify({
+        'status': 'ok',
+        'message': 'Connection successful',
+        'tenant_slug': tenant_slug,
+        'auth_method': auth_method,
+        'server_time': datetime.utcnow().isoformat() + 'Z',
+    }), 200
+
+
 @api_bp.route('/agent/setup-env', methods=['GET'])
 @require_api_key_or_permission('tenant.manage')
 def get_agent_setup_env():

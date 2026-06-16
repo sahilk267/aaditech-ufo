@@ -177,6 +177,7 @@ export function ReleasesPage() {
   const [tab, setTab] = useState<Tab>("build");
   const [feedback, setFeedback] = useState<{ msg: string; ok: boolean } | null>(null);
   const [showSetupModal, setShowSetupModal] = useState(false);
+  const [connTest, setConnTest] = useState<{ state: "idle" | "pending" | "ok" | "error"; msg: string }>({ state: "idle", msg: "" });
 
   // Build tab
   const [githubVersion, setGithubVersion] = useState("");
@@ -409,6 +410,27 @@ export function ReleasesPage() {
     void navigator.clipboard.writeText(envFileContent).then(() => ok("Copied to clipboard!"));
   }
 
+  async function testConnection() {
+    if (!setupEnvData) return;
+    setConnTest({ state: "pending", msg: "" });
+    try {
+      const res = await fetch(`${setupEnvData.server_url}/api/agent/ping`, {
+        headers: { "X-API-Key": setupEnvData.agent_api_key },
+      });
+      const json = await res.json() as { status?: string; message?: string; tenant_slug?: string; server_time?: string };
+      if (res.ok && json.status === "ok") {
+        setConnTest({
+          state: "ok",
+          msg: `Connected — tenant: ${json.tenant_slug ?? "?"}, server time: ${json.server_time ? new Date(json.server_time).toLocaleTimeString() : "?"}`,
+        });
+      } else {
+        setConnTest({ state: "error", msg: json.message ?? `HTTP ${res.status}` });
+      }
+    } catch (e) {
+      setConnTest({ state: "error", msg: e instanceof Error ? e.message : "Network error" });
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   return (
     <ModulePage
@@ -555,31 +577,66 @@ export function ReleasesPage() {
             </div>
 
             {/* Modal footer */}
-            <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0", display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className="button--secondary"
-                onClick={() => setShowSetupModal(false)}
-              >
-                Close
-              </button>
-              {setupEnvData && (
-                <>
-                  <button
-                    type="button"
-                    className="button--secondary"
-                    onClick={downloadEnvFile}
-                  >
-                    ↓ Download .env
-                  </button>
-                  <button
-                    type="button"
-                    onClick={copyEnvToClipboard}
-                  >
-                    Copy to Clipboard
-                  </button>
-                </>
+            <div style={{ padding: "16px 24px", borderTop: "1px solid #e2e8f0" }}>
+              {/* Test connection result */}
+              {connTest.state !== "idle" && (
+                <div style={{
+                  marginBottom: 12,
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  fontSize: "0.85rem",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  background: connTest.state === "ok" ? "#f0fdf4" : connTest.state === "error" ? "#fef2f2" : "#f8fafc",
+                  border: `1px solid ${connTest.state === "ok" ? "#bbf7d0" : connTest.state === "error" ? "#fecaca" : "#e2e8f0"}`,
+                  color: connTest.state === "ok" ? "#166534" : connTest.state === "error" ? "#991b1b" : "#475569",
+                }}>
+                  <span style={{ fontSize: "1rem" }}>
+                    {connTest.state === "pending" ? "⏳" : connTest.state === "ok" ? "✅" : "❌"}
+                  </span>
+                  <span>
+                    {connTest.state === "pending" ? "Testing connection…" : connTest.msg}
+                  </span>
+                </div>
               )}
+
+              {/* Buttons row */}
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  className="button--secondary"
+                  onClick={() => { setShowSetupModal(false); setConnTest({ state: "idle", msg: "" }); }}
+                >
+                  Close
+                </button>
+                {setupEnvData && (
+                  <>
+                    <button
+                      type="button"
+                      className="button--secondary"
+                      onClick={downloadEnvFile}
+                    >
+                      ↓ Download .env
+                    </button>
+                    <button
+                      type="button"
+                      className="button--secondary"
+                      onClick={copyEnvToClipboard}
+                    >
+                      Copy to Clipboard
+                    </button>
+                    <button
+                      type="button"
+                      className="button--green"
+                      onClick={() => void testConnection()}
+                      disabled={connTest.state === "pending"}
+                    >
+                      {connTest.state === "pending" ? "Testing…" : "▶ Test Connection"}
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
