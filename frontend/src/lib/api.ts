@@ -98,6 +98,31 @@ export async function getSystems() {
   return data;
 }
 
+export interface OnboardingAgent {
+  serial_number: string;
+  hostname: string;
+  agent_version: string | null;
+  enrollment_state: string;
+  created_at: string;
+  last_seen_at: string | null;
+  checked_in: boolean;
+}
+
+export interface OnboardingStatus {
+  status: string;
+  window_hours: number;
+  total_agents: number;
+  active_agents: number;
+  new_agents_count: number;
+  checked_in_count: number;
+  new_agents: OnboardingAgent[];
+}
+
+export async function getOnboardingStatus() {
+  const { data } = await apiClient.get<OnboardingStatus>("/api/agent/onboarding-status");
+  return data;
+}
+
 export async function getSystem(systemId: number) {
   const { data } = await apiClient.get<SystemDetailResponse>(`/api/systems/${systemId}`);
   return data;

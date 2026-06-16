@@ -12,7 +12,7 @@ import re
 import time
 from urllib.parse import urlencode, urlparse
 from hashlib import sha1
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 import requests
 from flask import current_app
 from flask import Blueprint, request, jsonify, g, send_file, abort, url_for, Response, stream_with_context, redirect
@@ -1776,6 +1776,53 @@ def get_agent_release_guide_api():
 # ---------------------------------------------------------------------------
 # Auto-versioning helper
 # ---------------------------------------------------------------------------
+
+@api_bp.route('/agent/onboarding-status', methods=['GET'])
+@require_api_key_or_permission('dashboard.view')
+def get_agent_onboarding_status():
+    """Return new-agent onboarding summary for the last 24 hours.
+
+    ``new_agents`` — agents whose ``created_at`` falls in the last 24 h.
+    ``checked_in``  — subset that also has ``last_seen_at`` within 24 h.
+    ``total_agents`` — all agents in the tenant (fleet size).
+    ``active_agents`` — seen in the last 5 minutes (heartbeat pulse).
+    """
+    org = getattr(g, 'tenant', None)
+    if org is None:
+        return jsonify({'error': 'Tenant not found'}), 404
+
+    cutoff_24h = datetime.utcnow() - timedelta(hours=24)
+    cutoff_5m  = datetime.utcnow() - timedelta(minutes=5)
+
+    from server.models import Agent as AgentModel
+    all_agents = AgentModel.query.filter_by(organization_id=org.id).all()
+    total = len(all_agents)
+    active = sum(1 for a in all_agents if a.last_seen_at and a.last_seen_at >= cutoff_5m)
+
+    new_agents = [a for a in all_agents if a.created_at and a.created_at >= cutoff_24h]
+    checked_in = [a for a in new_agents if a.last_seen_at and a.last_seen_at >= cutoff_24h]
+
+    return jsonify({
+        'status': 'success',
+        'window_hours': 24,
+        'total_agents': total,
+        'active_agents': active,
+        'new_agents_count': len(new_agents),
+        'checked_in_count': len(checked_in),
+        'new_agents': [
+            {
+                'serial_number': a.serial_number,
+                'hostname': a.hostname,
+                'agent_version': a.agent_version,
+                'enrollment_state': a.enrollment_state,
+                'created_at': a.created_at.isoformat() if a.created_at else None,
+                'last_seen_at': a.last_seen_at.isoformat() if a.last_seen_at else None,
+                'checked_in': bool(a.last_seen_at and a.last_seen_at >= cutoff_24h),
+            }
+            for a in new_agents
+        ],
+    }), 200
+
 
 @api_bp.route('/agent/ping', methods=['GET'])
 @require_api_key_or_permission('dashboard.view')

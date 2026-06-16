@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ModulePage } from "../../components/common/ModulePage";
 import { ActionPanel } from "../../components/common/ActionPanel";
 import { StatCard } from "../../components/common/StatCard";
-import { getApiStatus, getDashboardStatus, getSystems, listRollouts } from "../../lib/api";
+import { getApiStatus, getDashboardStatus, getOnboardingStatus, getSystems, listRollouts } from "../../lib/api";
+import type { OnboardingAgent } from "../../lib/api";
 import { queryKeys } from "../../lib/queryKeys";
 
 const SystemHealthChart = lazy(() =>
@@ -40,6 +41,111 @@ interface ActiveRollout {
   notes: string;
   started_at: string | null;
   batches?: RolloutBatch[];
+}
+
+// ── Onboarding Status Widget ─────────────────────────────────────────────────
+function OnboardingStatusWidget() {
+  const q = useQuery({
+    queryKey: ["agent", "onboarding-status"],
+    queryFn: getOnboardingStatus,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+  });
+
+  if (q.isPending) {
+    return (
+      <div className="module-card" style={{ marginTop: 12 }}>
+        <p className="section-label">Fleet Onboarding — Last 24 h</p>
+        <div style={{ color: "#94a3b8", fontSize: "0.85rem" }}>Loading…</div>
+      </div>
+    );
+  }
+  if (q.isError || !q.data) return null;
+
+  const d = q.data;
+  const allCheckedIn = d.new_agents_count > 0 && d.checked_in_count === d.new_agents_count;
+  const someCheckedIn = d.checked_in_count > 0 && !allCheckedIn;
+
+  return (
+    <div className="module-card" style={{ marginTop: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <p className="section-label" style={{ marginBottom: 2 }}>Fleet Onboarding — Last 24 h</p>
+          <h3 style={{ margin: 0, fontSize: "1rem", fontWeight: 600, color: "#0f172a" }}>
+            {d.new_agents_count === 0
+              ? "No new agents"
+              : `${d.new_agents_count} new agent${d.new_agents_count !== 1 ? "s" : ""} enrolled`}
+          </h3>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="stat-pill" style={{ background: "#f0fdf4", color: "#166534", border: "1px solid #bbf7d0" }}>
+            {d.active_agents} active now
+          </span>
+          <span className="stat-pill" style={{ background: "#f8fafc", color: "#475569", border: "1px solid #e2e8f0" }}>
+            {d.total_agents} total
+          </span>
+        </div>
+      </div>
+
+      {d.new_agents_count === 0 ? (
+        <div style={{ color: "#64748b", fontSize: "0.85rem" }}>
+          Fleet is stable — no new machines enrolled in the last 24 hours.
+          Use <strong>Releases → Setup Instructions</strong> to onboard a new host.
+        </div>
+      ) : (
+        <>
+          {/* Check-in progress bar */}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.8rem", color: "#64748b", marginBottom: 4 }}>
+              <span>Checked in ({d.checked_in_count} / {d.new_agents_count})</span>
+              <span>{d.new_agents_count > 0 ? Math.round((d.checked_in_count / d.new_agents_count) * 100) : 0}%</span>
+            </div>
+            <div className="progress-track">
+              <div
+                className={`progress-fill${allCheckedIn ? " progress-fill--done" : someCheckedIn ? "" : " progress-fill--warn"}`}
+                style={{ width: `${d.new_agents_count > 0 ? (d.checked_in_count / d.new_agents_count) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* New agent rows */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {d.new_agents.map((a: OnboardingAgent) => (
+              <div
+                key={a.serial_number}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "8px 12px", borderRadius: 8,
+                  background: a.checked_in ? "#f0fdf4" : "#fffbeb",
+                  border: `1px solid ${a.checked_in ? "#bbf7d0" : "#fde68a"}`,
+                  fontSize: "0.83rem",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: "1rem" }}>{a.checked_in ? "✅" : "⏳"}</span>
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#0f172a" }}>{a.hostname}</div>
+                    <div style={{ color: "#64748b", fontSize: "0.78rem" }}>
+                      {a.serial_number}
+                      {a.agent_version ? ` · v${a.agent_version}` : ""}
+                    </div>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontWeight: 500, color: a.checked_in ? "#166534" : "#92400e" }}>
+                    {a.checked_in ? "Checked in" : "Awaiting heartbeat"}
+                  </div>
+                  <div style={{ color: "#94a3b8", fontSize: "0.75rem" }}>
+                    enrolled {new Date(a.created_at).toLocaleTimeString()}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
 }
 
 function RolloutProgressWidget() {
@@ -342,6 +448,9 @@ export function DashboardPage() {
           status="neutral"
         />
       </div>
+
+      {/* Fleet onboarding status widget */}
+      <OnboardingStatusWidget />
 
       {/* Live rollout progress widget */}
       <RolloutProgressWidget />

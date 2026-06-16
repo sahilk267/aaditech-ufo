@@ -309,3 +309,31 @@ All items from the "COMPLETE DIAGNOSTIC REPORT" have been implemented end-to-end
   - `getSupportabilityMetrics()` → `GET /api/supportability/metrics`
   - `updateLogSource(sourceId, payload)` → `PATCH /api/logs/sources/<id>`
   - `getLogEntries` updated to accept both `sourceId` and `source_id` param aliases
+  - `getAgentSetupEnv()` → `GET /api/agent/setup-env`
+  - `getOnboardingStatus()` → `GET /api/agent/onboarding-status`
+
+## Agent Onboarding & Setup System (2026-06-16)
+
+### Setup Instructions Modal (`/app/releases` → "Setup Instructions" button)
+
+Operators can onboard a new Windows machine in one copy-paste without leaving the platform.
+
+**Backend endpoints added:**
+- `GET /api/agent/setup-env` — returns `tenant_slug`, `server_url` (auto-detected from request headers), `agent_api_key`, `is_default_key` flag, `report_interval_seconds`, `update_check_interval_seconds`. Requires `tenant.manage`.
+- `GET /api/agent/ping` — lightweight credential + connectivity check. Accepts `X-API-Key` (agent key) or JWT. Returns `status`, `tenant_slug`, `auth_method`, `server_time`. Used for "Test Connection" from the browser.
+- `GET /api/agent/onboarding-status` — returns new agents (by `created_at` in last 24 h), check-in status (`last_seen_at` in 24 h), total fleet size, and agents active in last 5 minutes.
+
+**Setup Instructions Modal features (2-tab design):**
+- **📄 .env File tab** — 3-step wizard (Download agent → Save .env → Run). Syntax-highlighted preview (comments grey, keys green, API_KEY amber). Buttons: Download .env, Copy .env, Test Connection.
+- **⚡ PowerShell Script tab** — One-shot `.ps1` script that creates `C:\Aaditech\Agent\`, writes the `.env`, and prints next steps. No text editor needed. Buttons: Download .ps1, Copy PowerShell (turns ✓ Copied! for 2.5 s), Test Connection.
+- **Test Connection button** — `fetch()` to `{server_url}/api/agent/ping` with `X-API-Key` header. Shows ✅/❌ result inline with tenant slug + server time.
+- **Default key warning** — yellow panel if `AGENT_API_KEY` is still the default value.
+- Modal resets all state (test result, active tab) on close.
+
+### Fleet Onboarding Status Widget (`DashboardPage`)
+
+`OnboardingStatusWidget` component added to `DashboardPage.tsx` (above the Rollout Progress widget):
+- Queries `GET /api/agent/onboarding-status` every 60 s
+- Shows new agent count, checked-in progress bar (green/amber/done), and per-agent rows with ✅/⏳ status, hostname, serial, version, enrollment time
+- "0 new agents" state: friendly message linking to Releases → Setup Instructions
+- Fleet pills: "N active now" (last 5 min) + "N total"
