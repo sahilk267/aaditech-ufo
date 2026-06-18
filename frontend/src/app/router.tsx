@@ -36,6 +36,7 @@ const BackupPage = lazy(() => import("../pages/backup/BackupPage").then((m) => (
 const BackupDrillPage = lazy(() => import("../pages/backup-drill/BackupDrillPage").then((m) => ({ default: m.BackupDrillPage })));
 const AuditPage = lazy(() => import("../pages/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
 const AgentEnginePage = lazy(() => import("../pages/agent-engine/AgentEnginePage").then((m) => ({ default: m.AgentEnginePage })));
+const AgentsFleetPage = lazy(() => import("../pages/agents/AgentsFleetPage").then((m) => ({ default: m.AgentsFleetPage })));
 
 function lazyElement(element: ReactNode) {
   return (
@@ -161,6 +162,10 @@ const appChildren: RouteObject[] = [
   {
     path: ROUTES.AGENT_ENGINE.slice(1),
     element: guardedElement(ROUTES.AGENT_ENGINE, <AgentEnginePage />),
+  },
+  {
+    path: ROUTES.AGENTS_FLEET.slice(1),
+    element: guardedElement(ROUTES.AGENTS_FLEET, <AgentsFleetPage />),
   },
   { index: true, element: <Navigate to={ROUTES.DASHBOARD} replace /> },
 ];

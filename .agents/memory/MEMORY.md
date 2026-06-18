@@ -1,0 +1,6 @@
+- [Login token key name](login-token-key.md) — auth login response uses `access_token` not `access`; always index `tokens.access_token`.
+- [Missing pages directory pattern](missing-pages-dir.md) — pages referenced in router.tsx may not have a directory; always verify with `ls frontend/src/pages/` before adding a route.
+- [Fleet endpoint auth pattern](fleet-auth-pattern.md) — `GET /api/agents` uses `require_api_key_or_permission`; `PATCH /api/agents/<id>/trust` uses `require_permission`; consistent with other tenant-scoped endpoints.
+- [Password reset token stored as SHA-256 hash](password-reset-token-storage.md) — raw token is emailed, SHA-256 hash stored in DB to prevent token-theft from DB dumps.
+- [AgentsFleetPage import path](agents-fleet-import-path.md) — `ModulePage` lives at `components/common/ModulePage`, not `components/layout/ModulePage`.
+- [SMTP config keys in tasks.py](smtp-config-keys.md) — `smtp_user`, `smtp_password`, `smtp_tls`, `smtp_ssl`, `webhook_secret` must be passed explicitly from `app.config` in `dispatch_alert_notifications()`; they were missing before this session.

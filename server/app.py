@@ -180,6 +180,31 @@ def _register_healthcheck(app: Flask) -> None:
             return jsonify({"status": "unhealthy", "database": "disconnected"}), 503
 
 
+def _warn_insecure_defaults(app: Flask) -> None:
+    """Emit startup warnings for critical insecure defaults."""
+    cfg = app.config
+    issues = []
+
+    if cfg.get('SECRET_KEY', '') in {'dev-key-change-in-production', ''}:
+        issues.append("SECRET_KEY is using the insecure default — set a strong random value in production.")
+
+    if cfg.get('AGENT_API_KEY', '') in {'default-key-change-this', 'default-api-key-change-me', ''}:
+        issues.append("AGENT_API_KEY is the default placeholder — all agents share this key. Change it before deployment.")
+
+    if not cfg.get('TENANT_SECRET_ENCRYPTION_KEY', '').strip():
+        issues.append("TENANT_SECRET_ENCRYPTION_KEY is unset — tenant secrets will use a weak derived key. Set a 32-byte random value.")
+
+    if cfg.get('JWT_SECRET_KEY', '') in {'dev-key-change-in-production', ''}:
+        issues.append("JWT_SECRET_KEY is using the insecure default — JWTs can be forged. Set a strong secret.")
+
+    if issues:
+        logger.warning("=" * 60)
+        logger.warning("SECURITY WARNINGS — address before production deployment:")
+        for i, issue in enumerate(issues, 1):
+            logger.warning("  %d. %s", i, issue)
+        logger.warning("=" * 60)
+
+
 def create_app(config_object=None) -> Flask:
     """Create and configure the Flask application."""
     app = Flask(__name__)
@@ -213,6 +238,7 @@ def create_app(config_object=None) -> Flask:
     _register_template_helpers(app)
     _register_error_handlers(app)
     _register_healthcheck(app)
+    _warn_insecure_defaults(app)
 
     return app
 

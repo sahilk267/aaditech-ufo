@@ -1125,3 +1125,24 @@ export async function getAgentEngineTools() {
   const { data } = await apiClient.get("/api/agent_engine/tools");
   return data;
 }
+
+
+export async function getAgentFleet(filters?: { enrollment_state?: string }) {
+  const { data } = await apiClient.get("/api/agents", { params: filters });
+  return data;
+}
+
+export async function updateAgentTrust(agentId: number, enrollmentState: string) {
+  const { data } = await apiClient.patch(`/api/agents/${agentId}/trust`, { enrollment_state: enrollmentState });
+  return data;
+}
+
+export async function forgotPassword(payload: { email: string; tenant_slug: string }) {
+  const { data } = await apiClient.post("/api/auth/forgot-password", payload);
+  return data;
+}
+
+export async function resetPassword(payload: { token: string; new_password: string; tenant_slug: string }) {
+  const { data } = await apiClient.post("/api/auth/reset-password", payload);
+  return data;
+}

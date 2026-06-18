@@ -72,6 +72,8 @@ class User(db.Model):
     locked_until = db.Column(db.DateTime, nullable=True, index=True)
     last_login_at = db.Column(db.DateTime, nullable=True, index=True)
     auth_token_version = db.Column(db.Integer, nullable=False, default=1)
+    password_reset_token = db.Column(db.String(255), nullable=True, index=True)
+    password_reset_expires_at = db.Column(db.DateTime, nullable=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 

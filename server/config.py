@@ -63,8 +63,9 @@ class Config:
     TENANT_HEADER = os.getenv('TENANT_HEADER', 'X-Tenant-Slug')
     DEFAULT_TENANT_SLUG = os.getenv('DEFAULT_TENANT_SLUG', 'default')
     
-    # Agent configuration
+    # Agent configuration — AGENT_API_KEY must be changed from default before deployment
     AGENT_API_KEY = os.getenv('AGENT_API_KEY', 'default-key-change-this')
+    AGENT_API_KEY_IS_DEFAULT = (os.getenv('AGENT_API_KEY', 'default-key-change-this') == 'default-key-change-this')
     AGENT_ENROLLMENT_TOKEN_TTL_HOURS = int(os.getenv('AGENT_ENROLLMENT_TOKEN_TTL_HOURS', '24'))
     AGENT_CREDENTIAL_TTL_DAYS = int(os.getenv('AGENT_CREDENTIAL_TTL_DAYS', '365'))
 
@@ -85,6 +86,12 @@ class Config:
     ALERT_EMAIL_TO = os.getenv('ALERT_EMAIL_TO', '')
     ALERT_SMTP_HOST = os.getenv('ALERT_SMTP_HOST', 'localhost')
     ALERT_SMTP_PORT = int(os.getenv('ALERT_SMTP_PORT', '25'))
+    ALERT_SMTP_USER = os.getenv('ALERT_SMTP_USER', '')
+    ALERT_SMTP_PASSWORD = os.getenv('ALERT_SMTP_PASSWORD', '')
+    ALERT_SMTP_TLS = os.getenv('ALERT_SMTP_TLS', 'False').lower() == 'true'
+    ALERT_SMTP_SSL = os.getenv('ALERT_SMTP_SSL', 'False').lower() == 'true'
+    ALERT_WEBHOOK_SECRET = os.getenv('ALERT_WEBHOOK_SECRET', '')
+    PASSWORD_RESET_TOKEN_EXPIRES_MINUTES = int(os.getenv('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', '60'))
     ALERT_WEBHOOK_ENABLED = os.getenv('ALERT_WEBHOOK_ENABLED', 'False').lower() == 'true'
     ALERT_WEBHOOK_URL = os.getenv('ALERT_WEBHOOK_URL', '')
     ALERT_NOTIFICATION_EMAIL_RETRIES = int(os.getenv('ALERT_NOTIFICATION_EMAIL_RETRIES', '2'))
@@ -215,6 +222,7 @@ class Config:
 
     # Backup configuration
     BACKUP_DIR = os.getenv('BACKUP_DIR', 'backups/')
+    BACKUP_RETENTION_DAYS = int(os.getenv('BACKUP_RETENTION_DAYS', '30'))
     
     # Frontend SPA migration — Wave 1 cutover flag
     # Controls whether legacy routes are redirected to SPA or remain active as fallbacks.

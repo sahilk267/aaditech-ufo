@@ -56,6 +56,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Tenants", route: ROUTES.TENANTS, permission: ROUTE_PERMISSIONS[ROUTES.TENANTS] },
       { label: "Users", route: ROUTES.USERS, permission: ROUTE_PERMISSIONS[ROUTES.USERS] },
+      { label: "Fleet Management", route: ROUTES.AGENTS_FLEET, permission: ROUTE_PERMISSIONS[ROUTES.AGENTS_FLEET] },
       { label: "Agent Enrollment", route: ROUTES.AGENT_ENROLLMENT, permission: ROUTE_PERMISSIONS[ROUTES.AGENT_ENROLLMENT] },
       { label: "Tenant Settings", route: ROUTES.TENANT_SETTINGS, permission: ROUTE_PERMISSIONS[ROUTES.TENANT_SETTINGS] },
       { label: "Tenant Controls", route: ROUTES.TENANT_CONTROLS, permission: ROUTE_PERMISSIONS[ROUTES.TENANT_CONTROLS] },

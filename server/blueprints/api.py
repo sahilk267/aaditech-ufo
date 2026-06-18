@@ -4,11 +4,13 @@ REST API endpoints for agent data submission and system management
 """
 
 import ast
+import hashlib
 import json
 import logging
 import os
 import platform
 import re
+import secrets
 import time
 from urllib.parse import urlencode, urlparse
 from hashlib import sha1
@@ -2039,6 +2041,110 @@ def rollback_rollout(rollout_id):
         return jsonify({'error': str(exc)}), 400
     log_audit_event('agent.rollout.rolled_back', outcome='success', rollout_id=rollout_id)
     return jsonify({'status': 'success', 'rollout': rollout.to_dict()}), 200
+
+
+# ---------------------------------------------------------------------------
+# Fleet Management — list agents, approve/revoke trust
+# ---------------------------------------------------------------------------
+
+@api_bp.route('/agents', methods=['GET'])
+@require_api_key_or_permission('tenant.manage')
+def list_agents_fleet():
+    """List all agents enrolled for this tenant with their current state.
+
+    Query params:
+      enrollment_state — filter by state (pending / enrolled / trusted / revoked)
+      search           — substring match on hostname or serial_number
+      limit            — max results (default 200)
+    """
+    org_id = g.tenant.id
+    state_filter = (request.args.get('enrollment_state') or '').strip()
+    search = (request.args.get('search') or '').strip().lower()
+    limit = min(int(request.args.get('limit', 200) or 200), 1000)
+
+    q = Agent.query.filter_by(organization_id=org_id)
+    if state_filter:
+        q = q.filter(Agent.enrollment_state == state_filter)
+    agents = q.order_by(Agent.created_at.desc()).limit(limit).all()
+
+    if search:
+        agents = [
+            a for a in agents
+            if search in (a.hostname or '').lower() or search in (a.serial_number or '').lower()
+        ]
+
+    now = datetime.utcnow()
+    cutoff_5m = now.replace(second=0, microsecond=0)
+    from datetime import timedelta as _td
+    cutoff_5m = now - _td(minutes=5)
+
+    agent_list = []
+    for a in agents:
+        d = a.to_dict() if hasattr(a, 'to_dict') else {}
+        if not d:
+            d = {
+                'id': a.id,
+                'hostname': a.hostname,
+                'serial_number': a.serial_number,
+                'platform': a.platform,
+                'agent_version': a.agent_version,
+                'enrollment_state': a.enrollment_state,
+                'last_seen_at': a.last_seen_at.isoformat() if a.last_seen_at else None,
+                'last_ip': a.last_ip,
+                'created_at': a.created_at.isoformat() if a.created_at else None,
+            }
+        d['is_active'] = bool(a.last_seen_at and a.last_seen_at >= cutoff_5m)
+        agent_list.append(d)
+
+    return jsonify({
+        'status': 'success',
+        'count': len(agent_list),
+        'agents': agent_list,
+    }), 200
+
+
+@api_bp.route('/agents/<int:agent_id>/trust', methods=['PATCH'])
+@require_permission('tenant.manage')
+def update_agent_trust(agent_id):
+    """Approve or revoke an agent's trust state.
+
+    Body JSON:
+      enrollment_state — one of: trusted / enrolled / pending / revoked
+    """
+    payload = request.get_json(silent=True) or {}
+    new_state = (payload.get('enrollment_state') or '').strip().lower()
+    VALID_STATES = {'trusted', 'enrolled', 'pending', 'revoked'}
+
+    if new_state not in VALID_STATES:
+        return jsonify({
+            'error': 'Validation failed',
+            'details': {'enrollment_state': [f'Must be one of: {", ".join(sorted(VALID_STATES))}']},
+        }), 400
+
+    agent = Agent.query.filter_by(id=agent_id, organization_id=g.tenant.id).first()
+    if not agent:
+        return jsonify({'error': 'Not found', 'message': 'Agent not found'}), 404
+
+    old_state = agent.enrollment_state
+    agent.enrollment_state = new_state
+    db.session.commit()
+
+    log_audit_event(
+        'agent.trust.update',
+        outcome='success',
+        agent_id=agent_id,
+        serial_number=agent.serial_number,
+        old_state=old_state,
+        new_state=new_state,
+    )
+
+    return jsonify({
+        'status': 'success',
+        'agent_id': agent_id,
+        'serial_number': agent.serial_number,
+        'enrollment_state': new_state,
+        'message': f'Agent state updated: {old_state} → {new_state}',
+    }), 200
 
 
 # ---------------------------------------------------------------------------
@@ -4112,6 +4218,142 @@ def change_my_password_api():
         'status': 'success',
         'message': 'Password changed; existing sessions revoked.',
         'tokens': tokens,
+    }), 200
+
+
+@api_bp.route('/auth/forgot-password', methods=['POST'])
+@limiter.limit("5 per hour")
+def forgot_password():
+    """Initiate a password-reset flow.
+
+    Request JSON:
+      email       — user's email address
+      tenant_slug — tenant identifier
+
+    Response (always 200 to prevent user enumeration):
+      status        — "sent" if email dispatched, "no_smtp" if SMTP not configured
+      dev_reset_url — ONLY present when FLASK_ENV != "production" (for testing)
+    """
+    payload = request.get_json(silent=True) or {}
+    email = (payload.get('email') or '').strip().lower()
+    tenant_slug = (payload.get('tenant_slug') or current_app.config.get('DEFAULT_TENANT_SLUG', 'default')).strip()
+
+    if not email:
+        return jsonify({'error': 'Validation failed', 'details': {'email': ['Required']}}), 400
+
+    org = Organization.query.filter_by(slug=tenant_slug, is_active=True).first()
+    user = None
+    if org:
+        user = User.query.filter_by(organization_id=org.id, email=email, is_active=True).first()
+
+    if user:
+        raw_token = secrets.token_urlsafe(32)
+        token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+        expires_at = datetime.utcnow() + timedelta(minutes=current_app.config.get('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', 60))
+
+        user.password_reset_token = token_hash
+        user.password_reset_expires_at = expires_at
+        db.session.commit()
+
+        log_audit_event('auth.forgot_password', outcome='success', user_id=user.id, user_email=email)
+
+        smtp_host = current_app.config.get('ALERT_SMTP_HOST', 'localhost')
+        smtp_configured = smtp_host not in ('', 'localhost')
+        email_sent = False
+
+        if smtp_configured or current_app.config.get('ALERT_SMTP_USER', ''):
+            from ..services.notification_service import NotificationService
+            server_url = request.host_url.rstrip('/')
+            reset_url = f"{server_url}/app/reset-password?token={raw_token}&tenant={tenant_slug}"
+            body = (
+                f"Hello {user.full_name},\n\n"
+                f"A password reset was requested for your Aaditech UFO account.\n\n"
+                f"Click the link below to reset your password (expires in {current_app.config.get('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', 60)} minutes):\n\n"
+                f"  {reset_url}\n\n"
+                f"If you did not request this, ignore this email — your password will not change.\n\n"
+                f"— Aaditech UFO Security"
+            )
+            smtp_cfg = {
+                'smtp_host': smtp_host,
+                'smtp_port': int(current_app.config.get('ALERT_SMTP_PORT', 25)),
+                'smtp_user': current_app.config.get('ALERT_SMTP_USER', ''),
+                'smtp_password': current_app.config.get('ALERT_SMTP_PASSWORD', ''),
+                'smtp_tls': current_app.config.get('ALERT_SMTP_TLS', False),
+                'smtp_ssl': current_app.config.get('ALERT_SMTP_SSL', False),
+                'email_from': current_app.config.get('ALERT_EMAIL_FROM', 'noreply@aaditech.local'),
+            }
+            email_sent = NotificationService.send_transactional_email(email, "Password Reset — Aaditech UFO", body, smtp_cfg)
+
+        response: dict = {'status': 'sent' if email_sent else 'no_smtp',
+                          'message': 'If an account exists with that email, a reset link has been sent.'}
+
+        if current_app.config.get('FLASK_ENV', 'development') != 'production':
+            server_url = request.host_url.rstrip('/')
+            response['dev_reset_url'] = f"{server_url}/app/reset-password?token={raw_token}&tenant={tenant_slug}"
+            response['dev_note'] = 'dev_reset_url is only included in non-production environments.'
+    else:
+        log_audit_event('auth.forgot_password', outcome='no_match', user_email=email, tenant_slug=tenant_slug)
+        response = {'status': 'sent', 'message': 'If an account exists with that email, a reset link has been sent.'}
+
+    return jsonify(response), 200
+
+
+@api_bp.route('/auth/reset-password', methods=['POST'])
+@limiter.limit("10 per hour")
+def reset_password():
+    """Complete a password reset using a reset token.
+
+    Request JSON:
+      token        — raw reset token from the email link
+      new_password — the new password to set
+      tenant_slug  — tenant identifier (optional, defaults to DEFAULT_TENANT_SLUG)
+    """
+    payload = request.get_json(silent=True) or {}
+    raw_token = (payload.get('token') or '').strip()
+    new_password = (payload.get('new_password') or '').strip()
+    tenant_slug = (payload.get('tenant_slug') or current_app.config.get('DEFAULT_TENANT_SLUG', 'default')).strip()
+
+    errors = {}
+    if not raw_token:
+        errors['token'] = ['Required']
+    if not new_password:
+        errors['new_password'] = ['Required']
+    if errors:
+        return jsonify({'error': 'Validation failed', 'details': errors}), 400
+
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+
+    org = Organization.query.filter_by(slug=tenant_slug, is_active=True).first()
+    user = None
+    if org:
+        user = User.query.filter_by(
+            organization_id=org.id,
+            password_reset_token=token_hash,
+            is_active=True,
+        ).first()
+
+    if not user or not user.password_reset_expires_at or user.password_reset_expires_at < datetime.utcnow():
+        log_audit_event('auth.reset_password', outcome='failure', reason='invalid_or_expired_token')
+        return jsonify({'error': 'Unauthorized', 'message': 'Reset token is invalid or has expired.'}), 401
+
+    policy = get_effective_auth_policy(user.organization_id)
+    password_errors = validate_password_against_policy(new_password, policy)
+    if password_errors:
+        return jsonify({'error': 'Validation failed', 'details': {'new_password': password_errors}}), 400
+
+    user.password_hash = hash_password(new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    user.failed_login_attempts = 0
+    user.locked_until = None
+    user.auth_token_version = int(user.auth_token_version or 1) + 1
+    db.session.commit()
+
+    log_audit_event('auth.reset_password', outcome='success', user_id=user.id, user_email=user.email)
+
+    return jsonify({
+        'status': 'success',
+        'message': 'Password reset successful. Please log in with your new password.',
     }), 200
 
 

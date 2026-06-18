@@ -27,4 +27,5 @@ export const ROUTES = {
   BACKUP_DRILL: "/backup-drill",
   AUDIT: "/audit",
   AGENT_ENGINE: "/agent-engine",
+  AGENTS_FLEET: "/agents",
 } as const;
