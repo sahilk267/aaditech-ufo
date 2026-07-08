@@ -30,13 +30,17 @@ Page instfiles
 UninstPage uninstConfirm
 UninstPage instfiles
 
+; ── Install ───────────────────────────────────────────────────────────────────
 Section "Install"
   SetOutPath "$INSTDIR"
+
+  ; Stop any running agent process before installing (ignore errors)
+  ExecWait 'taskkill /F /IM aaditech-agent.exe' $0
 
   ; Copy the prebuilt agent binary.
   File "/oname=aaditech-agent.exe" "${AGENT_EXE_PATH}"
 
-  ; Stamp version + installation timestamp into the install dir.
+  ; Stamp version into the install dir.
   FileOpen $0 "$INSTDIR\version.txt" w
   FileWrite $0 "${AGENT_VERSION}$\r$\n"
   FileClose $0
@@ -63,14 +67,24 @@ Section "Install"
   CreateShortcut  "$SMPROGRAMS\AADITECH UFO\Agent.lnk" "$INSTDIR\aaditech-agent.exe"
 SectionEnd
 
+; ── Uninstall ─────────────────────────────────────────────────────────────────
 Section "Uninstall"
-  Delete "$INSTDIR\aaditech-agent.exe"
-  Delete "$INSTDIR\version.txt"
-  Delete "$INSTDIR\Uninstall.exe"
-  RMDir  "$INSTDIR"
+  ; 1. Stop the agent process so files aren't locked
+  ExecWait 'taskkill /F /IM aaditech-agent.exe' $0
 
+  ; 2. Remove ALL files in the install directory, including:
+  ;    - aaditech-agent.exe (the binary)
+  ;    - version.txt
+  ;    - .env (config written by onboarding script)
+  ;    - agent_data.db, agent_outbox.db (SQLite runtime databases)
+  ;    - *.log (any log files written by the agent)
+  ;    - Uninstall.exe itself
+  RMDir /r "$INSTDIR"
+
+  ; 3. Remove start menu shortcuts
   Delete "$SMPROGRAMS\AADITECH UFO\Agent.lnk"
   RMDir  "$SMPROGRAMS\AADITECH UFO"
 
+  ; 4. Remove registry uninstall entry
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\AaditechUfoAgent"
 SectionEnd
