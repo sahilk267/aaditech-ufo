@@ -265,6 +265,11 @@ export async function sendUserPasswordReset(userId: number) {
   return data;
 }
 
+export async function getUserAuditActivity(userId: number, limit = 20) {
+  const { data } = await apiClient.get(`/api/users/${userId}/audit-activity`, { params: { limit } });
+  return data;
+}
+
 export async function revokeUserSessions(userId: number) {
   const { data } = await apiClient.post(`/api/users/${userId}/revoke-sessions`);
   return data;

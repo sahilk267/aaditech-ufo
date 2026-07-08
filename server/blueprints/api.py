@@ -1438,6 +1438,9 @@ def _serialize_user(user: User) -> dict:
         ],
         'created_at': user.created_at.isoformat() if user.created_at else None,
         'updated_at': user.updated_at.isoformat() if user.updated_at else None,
+        'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
+        'failed_login_attempts': user.failed_login_attempts,
+        'locked_until': user.locked_until.isoformat() if getattr(user, 'locked_until', None) else None,
     }
 
 
@@ -4462,6 +4465,82 @@ def logout_user():
     revoke_token(g.jwt_payload)
     log_audit_event('auth.logout', outcome='success', user_id=g.current_user.id, user_email=g.current_user.email)
     return jsonify({'status': 'success', 'message': 'Logged out successfully'}), 200
+
+
+@api_bp.route('/users/<int:user_id>/audit-activity', methods=['GET'])
+@require_permission('tenant.manage')
+def get_user_audit_activity(user_id):
+    """Return recent audit activity for a tenant-scoped user.
+
+    Query params:
+      limit — max events to return (default 20, max 100)
+
+    Response:
+      user_id, last_login_at, failed_login_attempts, locked_until,
+      events: list of recent audit events for this user
+    """
+    user = User.query.filter_by(id=user_id, organization_id=g.tenant.id, is_active=True).first()
+    if not user:
+        return jsonify({'error': 'Not found', 'message': 'User not found in this tenant.'}), 404
+
+    limit = min(int(request.args.get('limit', 20) or 20), 100)
+
+    SECURITY_ACTIONS = {
+        'auth.login', 'auth.login.failed', 'auth.login.locked',
+        'auth.logout', 'auth.mfa.verify', 'auth.mfa.verify.failed',
+        'auth.sessions.revoke', 'auth.change_password',
+        'auth.forgot_password', 'auth.reset_password',
+        'admin.send_password_reset',
+    }
+
+    events = (
+        AuditEvent.query
+        .filter(
+            AuditEvent.user_id == user_id,
+            AuditEvent.tenant_id == g.tenant.id,
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # Also pull events that reference this user but were made by an admin
+    # (e.g. admin.send_password_reset stores target_user_id in event_metadata)
+    admin_events = (
+        AuditEvent.query
+        .filter(
+            AuditEvent.tenant_id == g.tenant.id,
+            AuditEvent.action.in_(['admin.send_password_reset', 'auth.sessions.revoke', 'agent.trust.update']),
+            AuditEvent.event_metadata.op('->>')('target_user_id').cast(db.String) == str(user_id),
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    seen_ids = {e.id for e in events}
+    all_events = list(events) + [e for e in admin_events if e.id not in seen_ids]
+    all_events.sort(key=lambda e: e.created_at, reverse=True)
+    all_events = all_events[:limit]
+
+    def _serialize_event(e: AuditEvent) -> dict:
+        return {
+            'id': e.id,
+            'created_at': e.created_at.isoformat() if e.created_at else None,
+            'action': e.action,
+            'outcome': e.outcome,
+            'remote_addr': e.remote_addr,
+            'metadata': e.event_metadata or {},
+        }
+
+    return jsonify({
+        'status': 'success',
+        'user_id': user_id,
+        'last_login_at': user.last_login_at.isoformat() if user.last_login_at else None,
+        'failed_login_attempts': user.failed_login_attempts,
+        'locked_until': user.locked_until.isoformat() if getattr(user, 'locked_until', None) else None,
+        'events': [_serialize_event(e) for e in all_events],
+    }), 200
 
 
 @api_bp.route('/users/<int:user_id>/revoke-sessions', methods=['POST'])
