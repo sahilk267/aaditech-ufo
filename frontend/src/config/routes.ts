@@ -28,4 +28,5 @@ export const ROUTES = {
   AUDIT: "/audit",
   AGENT_ENGINE: "/agent-engine",
   AGENTS_FLEET: "/agents",
+  RESET_PASSWORD: "/reset-password",
 } as const;

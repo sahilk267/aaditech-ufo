@@ -37,6 +37,7 @@ const BackupDrillPage = lazy(() => import("../pages/backup-drill/BackupDrillPage
 const AuditPage = lazy(() => import("../pages/audit/AuditPage").then((m) => ({ default: m.AuditPage })));
 const AgentEnginePage = lazy(() => import("../pages/agent-engine/AgentEnginePage").then((m) => ({ default: m.AgentEnginePage })));
 const AgentsFleetPage = lazy(() => import("../pages/agents/AgentsFleetPage").then((m) => ({ default: m.AgentsFleetPage })));
+const ResetPasswordPage = lazy(() => import("../pages/reset-password/ResetPasswordPage").then((m) => ({ default: m.ResetPasswordPage })));
 
 function lazyElement(element: ReactNode) {
   return (
@@ -173,6 +174,7 @@ const appChildren: RouteObject[] = [
 export const router = createBrowserRouter(
   [
     { path: ROUTES.LOGIN, element: lazyElement(<LoginPage />) },
+    { path: ROUTES.RESET_PASSWORD, element: lazyElement(<ResetPasswordPage />) },
     {
       path: "/",
       element: (
