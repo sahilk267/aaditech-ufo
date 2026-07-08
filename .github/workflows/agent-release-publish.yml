@@ -74,24 +74,30 @@ jobs:
           Set-Content -Path agent/version.py -Value "AGENT_VERSION = `"$version`"" -Encoding utf8
           Write-Host "Stamped version: $version"
 
-      # ── Download NSSM (Windows service wrapper) ──────────────────────────────
-      # NSSM wraps the agent .exe as a proper Windows service with auto-restart.
-      # We bundle it in the installer so operators get service management for free.
-      - name: Download NSSM 2.24
+      # ── Get NSSM (Windows service wrapper) ───────────────────────────────────
+      # nssm.cc is unreliable — install via Chocolatey (pre-installed on every
+      # GitHub Actions Windows runner) then copy the binary into agent/dist/
+      # so the NSIS installer can bundle it.
+      - name: Install NSSM via Chocolatey
         shell: pwsh
         run: |
-          $nssmUrl = "https://nssm.cc/release/nssm-2.24.zip"
-          $zipPath = "$env:TEMP\nssm.zip"
-          $outDir  = "$env:TEMP\nssm"
+          Write-Host "Installing NSSM via Chocolatey..."
+          choco install nssm --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "choco install nssm failed (exit $LASTEXITCODE)" }
 
-          Write-Host "Downloading NSSM..."
-          Invoke-WebRequest -Uri $nssmUrl -OutFile $zipPath -UseBasicParsing
-          Expand-Archive -Path $zipPath -DestinationPath $outDir -Force
+          # Locate the installed binary (Chocolatey puts it in the shims dir or tools)
+          $nssmExe = (Get-Command nssm -ErrorAction SilentlyContinue).Source
+          if (-not $nssmExe) {
+            # Fallback: common Chocolatey install path
+            $nssmExe = "C:\ProgramData\chocolatey\lib\nssm\tools\nssm.exe"
+          }
+          if (-not (Test-Path $nssmExe)) {
+            throw "Could not locate nssm.exe after Chocolatey install"
+          }
 
-          # Copy the 64-bit binary into agent/dist/ so NSIS can bundle it
           New-Item -ItemType Directory -Force -Path "agent\dist" | Out-Null
-          Copy-Item "$outDir\nssm-2.24\win64\nssm.exe" "agent\dist\nssm.exe" -Force
-          Write-Host "NSSM ready: $(Get-Item 'agent\dist\nssm.exe' | Select-Object -ExpandProperty Length) bytes"
+          Copy-Item $nssmExe "agent\dist\nssm.exe" -Force
+          Write-Host "NSSM ready at agent\dist\nssm.exe ($([math]::Round((Get-Item 'agent\dist\nssm.exe').Length / 1KB, 1)) KB)"
 
       - name: Build Windows .exe with PyInstaller
         shell: pwsh
