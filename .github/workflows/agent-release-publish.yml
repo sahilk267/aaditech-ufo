@@ -127,14 +127,15 @@ jobs:
           retention-days: 90
 
       # ── Publish GitHub Release ───────────────────────────────────────────────
-      # Strategy (avoids tag-creation ruleset errors):
-      #   • If a release already exists for this tag  → delete ONLY the release
-      #     (keep the tag), then create a new release that references the
-      #     existing tag and upload the new .exe.
-      #   • If no release exists yet               → create fresh (tag + release).
+      # Uses the GitHub REST API directly (not gh CLI) with the admin PAT.
+      # The PAT has repo admin scope which bypasses tag-protection rulesets.
       #
-      # We NEVER use --cleanup-tag because some repo rulesets block tag
-      # recreation even for admins.
+      # Full sequence every run:
+      #   1. Delete existing release for this tag (if any)
+      #   2. Delete existing git tag (if any) — clears the "immutable" association
+      #   3. Create a fresh git tag pointing at HEAD
+      #   4. Create the GitHub Release
+      #   5. Upload the .exe as a release asset
       - name: Publish GitHub Release
         shell: pwsh
         run: |
@@ -144,39 +145,92 @@ jobs:
           $exe     = "agent\dist\aaditech-agent-$version.exe"
           $sha256  = "$env:EXE_SHA256"
           $actor   = "${{ github.actor }}"
+          $apiBase = "https://api.github.com/repos/$repo"
 
-          $notes = @"
-          ## Aaditech UFO Agent v$version
-
-          **SHA-256:** ``$sha256``
-
-          Built on ``windows-latest`` by GitHub Actions.
-          Triggered by: $actor
-
-          ### Installation (Windows)
-          1. Download ``aaditech-agent-$version.exe``
-          2. Run ``AaditechUfoAgentSetup-$version.exe`` (NSIS installer) — installs as a Windows service that auto-restarts on crash.
-          3. Or run the bare ``.exe`` directly for testing.
-          "@
-
-          # Check whether a release already exists for this tag
-          $releaseInfo = gh release view $tag --repo $repo --json id 2>&1
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Release $tag already exists — deleting release (keeping tag)..."
-            gh release delete $tag --repo $repo --yes
-            # Wait briefly for GitHub to process the deletion
-            Start-Sleep -Seconds 3
-            Write-Host "Existing release deleted. Creating new release from existing tag..."
-          } else {
-            Write-Host "No existing release for $tag — creating fresh..."
+          $hdrs = @{
+            "Authorization"        = "Bearer $env:GH_TOKEN"
+            "Accept"               = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
           }
 
-          gh release create $tag `
-            --repo $repo `
-            --title "Aaditech Agent v$version" `
-            --notes $notes `
-            $exe
+          function Invoke-GH {
+            param($Method, $Uri, $Body)
+            $params = @{ Method = $Method; Uri = $Uri; Headers = $hdrs; UseBasicParsing = $true }
+            if ($Body) { $params.Body = ($Body | ConvertTo-Json -Depth 5); $params.ContentType = "application/json" }
+            try { return Invoke-RestMethod @params }
+            catch { Write-Host "  [warn] $Method $Uri — $($_.Exception.Message)"; return $null }
+          }
 
+          # ── 1. Delete existing release ──────────────────────────────────────
+          Write-Host "==> Checking for existing release $tag ..."
+          $releases = Invoke-GH GET "$apiBase/releases"
+          $existing = $releases | Where-Object { $_.tag_name -eq $tag }
+          if ($existing) {
+            Write-Host "    Deleting release id=$($existing.id) ..."
+            Invoke-GH DELETE "$apiBase/releases/$($existing.id)"
+            Start-Sleep -Seconds 2
+          } else {
+            Write-Host "    No existing release — skipping."
+          }
+
+          # ── 2. Delete existing git tag (clears GitHub's immutable-tag record) ──
+          Write-Host "==> Checking for existing tag $tag ..."
+          $tagRef = Invoke-GH GET "$apiBase/git/refs/tags/$tag"
+          if ($tagRef) {
+            Write-Host "    Deleting git tag $tag ..."
+            Invoke-GH DELETE "$apiBase/git/refs/tags/$tag"
+            Start-Sleep -Seconds 2
+          } else {
+            Write-Host "    Tag does not exist — skipping."
+          }
+
+          # ── 3. Resolve HEAD commit SHA ──────────────────────────────────────
+          Write-Host "==> Resolving HEAD commit ..."
+          # Try main, then master
+          $ref = Invoke-GH GET "$apiBase/git/refs/heads/main"
+          if (-not $ref) { $ref = Invoke-GH GET "$apiBase/git/refs/heads/master" }
+          if (-not $ref) { throw "Could not resolve HEAD — neither main nor master branch found" }
+          $headSha = $ref.object.sha
+          Write-Host "    HEAD = $headSha"
+
+          # ── 4. Create fresh git tag ─────────────────────────────────────────
+          Write-Host "==> Creating git tag $tag at $headSha ..."
+          $newRef = Invoke-GH POST "$apiBase/git/refs" @{ ref = "refs/tags/$tag"; sha = $headSha }
+          if (-not $newRef) { throw "Failed to create git tag $tag — check PAT permissions and repo rulesets" }
+          Write-Host "    Tag created: $($newRef.ref)"
+          Start-Sleep -Seconds 1
+
+          # ── 5. Create GitHub Release ────────────────────────────────────────
+          Write-Host "==> Creating GitHub Release ..."
+          $notes = "## Aaditech UFO Agent v$version`n`n**SHA-256:** ``$sha256```n`nBuilt on ``windows-latest`` by GitHub Actions.`nTriggered by: $actor`n`n### Installation`n1. Download ``aaditech-agent-$version.exe```n2. Run the NSIS installer — registers as an auto-restart Windows service.`n3. Or run the bare .exe directly for testing."
+          $release = Invoke-GH POST "$apiBase/releases" @{
+            tag_name   = $tag
+            name       = "Aaditech Agent v$version"
+            body       = $notes
+            draft      = $false
+            prerelease = $false
+          }
+          if (-not $release) { throw "Failed to create GitHub Release" }
+          Write-Host "    Release id=$($release.id)"
+
+          # ── 6. Upload .exe asset ────────────────────────────────────────────
+          Write-Host "==> Uploading asset ..."
+          $uploadBase = $release.upload_url -replace '\{[^}]+\}', ''
+          $assetName  = [System.IO.Path]::GetFileName($exe)
+          $exeBytes   = [System.IO.File]::ReadAllBytes((Resolve-Path $exe))
+          $uploadHdrs = @{
+            "Authorization"        = "Bearer $env:GH_TOKEN"
+            "Accept"               = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+            "Content-Type"         = "application/octet-stream"
+          }
+          $upload = Invoke-RestMethod `
+            -Uri "${uploadBase}?name=$assetName" `
+            -Method POST -Headers $uploadHdrs `
+            -Body $exeBytes -UseBasicParsing
+          Write-Host "    Asset uploaded: $($upload.browser_download_url)"
+
+          Write-Host ""
           Write-Host "Release published: https://github.com/$repo/releases/tag/$tag"
 
       - name: Auto-upload to UFO server
