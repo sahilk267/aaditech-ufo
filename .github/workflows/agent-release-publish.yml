@@ -28,6 +28,7 @@ jobs:
       AGENT_RELEASE_UPLOAD_URL: ${{ secrets.AGENT_RELEASE_UPLOAD_URL }}
       AGENT_RELEASE_API_KEY: ${{ secrets.AGENT_RELEASE_API_KEY }}
       AGENT_RELEASE_TENANT_SLUG: ${{ secrets.AGENT_RELEASE_TENANT_SLUG }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - name: Checkout repository
@@ -90,23 +91,49 @@ jobs:
           path: agent/dist/aaditech-agent-${{ github.event.inputs.version }}.exe
           retention-days: 90
 
+      - name: Delete existing GitHub Release and tag (if any)
+        shell: pwsh
+        run: |
+          $tag = "v${{ github.event.inputs.version }}"
+          $repo = "${{ github.repository }}"
+
+          # Try to delete the release (ignore errors if it doesn't exist)
+          Write-Host "Checking for existing release $tag ..."
+          $exists = gh release view $tag --repo $repo 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "Deleting existing release $tag ..."
+            gh release delete $tag --repo $repo --yes --cleanup-tag
+            Write-Host "Deleted release and tag $tag"
+          } else {
+            Write-Host "No existing release for $tag — proceeding fresh."
+          }
+
       - name: Create GitHub Release and attach .exe
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.event.inputs.version }}
-          name: Aaditech Agent v${{ github.event.inputs.version }}
-          body: |
-            ## Aaditech UFO Agent v${{ github.event.inputs.version }}
+        shell: pwsh
+        run: |
+          $version = "${{ github.event.inputs.version }}"
+          $tag     = "v$version"
+          $repo    = "${{ github.repository }}"
+          $exe     = "agent\dist\aaditech-agent-$version.exe"
+          $sha256  = "${{ env.EXE_SHA256 }}"
+          $actor   = "${{ github.actor }}"
 
-            **SHA-256:** `${{ env.EXE_SHA256 }}`
+          $notes = @"
+          ## Aaditech UFO Agent v$version
 
-            Built on `windows-latest` by GitHub Actions.
-            Triggered by: ${{ github.actor }}
-          files: agent/dist/aaditech-agent-${{ github.event.inputs.version }}.exe
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          **SHA-256:** ``$sha256``
+
+          Built on ``windows-latest`` by GitHub Actions.
+          Triggered by: $actor
+          "@
+
+          gh release create $tag `
+            --repo $repo `
+            --title "Aaditech Agent v$version" `
+            --notes $notes `
+            $exe
+
+          Write-Host "Release created: https://github.com/$repo/releases/tag/$tag"
 
       - name: Auto-upload to UFO server
         if: ${{ github.event.inputs.upload_to_server == 'true' }}
