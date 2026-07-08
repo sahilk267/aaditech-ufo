@@ -9,26 +9,30 @@ import {
   FormInput,
   FormSubmitButton,
 } from "../../components/forms/FormComponents";
-import { getUsers, registerUser, revokeUserSessions, updateUser } from "../../lib/api";
+import { getUsers, registerUser, revokeUserSessions, sendUserPasswordReset, updateUser } from "../../lib/api";
 import { fetchMe } from "../../lib/auth";
 import { queryKeys } from "../../lib/queryKeys";
 import { createUserSchema, type CreateUserInput } from "../../lib/schemas";
 import type { User } from "../../types/api";
+
+interface ResetState {
+  loading: boolean;
+  devUrl: string | null;
+  error: string | null;
+}
 
 export function UsersPage() {
   const queryClient = useQueryClient();
   const [latestResult, setLatestResult] = useState<unknown>(null);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editedFullName, setEditedFullName] = useState("");
+  // per-row reset state keyed by user id
+  const [resetStates, setResetStates] = useState<Record<number, ResetState>>({});
 
   const form = useForm<CreateUserInput>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     resolver: zodResolver(createUserSchema) as any,
-    defaultValues: {
-      email: "",
-      fullName: "",
-      password: "",
-    },
+    defaultValues: { email: "", fullName: "", password: "" },
   });
 
   const usersQuery = useQuery({
@@ -41,20 +45,14 @@ export function UsersPage() {
 
   const createUserMutation = useMutation({
     mutationFn: (data: CreateUserInput) =>
-      registerUser({
-        email: data.email,
-        full_name: data.fullName,
-        password: data.password,
-      }),
+      registerUser({ email: data.email, full_name: data.fullName, password: data.password }),
     onSuccess: (data) => {
       setLatestResult(data);
       form.reset();
       void queryClient.invalidateQueries({ queryKey: queryKeys.users });
       void queryClient.invalidateQueries({ queryKey: queryKeys.me });
     },
-    onError: (err) => {
-      form.setError("root", { message: String(err) });
-    },
+    onError: (err) => { form.setError("root", { message: String(err) }); },
   });
 
   const revokeSessionsMutation = useMutation({
@@ -63,13 +61,12 @@ export function UsersPage() {
       setLatestResult(data);
       void queryClient.invalidateQueries({ queryKey: queryKeys.users });
     },
-    onError: (err) => {
-      form.setError("root", { message: String(err) });
-    },
+    onError: (err) => { form.setError("root", { message: String(err) }); },
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: (payload: { id: number; full_name: string }) => updateUser(payload.id, { full_name: payload.full_name }),
+    mutationFn: (payload: { id: number; full_name: string }) =>
+      updateUser(payload.id, { full_name: payload.full_name }),
     onSuccess: () => {
       if (editingUser) {
         setLatestResult({ message: "User updated", user: { ...editingUser, full_name: editedFullName } });
@@ -78,35 +75,51 @@ export function UsersPage() {
       setEditedFullName("");
       void queryClient.invalidateQueries({ queryKey: queryKeys.users });
     },
-    onError: (err) => {
-      form.setError("root", { message: String(err) });
-    },
+    onError: (err) => { form.setError("root", { message: String(err) }); },
   });
 
-  const onSubmit = (data: CreateUserInput) => {
-    createUserMutation.mutate(data);
-  };
+  async function handleSendReset(userId: number) {
+    setResetStates((prev) => ({
+      ...prev,
+      [userId]: { loading: true, devUrl: null, error: null },
+    }));
+    try {
+      const res = await sendUserPasswordReset(userId) as {
+        dev_reset_url?: string;
+        email_sent?: boolean;
+        message?: string;
+      };
+      setResetStates((prev) => ({
+        ...prev,
+        [userId]: {
+          loading: false,
+          devUrl: res.dev_reset_url ?? null,
+          error: null,
+        },
+      }));
+      // auto-dismiss the dev URL panel after 60 s
+      setTimeout(() => {
+        setResetStates((prev) => ({
+          ...prev,
+          [userId]: { loading: false, devUrl: null, error: null },
+        }));
+      }, 60_000);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { message?: string } } }).response?.data?.message ??
+        "Failed to generate reset link.";
+      setResetStates((prev) => ({
+        ...prev,
+        [userId]: { loading: false, devUrl: null, error: msg },
+      }));
+    }
+  }
 
-  const onBeginEdit = (user: User) => {
-    setEditingUser(user);
-    setEditedFullName(user.full_name ?? "");
-  };
-
-  const onSaveEdit = () => {
-    if (!editingUser) return;
-    updateUserMutation.mutate({ id: editingUser.id, full_name: editedFullName });
-  };
-
-  const refreshUsers = () => {
-    void queryClient.invalidateQueries({ queryKey: queryKeys.users });
-  };
-
-  const resetUserForm = () => {
-    form.reset();
-    setLatestResult(null);
-    setEditingUser(null);
-    setEditedFullName("");
-  };
+  const onSubmit = (data: CreateUserInput) => { createUserMutation.mutate(data); };
+  const onBeginEdit = (user: User) => { setEditingUser(user); setEditedFullName(user.full_name ?? ""); };
+  const onSaveEdit = () => { if (editingUser) updateUserMutation.mutate({ id: editingUser.id, full_name: editedFullName }); };
+  const refreshUsers = () => { void queryClient.invalidateQueries({ queryKey: queryKeys.users }); };
+  const resetUserForm = () => { form.reset(); setLatestResult(null); setEditingUser(null); setEditedFullName(""); };
 
   return (
     <ModulePage
@@ -114,12 +127,8 @@ export function UsersPage() {
       description="Tenant-scoped user provisioning and management using /api/users."
       actions={
         <>
-          <button type="button" onClick={refreshUsers} disabled={usersQuery.isFetching}>
-            Refresh users
-          </button>
-          <button type="button" onClick={resetUserForm}>
-            Reset form
-          </button>
+          <button type="button" onClick={refreshUsers} disabled={usersQuery.isFetching}>Refresh users</button>
+          <button type="button" onClick={resetUserForm}>Reset form</button>
         </>
       }
     >
@@ -153,28 +162,114 @@ export function UsersPage() {
                 </tr>
               </thead>
               <tbody>
-                {usersQuery.data?.users?.map((user: User) => (
-                  <tr key={user.id}>
-                    <td>{user.id}</td>
-                    <td>{user.email}</td>
-                    <td>{user.full_name || "-"}</td>
-                    <td style={{ display: "flex", gap: 6 }}>
-                      <button className="button button--secondary" type="button" onClick={() => onBeginEdit(user)}>
-                        Edit
-                      </button>
-                      <button
-                        className="button button--secondary"
-                        type="button"
-                        style={{ fontSize: "0.82em", color: "#b45309", border: "1px solid #fde68a" }}
-                        onClick={() => revokeSessionsMutation.mutate(user.id)}
-                        disabled={revokeSessionsMutation.isPending}
-                        title="Force logout — revoke all active sessions for this user"
-                      >
-                        Revoke sessions
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {usersQuery.data?.users?.map((user: User) => {
+                  const rs = resetStates[user.id] ?? { loading: false, devUrl: null, error: null };
+                  return (
+                    <>
+                      <tr key={user.id}>
+                        <td>{user.id}</td>
+                        <td>{user.email}</td>
+                        <td>{user.full_name || "-"}</td>
+                        <td style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <button
+                            className="button button--secondary"
+                            type="button"
+                            onClick={() => onBeginEdit(user)}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            className="button button--secondary"
+                            type="button"
+                            style={{ fontSize: "0.82em", color: "#b45309", border: "1px solid #fde68a" }}
+                            onClick={() => revokeSessionsMutation.mutate(user.id)}
+                            disabled={revokeSessionsMutation.isPending}
+                            title="Force logout — revoke all active sessions for this user"
+                          >
+                            Revoke sessions
+                          </button>
+                          <button
+                            className="button button--secondary"
+                            type="button"
+                            style={{ fontSize: "0.82em", color: "#6d28d9", border: "1px solid #ddd6fe" }}
+                            onClick={() => handleSendReset(user.id)}
+                            disabled={rs.loading}
+                            title="Generate and send a password-reset link for this user"
+                          >
+                            {rs.loading ? "Sending…" : "Send reset"}
+                          </button>
+                        </td>
+                      </tr>
+                      {(rs.devUrl || rs.error) && (
+                        <tr key={`${user.id}-reset-info`}>
+                          <td colSpan={4} style={{ padding: "0 8px 10px" }}>
+                            {rs.error ? (
+                              <div
+                                style={{
+                                  background: "#fef2f2",
+                                  border: "1px solid #fecaca",
+                                  borderRadius: 6,
+                                  padding: "8px 12px",
+                                  fontSize: 13,
+                                  color: "#b91c1c",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 8,
+                                }}
+                              >
+                                ✗ {rs.error}
+                                <button
+                                  type="button"
+                                  style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#b91c1c", fontSize: 14 }}
+                                  onClick={() => setResetStates((p) => ({ ...p, [user.id]: { loading: false, devUrl: null, error: null } }))}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : rs.devUrl ? (
+                              <div
+                                style={{
+                                  background: "#fefce8",
+                                  border: "1px solid #fde047",
+                                  borderRadius: 6,
+                                  padding: "8px 12px",
+                                  fontSize: 13,
+                                }}
+                              >
+                                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                  <span style={{ fontWeight: 600, color: "#92400e" }}>
+                                    ✓ Reset link generated
+                                  </span>
+                                  <span style={{ color: "#78716c", fontSize: 12 }}>
+                                    (SMTP not configured — share manually · expires in 60 min)
+                                  </span>
+                                  <button
+                                    type="button"
+                                    style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#92400e", fontSize: 14 }}
+                                    onClick={() => setResetStates((p) => ({ ...p, [user.id]: { loading: false, devUrl: null, error: null } }))}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                  <a
+                                    href={rs.devUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    style={{ color: "#1d4ed8", wordBreak: "break-all", fontSize: 12 }}
+                                  >
+                                    {rs.devUrl}
+                                  </a>
+                                  <CopyButton text={rs.devUrl} />
+                                </div>
+                              </div>
+                            ) : null}
+                          </td>
+                        </tr>
+                      )}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -192,7 +287,12 @@ export function UsersPage() {
             <label className="form-label">Full Name</label>
             <input value={editedFullName} onChange={(e) => setEditedFullName(e.target.value)} className="form-input" />
           </div>
-          <button className="button button--primary" type="button" onClick={onSaveEdit} disabled={updateUserMutation.status === "pending"}>
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={onSaveEdit}
+            disabled={updateUserMutation.status === "pending"}
+          >
             {updateUserMutation.status === "pending" ? "Saving..." : "Save changes"}
           </button>
           <button className="button button--secondary" type="button" onClick={() => setEditingUser(null)} style={{ marginLeft: 8 }}>
@@ -237,10 +337,7 @@ export function UsersPage() {
           />
         </div>
 
-        <FormSubmitButton
-          isLoading={createUserMutation.isPending}
-          isDisabled={!form.formState.isDirty}
-        >
+        <FormSubmitButton isLoading={createUserMutation.isPending} isDisabled={!form.formState.isDirty}>
           Create User
         </FormSubmitButton>
 
@@ -256,3 +353,30 @@ export function UsersPage() {
   );
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      style={{
+        flexShrink: 0,
+        background: copied ? "#d1fae5" : "#f3f4f6",
+        border: "1px solid " + (copied ? "#6ee7b7" : "#d1d5db"),
+        borderRadius: 4,
+        padding: "2px 8px",
+        fontSize: 11,
+        cursor: "pointer",
+        color: copied ? "#065f46" : "#374151",
+        whiteSpace: "nowrap",
+      }}
+      onClick={() => {
+        void navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2500);
+        });
+      }}
+    >
+      {copied ? "✓ Copied" : "Copy link"}
+    </button>
+  );
+}

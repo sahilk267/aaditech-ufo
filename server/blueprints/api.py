@@ -4221,6 +4221,94 @@ def change_my_password_api():
     }), 200
 
 
+@api_bp.route('/users/<int:user_id>/send-password-reset', methods=['POST'])
+@require_permission('tenant.manage')
+def admin_send_password_reset(user_id):
+    """Admin-initiated password reset for any user in the tenant.
+
+    Generates a reset token, stores it, and dispatches an email if SMTP is
+    configured. In non-production environments the reset URL is also returned
+    in the response body for testing.
+
+    Requires tenant.manage permission (admin only).
+    """
+    user = User.query.filter_by(id=user_id, organization_id=g.tenant.id, is_active=True).first()
+    if not user:
+        return jsonify({'error': 'Not found', 'message': 'User not found in this tenant.'}), 404
+
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = hashlib.sha256(raw_token.encode()).hexdigest()
+    expires_at = datetime.utcnow() + timedelta(
+        minutes=current_app.config.get('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', 60)
+    )
+
+    user.password_reset_token = token_hash
+    user.password_reset_expires_at = expires_at
+    db.session.commit()
+
+    log_audit_event(
+        'admin.send_password_reset',
+        outcome='success',
+        admin_user_id=getattr(g, 'current_user', None) and g.current_user.id,
+        target_user_id=user_id,
+        target_email=user.email,
+    )
+
+    server_url = request.host_url.rstrip('/')
+    reset_url = (
+        f"{server_url}/app/reset-password"
+        f"?token={raw_token}&tenant={g.tenant.slug}"
+    )
+
+    smtp_host = current_app.config.get('ALERT_SMTP_HOST', 'localhost')
+    smtp_configured = smtp_host not in ('', 'localhost') or current_app.config.get('ALERT_SMTP_USER', '')
+    email_sent = False
+
+    if smtp_configured:
+        from ..services.notification_service import NotificationService
+        expires_min = current_app.config.get('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', 60)
+        body = (
+            f"Hello {user.full_name},\n\n"
+            f"An administrator has initiated a password reset for your Aaditech UFO account.\n\n"
+            f"Click the link below to set a new password (expires in {expires_min} minutes):\n\n"
+            f"  {reset_url}\n\n"
+            f"If you were not expecting this, contact your administrator.\n\n"
+            f"— Aaditech UFO Security"
+        )
+        smtp_cfg = {
+            'smtp_host': smtp_host,
+            'smtp_port': int(current_app.config.get('ALERT_SMTP_PORT', 25)),
+            'smtp_user': current_app.config.get('ALERT_SMTP_USER', ''),
+            'smtp_password': current_app.config.get('ALERT_SMTP_PASSWORD', ''),
+            'smtp_tls': current_app.config.get('ALERT_SMTP_TLS', False),
+            'smtp_ssl': current_app.config.get('ALERT_SMTP_SSL', False),
+            'email_from': current_app.config.get('ALERT_EMAIL_FROM', 'noreply@aaditech.local'),
+        }
+        email_sent = NotificationService.send_transactional_email(
+            user.email,
+            "Password Reset Initiated — Aaditech UFO",
+            body,
+            smtp_cfg,
+        )
+
+    response: dict = {
+        'status': 'success',
+        'email_sent': email_sent,
+        'target_email': user.email,
+        'target_user_id': user_id,
+        'message': (
+            f"Reset link {'emailed to' if email_sent else 'generated for'} {user.email}. "
+            f"Expires in {current_app.config.get('PASSWORD_RESET_TOKEN_EXPIRES_MINUTES', 60)} minutes."
+        ),
+    }
+
+    if current_app.config.get('FLASK_ENV', 'development') != 'production':
+        response['dev_reset_url'] = reset_url
+        response['dev_note'] = 'dev_reset_url only present in non-production environments.'
+
+    return jsonify(response), 200
+
+
 @api_bp.route('/auth/forgot-password', methods=['POST'])
 @limiter.limit("5 per hour")
 def forgot_password():

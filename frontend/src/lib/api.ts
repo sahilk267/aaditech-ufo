@@ -260,6 +260,11 @@ export async function updateUser(userId: number, payload: Record<string, unknown
   return data;
 }
 
+export async function sendUserPasswordReset(userId: number) {
+  const { data } = await apiClient.post(`/api/users/${userId}/send-password-reset`);
+  return data;
+}
+
 export async function revokeUserSessions(userId: number) {
   const { data } = await apiClient.post(`/api/users/${userId}/revoke-sessions`);
   return data;
